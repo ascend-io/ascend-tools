@@ -27,9 +27,6 @@ struct Cli {
     )]
     service_account_key: Option<String>,
 
-    #[arg(long, global = true, env = "ASCEND_CLOUD_API_URL")]
-    cloud_api_url: Option<String>,
-
     #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
     instance_api_url: Option<String>,
 
@@ -139,7 +136,6 @@ where
     let config = Config::with_overrides(
         cli.service_account_id.as_deref(),
         cli.service_account_key.as_deref(),
-        cli.cloud_api_url.as_deref(),
         cli.instance_api_url.as_deref(),
     )?;
     let client = AscendClient::new(config)?;

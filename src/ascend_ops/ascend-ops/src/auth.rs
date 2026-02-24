@@ -8,13 +8,13 @@ use ureq::Agent;
 
 /// Manages authentication for the Ascend API.
 ///
-/// Handles Ed25519 JWT signing and Cloud API token exchange.
+/// Signs Ed25519 JWTs and exchanges them for instance tokens
+/// via the Instance API's /api/v1/auth/token endpoint.
 pub struct Auth {
     service_account_id: String,
     private_key_bytes: Vec<u8>,
-    cloud_api_url: String,
     cloud_api_domain: String,
-    instance_api_host: String,
+    instance_api_url: String,
     agent: Agent,
     cached_token: Mutex<Option<CachedToken>>,
 }
@@ -28,9 +28,8 @@ impl Auth {
     pub fn new(
         service_account_id: String,
         private_key_b64: &str,
-        cloud_api_url: String,
         cloud_api_domain: String,
-        instance_api_host: String,
+        instance_api_url: String,
     ) -> Result<Self> {
         let private_key_bytes = URL_SAFE_NO_PAD
             .decode(private_key_b64.trim())
@@ -52,9 +51,8 @@ impl Auth {
         Ok(Self {
             service_account_id,
             private_key_bytes,
-            cloud_api_url,
             cloud_api_domain,
-            instance_api_host,
+            instance_api_url,
             agent,
             cached_token: Mutex::new(None),
         })
@@ -109,28 +107,28 @@ impl Auth {
         jsonwebtoken::encode(&header, &claims, &key).context("failed to sign JWT")
     }
 
-    /// Exchange the service account JWT for an instance token via the Cloud API.
+    /// Exchange the service account JWT for an instance token
+    /// via the Instance API's /api/v1/auth/token endpoint.
     /// Returns (access_token, expires_at_unix).
     fn exchange_token(&self, sa_jwt: &str) -> Result<(String, u64)> {
-        let url = format!("{}/auth/token", self.cloud_api_url);
-        let body = serde_json::json!({ "instance_api_host": self.instance_api_host });
+        let url = format!("{}/api/v1/auth/token", self.instance_api_url);
         let mut resp = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {sa_jwt}"))
             .header("Content-Type", "application/json")
-            .send(serde_json::to_string(&body)?.as_bytes())
-            .map_err(|e| anyhow::anyhow!("failed to exchange token at Cloud API ({url}): {e}"))?;
+            .send_empty()
+            .map_err(|e| anyhow::anyhow!("failed to exchange token ({url}): {e}"))?;
 
         let status = resp.status().as_u16();
         let resp_body: String = resp.body_mut().read_to_string()?;
 
         if !(200..300).contains(&status) {
-            bail!("Cloud API token exchange failed (HTTP {status}): {resp_body}");
+            bail!("Token exchange failed (HTTP {status}): {resp_body}");
         }
 
         let json: Value =
-            serde_json::from_str(&resp_body).context("failed to parse Cloud API token response")?;
+            serde_json::from_str(&resp_body).context("failed to parse token response")?;
 
         let token = json
             .get("access_token")
@@ -156,8 +154,7 @@ impl std::fmt::Debug for Auth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Auth")
             .field("service_account_id", &self.service_account_id)
-            .field("cloud_api_url", &self.cloud_api_url)
-            .field("instance_api_host", &self.instance_api_host)
+            .field("instance_api_url", &self.instance_api_url)
             .field("private_key", &"[REDACTED]")
             .finish()
     }

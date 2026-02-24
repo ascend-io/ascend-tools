@@ -4,7 +4,6 @@ class Client:
         service_account_id: str | None = None,
         service_account_key: str | None = None,
         instance_api_url: str | None = None,
-        cloud_api_url: str | None = None,
     ) -> None: ...
     def list_runtimes(
         self,

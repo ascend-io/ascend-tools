@@ -25,13 +25,11 @@ pub struct AscendClient {
 
 impl AscendClient {
     pub fn new(config: Config) -> Result<Self> {
-        let instance_api_host = config.instance_api_host();
         let auth = Auth::new(
             config.service_account_id,
             &config.service_account_key,
-            config.cloud_api_url,
             config.cloud_api_domain,
-            instance_api_host,
+            config.instance_api_url.clone(),
         )?;
         let agent = Agent::new_with_config(
             ureq::config::Config::builder()

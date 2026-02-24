@@ -3,35 +3,29 @@ use std::env;
 
 const SA_ID_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_ID"];
 const SA_KEY_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_KEY", "ASCEND_PRIVATE_KEY"];
-const CLOUD_API_URL_ENV_VARS: &[&str] = &["ASCEND_CLOUD_API_URL"];
 const CLOUD_API_DOMAIN_ENV_VARS: &[&str] = &["ASCEND_CLOUD_API_DOMAIN"];
 const INSTANCE_API_URL_ENV_VARS: &[&str] = &["ASCEND_INSTANCE_API_URL"];
 
-const DEFAULT_CLOUD_API_URL: &str = "https://api.ascend.io";
+const DEFAULT_CLOUD_API_DOMAIN: &str = "api.ascend.io";
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub service_account_id: String,
     pub service_account_key: String,
-    pub cloud_api_url: String,
-    /// Domain used for JWT audience. Defaults to the host from cloud_api_url.
-    /// Override via ASCEND_CLOUD_API_DOMAIN for local dev where the proxy domain
-    /// differs from the Cloud API's internal CLOUD_API_DOMAIN.
+    /// Domain used for JWT audience. Defaults to api.ascend.io.
+    /// Override via ASCEND_CLOUD_API_DOMAIN for local dev where the Instance API's
+    /// CLOUD_API_DOMAIN differs from the default.
     pub cloud_api_domain: String,
     pub instance_api_url: String,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let cloud_api_url = resolve_optional(CLOUD_API_URL_ENV_VARS, None)
-            .unwrap_or_else(|| DEFAULT_CLOUD_API_URL.to_string());
-        let cloud_api_domain = resolve_optional(CLOUD_API_DOMAIN_ENV_VARS, None)
-            .unwrap_or_else(|| domain_from_url(&cloud_api_url));
         Ok(Self {
             service_account_id: resolve_required("service_account_id", SA_ID_ENV_VARS, None)?,
             service_account_key: resolve_required("service_account_key", SA_KEY_ENV_VARS, None)?,
-            cloud_api_url,
-            cloud_api_domain,
+            cloud_api_domain: resolve_optional(CLOUD_API_DOMAIN_ENV_VARS, None)
+                .unwrap_or_else(|| DEFAULT_CLOUD_API_DOMAIN.to_string()),
             instance_api_url: resolve_required(
                 "instance_api_url",
                 INSTANCE_API_URL_ENV_VARS,
@@ -43,13 +37,8 @@ impl Config {
     pub fn with_overrides(
         service_account_id: Option<&str>,
         service_account_key: Option<&str>,
-        cloud_api_url: Option<&str>,
         instance_api_url: Option<&str>,
     ) -> Result<Self> {
-        let cloud_api_url = resolve_optional(CLOUD_API_URL_ENV_VARS, cloud_api_url)
-            .unwrap_or_else(|| DEFAULT_CLOUD_API_URL.to_string());
-        let cloud_api_domain = resolve_optional(CLOUD_API_DOMAIN_ENV_VARS, None)
-            .unwrap_or_else(|| domain_from_url(&cloud_api_url));
         Ok(Self {
             service_account_id: resolve_required(
                 "service_account_id",
@@ -61,8 +50,8 @@ impl Config {
                 SA_KEY_ENV_VARS,
                 service_account_key,
             )?,
-            cloud_api_url,
-            cloud_api_domain,
+            cloud_api_domain: resolve_optional(CLOUD_API_DOMAIN_ENV_VARS, None)
+                .unwrap_or_else(|| DEFAULT_CLOUD_API_DOMAIN.to_string()),
             instance_api_url: resolve_required(
                 "instance_api_url",
                 INSTANCE_API_URL_ENV_VARS,
@@ -70,21 +59,6 @@ impl Config {
             )?,
         })
     }
-
-    /// Extract the instance API host (without scheme) for token exchange.
-    pub fn instance_api_host(&self) -> String {
-        domain_from_url(&self.instance_api_url)
-    }
-}
-
-/// Extract the host from a URL.
-fn domain_from_url(url: &str) -> String {
-    url.trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .split('/')
-        .next()
-        .unwrap_or(url)
-        .to_string()
 }
 
 fn resolve_required(name: &str, env_vars: &[&str], cli_value: Option<&str>) -> Result<String> {
@@ -149,17 +123,5 @@ mod tests {
     fn test_resolve_optional_with_cli() {
         let result = resolve_optional(&["NONEXISTENT_VAR_12345"], Some("value"));
         assert_eq!(result.unwrap(), "value");
-    }
-
-    #[test]
-    fn test_instance_api_host() {
-        let config = Config {
-            service_account_id: "test".into(),
-            service_account_key: "test".into(),
-            cloud_api_url: "https://api.ascend.io".into(),
-            cloud_api_domain: "api.ascend.io".into(),
-            instance_api_url: "https://api.instance.ascend.io".into(),
-        };
-        assert_eq!(config.instance_api_host(), "api.instance.ascend.io");
     }
 }

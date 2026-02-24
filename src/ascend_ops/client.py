@@ -14,7 +14,7 @@ class Client:
       - ASCEND_SERVICE_ACCOUNT_ID
       - ASCEND_SERVICE_ACCOUNT_KEY
       - ASCEND_INSTANCE_API_URL
-      - ASCEND_CLOUD_API_URL (defaults to https://api.ascend.io)
+      - ASCEND_CLOUD_API_DOMAIN (defaults to api.ascend.io, only needed for local dev)
     """
 
     def __init__(
@@ -23,13 +23,11 @@ class Client:
         service_account_id: str | None = None,
         service_account_key: str | None = None,
         instance_api_url: str | None = None,
-        cloud_api_url: str | None = None,
     ):
         self._inner = _RustClient(
             service_account_id=service_account_id,
             service_account_key=service_account_key,
             instance_api_url=instance_api_url,
-            cloud_api_url=cloud_api_url,
         )
 
     def list_runtimes(

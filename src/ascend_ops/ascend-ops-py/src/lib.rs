@@ -11,17 +11,15 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    #[pyo3(signature = (service_account_id=None, service_account_key=None, instance_api_url=None, cloud_api_url=None))]
+    #[pyo3(signature = (service_account_id=None, service_account_key=None, instance_api_url=None))]
     fn new(
         service_account_id: Option<&str>,
         service_account_key: Option<&str>,
         instance_api_url: Option<&str>,
-        cloud_api_url: Option<&str>,
     ) -> PyResult<Self> {
         let config = Config::with_overrides(
             service_account_id,
             service_account_key,
-            cloud_api_url,
             instance_api_url,
         )
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;

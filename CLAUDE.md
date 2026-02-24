@@ -60,9 +60,11 @@ The SDK/CLI authenticates via Ascend service accounts. The flow is handled trans
 
 1. User provides service account ID + key (from Ascend UI → Settings → Users → Create Service Account)
 2. SDK signs an Ed25519 JWT with the key
-3. SDK exchanges the JWT at the Cloud API (`POST /auth/token`) for an instance access token
+3. SDK exchanges the JWT at the Instance API (`POST /api/v1/auth/token`) for an instance access token
 4. SDK uses the instance token as Bearer auth against the Instance API `/api/v1/*`
 5. Token is cached and refreshed automatically before expiry
+
+All SDK calls go through `/api/v1/` — no direct Cloud API calls.
 
 ### env vars
 
@@ -71,17 +73,15 @@ The SDK/CLI authenticates via Ascend service accounts. The flow is handled trans
 | `ASCEND_SERVICE_ACCOUNT_ID` | yes | Service account ID (`asc-sa-...`) |
 | `ASCEND_SERVICE_ACCOUNT_KEY` | yes | Ed25519 private key (base64url, shown once at creation) |
 | `ASCEND_INSTANCE_API_URL` | yes | Instance API URL (e.g. `https://api.instance.ascend.io`) |
-| `ASCEND_CLOUD_API_URL` | no | Cloud API URL (default: `https://api.ascend.io`) |
-| `ASCEND_CLOUD_API_DOMAIN` | no | Override JWT audience domain. Only needed for local dev where the proxy domain differs from the Cloud API's internal `CLOUD_API_DOMAIN`. |
+| `ASCEND_CLOUD_API_DOMAIN` | no | Override JWT audience domain (default: `api.ascend.io`). Only needed for local dev. |
 
 The Python SDK reads these automatically — `ascend_ops.Client()` with no args works if env vars are set.
 
 ### local dev
 
-When testing against a local ASE workspace, the Cloud API's internal `CLOUD_API_DOMAIN` defaults to `api.app.local.ascend.dev` but the proxy routes via `<workspace>-api.app.local.ascend.dev`. Set the override:
+When testing against a local ASE workspace, the Instance API's `CLOUD_API_DOMAIN` defaults to `api.app.local.ascend.dev`. Set the override:
 
 ```bash
-export ASCEND_CLOUD_API_URL="https://<workspace>-api.app.local.ascend.dev"
 export ASCEND_CLOUD_API_DOMAIN="api.app.local.ascend.dev"
 export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.dev"
 ```
@@ -113,7 +113,7 @@ from ascend_ops import Client
 # All params optional — resolved from env vars if not provided
 client = Client()
 
-# Or explicit
+# Or explicit — only need the instance API URL
 client = Client(
     service_account_id="asc-sa-...",
     service_account_key="...",
@@ -144,6 +144,7 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/v1/auth/token` | POST | Exchange SA JWT for instance token (no pre-existing token required) |
 | `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, project_uuid, environment_uuid) |
 | `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
 | `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
