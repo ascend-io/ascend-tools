@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "SDK and CLI for the Ascend REST API"
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Ascend", email = "support@ascend.io" }]
+authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
 
 [project.scripts]

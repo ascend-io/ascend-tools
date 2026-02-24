@@ -4,7 +4,7 @@
 name = "ascend-ops-py"
 version = "0.1.0"
 edition = "2024"
-authors = ["Ascend <support@ascend.io>"]
+authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 
 [lib]

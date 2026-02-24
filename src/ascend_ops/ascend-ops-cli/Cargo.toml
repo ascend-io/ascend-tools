@@ -5,7 +5,7 @@ name = "ascend-ops-cli"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-authors = ["Ascend <support@ascend.io>"]
+authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 description = "CLI for the Ascend REST API"
 
