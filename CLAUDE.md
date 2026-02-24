@@ -13,6 +13,8 @@ src/ascend_ops/
 ├── __init__.py              # re-exports Client from client.py
 ├── client.py                # Python SDK: Client class wrapping Rust, returns dicts
 ├── cli.py                   # CLI entry point: calls core.run(sys.argv)
+├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
+├── py.typed                 # PEP 561 marker (package has inline types)
 │
 ├── ascend-ops/              # Rust SDK crate (core library)
 │   └── src/
