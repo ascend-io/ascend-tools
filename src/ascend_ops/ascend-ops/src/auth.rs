@@ -14,7 +14,7 @@ pub struct Auth {
     private_key_bytes: Vec<u8>,
     cloud_api_url: String,
     cloud_api_domain: String,
-    org_id: String,
+    instance_api_host: String,
     agent: Agent,
     cached_token: Mutex<Option<CachedToken>>,
 }
@@ -30,7 +30,7 @@ impl Auth {
         private_key_b64: &str,
         cloud_api_url: String,
         cloud_api_domain: String,
-        org_id: String,
+        instance_api_host: String,
     ) -> Result<Self> {
         let private_key_bytes = URL_SAFE_NO_PAD
             .decode(private_key_b64.trim())
@@ -54,7 +54,7 @@ impl Auth {
             private_key_bytes,
             cloud_api_url,
             cloud_api_domain,
-            org_id,
+            instance_api_host,
             agent,
             cached_token: Mutex::new(None),
         })
@@ -62,32 +62,31 @@ impl Auth {
 
     /// Get a valid instance token, refreshing if needed.
     pub fn get_token(&self) -> Result<String> {
+        let mut guard = self
+            .cached_token
+            .lock()
+            .expect("token cache mutex poisoned");
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
 
-        // Check cache
-        if let Ok(guard) = self.cached_token.lock() {
-            if let Some(ref cached) = *guard {
-                // Refresh 5 minutes before expiry
-                if cached.expires_at > now + 300 {
-                    return Ok(cached.token.clone());
-                }
+        // Return cached token if still valid (with 5-minute buffer)
+        if let Some(ref cached) = *guard {
+            if cached.expires_at > now + 300 {
+                return Ok(cached.token.clone());
             }
         }
 
-        // Sign JWT and exchange for instance token
+        // Refresh while holding the lock to prevent thundering herd
         let sa_jwt = self.sign_jwt(now)?;
-        let instance_token = self.exchange_token(&sa_jwt)?;
+        let (instance_token, expires_at) = self.exchange_token(&sa_jwt)?;
 
-        // Cache the token (assume 1 hour expiry)
-        if let Ok(mut guard) = self.cached_token.lock() {
-            *guard = Some(CachedToken {
-                token: instance_token.clone(),
-                expires_at: now + 3600,
-            });
-        }
+        *guard = Some(CachedToken {
+            token: instance_token.clone(),
+            expires_at,
+        });
 
         Ok(instance_token)
     }
@@ -111,46 +110,45 @@ impl Auth {
     }
 
     /// Exchange the service account JWT for an instance token via the Cloud API.
-    fn exchange_token(&self, sa_jwt: &str) -> Result<String> {
-        let url = format!("{}/user/me/{}/token", self.cloud_api_url, self.org_id);
+    /// Returns (access_token, expires_at_unix).
+    fn exchange_token(&self, sa_jwt: &str) -> Result<(String, u64)> {
+        let url = format!("{}/auth/token", self.cloud_api_url);
+        let body = serde_json::json!({ "instance_api_host": self.instance_api_host });
         let mut resp = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {sa_jwt}"))
             .header("Content-Type", "application/json")
-            .send_empty()
+            .send(serde_json::to_string(&body)?.as_bytes())
             .map_err(|e| anyhow::anyhow!("failed to exchange token at Cloud API ({url}): {e}"))?;
 
         let status = resp.status().as_u16();
-        let body: String = resp.body_mut().read_to_string()?;
+        let resp_body: String = resp.body_mut().read_to_string()?;
 
         if !(200..300).contains(&status) {
-            bail!("Cloud API token exchange failed (HTTP {status}): {body}");
+            bail!("Cloud API token exchange failed (HTTP {status}): {resp_body}");
         }
 
-        // Parse the token from the response
         let json: Value =
-            serde_json::from_str(&body).context("failed to parse Cloud API token response")?;
+            serde_json::from_str(&resp_body).context("failed to parse Cloud API token response")?;
 
-        // Try common response shapes
-        if let Some(token) = json.get("token").and_then(|v| v.as_str()) {
-            return Ok(token.to_string());
-        }
-        // JSON:API format: {"data": {"attributes": {"access_token": "..."}}}
-        if let Some(token) = json
-            .get("data")
-            .and_then(|d| d.get("attributes"))
-            .and_then(|a| a.get("access_token").or_else(|| a.get("token")))
+        let token = json
+            .get("access_token")
             .and_then(|v| v.as_str())
-        {
-            return Ok(token.to_string());
-        }
-        // If the response is just a string token
-        if let Some(token) = json.as_str() {
-            return Ok(token.to_string());
-        }
+            .ok_or_else(|| anyhow::anyhow!("no access_token in response: {resp_body}"))?
+            .to_string();
 
-        bail!("Could not extract token from Cloud API response: {body}")
+        // Parse expiration from response, fall back to 1 hour from now
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let expires_at = json
+            .get("expiration")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(now + 3600);
+
+        Ok((token, expires_at))
     }
 }
 
@@ -159,7 +157,7 @@ impl std::fmt::Debug for Auth {
         f.debug_struct("Auth")
             .field("service_account_id", &self.service_account_id)
             .field("cloud_api_url", &self.cloud_api_url)
-            .field("org_id", &self.org_id)
+            .field("instance_api_host", &self.instance_api_host)
             .field("private_key", &"[REDACTED]")
             .finish()
     }

@@ -25,12 +25,13 @@ pub struct AscendClient {
 
 impl AscendClient {
     pub fn new(config: Config) -> Result<Self> {
+        let instance_api_host = config.instance_api_host();
         let auth = Auth::new(
             config.service_account_id,
-            &config.private_key,
+            &config.service_account_key,
             config.cloud_api_url,
             config.cloud_api_domain,
-            config.org_id,
+            instance_api_host,
         )?;
         let agent = Agent::new_with_config(
             ureq::config::Config::builder()
@@ -80,6 +81,13 @@ impl AscendClient {
     }
 
     // -- Flows --
+
+    pub fn list_flows(&self, runtime_uuid: &str) -> Result<Vec<Flow>> {
+        self.get(&format!(
+            "/api/v1/runtimes/{}/flows",
+            encode_path(runtime_uuid)
+        ))
+    }
 
     pub fn run_flow(
         &self,
@@ -151,19 +159,6 @@ impl AscendClient {
             encode_path(name),
             encode_path(runtime_uuid)
         ))
-    }
-
-    // -- Builds --
-
-    pub fn list_builds(&self, runtime_uuid: &str) -> Result<Vec<Build>> {
-        self.get(&format!(
-            "/api/v1/builds?runtime_uuid={}",
-            encode_path(runtime_uuid)
-        ))
-    }
-
-    pub fn get_build(&self, uuid: &str) -> Result<Build> {
-        self.get(&format!("/api/v1/builds/{}", encode_path(uuid)))
     }
 
     // -- HTTP helpers --

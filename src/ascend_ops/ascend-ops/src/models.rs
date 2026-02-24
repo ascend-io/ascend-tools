@@ -15,14 +15,8 @@ pub struct Runtime {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Build {
-    pub uuid: String,
-    pub runtime_uuid: String,
-    pub git_sha: String,
-    pub state: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub error_details: Option<String>,
+pub struct Flow {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

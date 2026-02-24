@@ -11,20 +11,27 @@ struct Cli {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
 
-    #[arg(long, global = true, env = "ASCEND_SERVICE_ACCOUNT_ID")]
+    #[arg(
+        long,
+        global = true,
+        env = "ASCEND_SERVICE_ACCOUNT_ID",
+        hide_env_values = true
+    )]
     service_account_id: Option<String>,
 
-    #[arg(long, global = true, env = "ASCEND_PRIVATE_KEY")]
-    private_key: Option<String>,
+    #[arg(
+        long,
+        global = true,
+        env = "ASCEND_SERVICE_ACCOUNT_KEY",
+        hide_env_values = true
+    )]
+    service_account_key: Option<String>,
 
     #[arg(long, global = true, env = "ASCEND_CLOUD_API_URL")]
     cloud_api_url: Option<String>,
 
     #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
     instance_api_url: Option<String>,
-
-    #[arg(long, global = true, env = "ASCEND_ORG_ID")]
-    org_id: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -43,20 +50,10 @@ enum Commands {
         #[command(subcommand)]
         command: Option<RuntimeCommands>,
     },
-    /// Manage flows
+    /// Manage flows and flow runs
     Flow {
         #[command(subcommand)]
         command: Option<FlowCommands>,
-    },
-    /// Manage flow runs
-    FlowRun {
-        #[command(subcommand)]
-        command: Option<FlowRunCommands>,
-    },
-    /// Manage builds
-    Build {
-        #[command(subcommand)]
-        command: Option<BuildCommands>,
     },
 }
 
@@ -82,33 +79,36 @@ enum RuntimeCommands {
 
 #[derive(Subcommand)]
 enum FlowCommands {
+    /// List flows in a runtime
+    List {
+        #[arg(short, long, required = true)]
+        runtime: String,
+    },
     /// Run a flow
     Run {
-        /// Runtime UUID
-        runtime_uuid: String,
         /// Flow name
         flow_name: String,
+        /// Runtime UUID
+        #[arg(short, long, required = true)]
+        runtime: String,
         /// Optional spec as JSON
         #[arg(long)]
         spec: Option<String>,
     },
     /// Backfill a flow
     Backfill {
-        /// Runtime UUID
-        runtime_uuid: String,
         /// Flow name
         flow_name: String,
+        /// Runtime UUID
+        #[arg(short, long, required = true)]
+        runtime: String,
         /// Optional spec as JSON
         #[arg(long)]
         spec: Option<String>,
     },
-}
-
-#[derive(Subcommand)]
-enum FlowRunCommands {
     /// List flow runs
-    List {
-        #[arg(long, required = true)]
+    ListRuns {
+        #[arg(short, long, required = true)]
         runtime: String,
         #[arg(long)]
         status: Option<String>,
@@ -116,25 +116,11 @@ enum FlowRunCommands {
         flow: Option<String>,
     },
     /// Get a flow run
-    Get {
+    GetRun {
         /// Flow run name
         name: String,
-        #[arg(long, required = true)]
+        #[arg(short, long, required = true)]
         runtime: String,
-    },
-}
-
-#[derive(Subcommand)]
-enum BuildCommands {
-    /// List builds
-    List {
-        #[arg(long, required = true)]
-        runtime: String,
-    },
-    /// Get a build
-    Get {
-        /// Build UUID
-        uuid: String,
     },
 }
 
@@ -152,18 +138,15 @@ where
 
     let config = Config::with_overrides(
         cli.service_account_id.as_deref(),
-        cli.private_key.as_deref(),
+        cli.service_account_key.as_deref(),
         cli.cloud_api_url.as_deref(),
         cli.instance_api_url.as_deref(),
-        cli.org_id.as_deref(),
     )?;
     let client = AscendClient::new(config)?;
 
     match command {
         Commands::Runtime { command } => handle_runtime(&client, command, &cli.output),
         Commands::Flow { command } => handle_flow(&client, command, &cli.output),
-        Commands::FlowRun { command } => handle_flow_run(&client, command, &cli.output),
-        Commands::Build { command } => handle_build(&client, command, &cli.output),
     }
 }
 
@@ -243,49 +226,42 @@ fn handle_flow(
         unreachable!()
     };
     match cmd {
+        FlowCommands::List { runtime } => {
+            let flows = client.list_flows(&runtime)?;
+            match output {
+                OutputMode::Json => print_json(&flows)?,
+                OutputMode::Text => {
+                    let rows: Vec<Vec<String>> =
+                        flows.iter().map(|f| vec![f.name.clone()]).collect();
+                    print_table(&["NAME"], &rows);
+                }
+            }
+        }
         FlowCommands::Run {
-            runtime_uuid,
+            runtime,
             flow_name,
             spec,
         } => {
             let spec_value = parse_spec(spec)?;
-            let trigger = client.run_flow(&runtime_uuid, &flow_name, spec_value)?;
+            let trigger = client.run_flow(&runtime, &flow_name, spec_value)?;
             match output {
                 OutputMode::Json => print_json(&trigger)?,
-                OutputMode::Text => {
-                    println!("{}", trigger.event_uuid);
-                }
+                OutputMode::Text => println!("{}", trigger.event_uuid),
             }
         }
         FlowCommands::Backfill {
-            runtime_uuid,
+            runtime,
             flow_name,
             spec,
         } => {
             let spec_value = parse_spec(spec)?;
-            let trigger = client.backfill_flow(&runtime_uuid, &flow_name, spec_value)?;
+            let trigger = client.backfill_flow(&runtime, &flow_name, spec_value)?;
             match output {
                 OutputMode::Json => print_json(&trigger)?,
-                OutputMode::Text => {
-                    println!("{}", trigger.event_uuid);
-                }
+                OutputMode::Text => println!("{}", trigger.event_uuid),
             }
         }
-    }
-    Ok(())
-}
-
-fn handle_flow_run(
-    client: &AscendClient,
-    cmd: Option<FlowRunCommands>,
-    output: &OutputMode,
-) -> Result<()> {
-    let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-ops", "flow-run", "--help"]);
-        unreachable!()
-    };
-    match cmd {
-        FlowRunCommands::List {
+        FlowCommands::ListRuns {
             runtime,
             status,
             flow,
@@ -316,7 +292,7 @@ fn handle_flow_run(
                 }
             }
         }
-        FlowRunCommands::Get { name, runtime } => {
+        FlowCommands::GetRun { name, runtime } => {
             let r = client.get_flow_run(&runtime, &name)?;
             match output {
                 OutputMode::Json => print_json(&r)?,
@@ -337,56 +313,6 @@ fn handle_flow_run(
     Ok(())
 }
 
-fn handle_build(
-    client: &AscendClient,
-    cmd: Option<BuildCommands>,
-    output: &OutputMode,
-) -> Result<()> {
-    let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-ops", "build", "--help"]);
-        unreachable!()
-    };
-    match cmd {
-        BuildCommands::List { runtime } => {
-            let builds = client.list_builds(&runtime)?;
-            match output {
-                OutputMode::Json => print_json(&builds)?,
-                OutputMode::Text => {
-                    let rows: Vec<Vec<String>> = builds
-                        .iter()
-                        .map(|b| {
-                            vec![
-                                b.uuid.clone(),
-                                b.state.clone().unwrap_or_else(|| "-".into()),
-                                b.created_at.clone(),
-                            ]
-                        })
-                        .collect();
-                    print_table(&["UUID", "STATE", "CREATED"], &rows);
-                }
-            }
-        }
-        BuildCommands::Get { uuid } => {
-            let b = client.get_build(&uuid)?;
-            match output {
-                OutputMode::Json => print_json(&b)?,
-                OutputMode::Text => {
-                    println!("UUID:     {}", b.uuid);
-                    println!("Runtime:  {}", b.runtime_uuid);
-                    println!("Git SHA:  {}", b.git_sha);
-                    println!("State:    {}", b.state.unwrap_or_else(|| "-".into()));
-                    println!("Created:  {}", b.created_at);
-                    println!("Updated:  {}", b.updated_at);
-                    if let Some(error) = &b.error_details {
-                        println!("Error:    {}", error);
-                    }
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 // -- output helpers --
 
 fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
@@ -397,6 +323,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
 /// Print rows as a fixed-width table with a header.
 fn print_table(headers: &[&str], rows: &[Vec<String>]) {
     if rows.is_empty() {
+        eprintln!("No results.");
         return;
     }
 
@@ -463,7 +390,14 @@ mod tests {
 
     #[test]
     fn test_cli_parses_flow_run() {
-        let cli = Cli::parse_from(["ascend-ops", "flow", "run", "uuid-123", "my-flow"]);
+        let cli = Cli::parse_from([
+            "ascend-ops",
+            "flow",
+            "run",
+            "my-flow",
+            "--runtime",
+            "uuid-123",
+        ]);
         assert!(matches!(
             cli.command,
             Some(Commands::Flow {
@@ -473,11 +407,11 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parses_flow_run_list() {
+    fn test_cli_parses_flow_list_runs() {
         let cli = Cli::parse_from([
             "ascend-ops",
-            "flow-run",
-            "list",
+            "flow",
+            "list-runs",
             "--runtime",
             "uuid-123",
             "--status",
@@ -485,8 +419,26 @@ mod tests {
         ]);
         assert!(matches!(
             cli.command,
-            Some(Commands::FlowRun {
-                command: Some(FlowRunCommands::List { .. })
+            Some(Commands::Flow {
+                command: Some(FlowCommands::ListRuns { .. })
+            })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_flow_get_run() {
+        let cli = Cli::parse_from([
+            "ascend-ops",
+            "flow",
+            "get-run",
+            "fr-abc123",
+            "--runtime",
+            "uuid-123",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Flow {
+                command: Some(FlowCommands::GetRun { .. })
             })
         ));
     }
@@ -498,11 +450,11 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_runtime_no_subcommand_is_none() {
-        let cli = Cli::parse_from(["ascend-ops", "runtime"]);
+    fn test_cli_flow_no_subcommand_is_none() {
+        let cli = Cli::parse_from(["ascend-ops", "flow"]);
         assert!(matches!(
             cli.command,
-            Some(Commands::Runtime { command: None })
+            Some(Commands::Flow { command: None })
         ));
     }
 

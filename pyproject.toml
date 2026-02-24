@@ -8,7 +8,7 @@ authors = [{ name = "Ascend", email = "support@ascend.io" }]
 dependencies = []
 
 [project.scripts]
-ascend-ops = "ascend_ops._cli:main"
+ascend-ops = "ascend_ops.cli:main"
 
 [dependency-groups]
 dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "pytest>=8"]

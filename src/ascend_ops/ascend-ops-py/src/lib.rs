@@ -11,20 +11,18 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    #[pyo3(signature = (service_account_id, private_key, instance_api_url, org_id, cloud_api_url=None))]
+    #[pyo3(signature = (service_account_id=None, service_account_key=None, instance_api_url=None, cloud_api_url=None))]
     fn new(
-        service_account_id: &str,
-        private_key: &str,
-        instance_api_url: &str,
-        org_id: &str,
+        service_account_id: Option<&str>,
+        service_account_key: Option<&str>,
+        instance_api_url: Option<&str>,
         cloud_api_url: Option<&str>,
     ) -> PyResult<Self> {
         let config = Config::with_overrides(
-            Some(service_account_id),
-            Some(private_key),
+            service_account_id,
+            service_account_key,
             cloud_api_url,
-            Some(instance_api_url),
-            Some(org_id),
+            instance_api_url,
         )
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
@@ -57,6 +55,11 @@ impl Client {
     fn get_runtime(&self, uuid: &str) -> PyResult<String> {
         let runtime = self.inner.get_runtime(uuid).map_err(to_py_err)?;
         serde_json::to_string(&runtime).map_err(to_py_err)
+    }
+
+    fn list_flows(&self, runtime_uuid: &str) -> PyResult<String> {
+        let flows = self.inner.list_flows(runtime_uuid).map_err(to_py_err)?;
+        serde_json::to_string(&flows).map_err(to_py_err)
     }
 
     #[pyo3(signature = (runtime_uuid, flow_name, spec=None))]
@@ -101,12 +104,16 @@ impl Client {
         serde_json::to_string(&trigger).map_err(to_py_err)
     }
 
-    #[pyo3(signature = (runtime_uuid, status=None, flow=None))]
+    #[pyo3(signature = (runtime_uuid, status=None, flow=None, since=None, until=None, offset=None, limit=None))]
     fn list_flow_runs(
         &self,
         runtime_uuid: &str,
         status: Option<&str>,
         flow: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
+        offset: Option<u64>,
+        limit: Option<u64>,
     ) -> PyResult<String> {
         let runs = self
             .inner
@@ -115,7 +122,10 @@ impl Client {
                 models::FlowRunFilters {
                     status: status.map(String::from),
                     flow: flow.map(String::from),
-                    ..Default::default()
+                    since: since.map(String::from),
+                    until: until.map(String::from),
+                    offset,
+                    limit,
                 },
             )
             .map_err(to_py_err)?;
@@ -130,15 +140,6 @@ impl Client {
         serde_json::to_string(&run).map_err(to_py_err)
     }
 
-    fn list_builds(&self, runtime_uuid: &str) -> PyResult<String> {
-        let builds = self.inner.list_builds(runtime_uuid).map_err(to_py_err)?;
-        serde_json::to_string(&builds).map_err(to_py_err)
-    }
-
-    fn get_build(&self, uuid: &str) -> PyResult<String> {
-        let build = self.inner.get_build(uuid).map_err(to_py_err)?;
-        serde_json::to_string(&build).map_err(to_py_err)
-    }
 }
 
 #[pyfunction]
