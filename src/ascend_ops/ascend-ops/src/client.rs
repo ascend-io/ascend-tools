@@ -28,7 +28,6 @@ impl AscendClient {
         let auth = Auth::new(
             config.service_account_id,
             &config.service_account_key,
-            config.cloud_api_domain,
             config.instance_api_url.clone(),
         )?;
         let agent = Agent::new_with_config(

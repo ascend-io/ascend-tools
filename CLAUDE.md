@@ -73,16 +73,14 @@ All SDK calls go through `/api/v1/` — no direct Cloud API calls.
 | `ASCEND_SERVICE_ACCOUNT_ID` | yes | Service account ID (`asc-sa-...`) |
 | `ASCEND_SERVICE_ACCOUNT_KEY` | yes | Ed25519 private key (base64url, shown once at creation) |
 | `ASCEND_INSTANCE_API_URL` | yes | Instance API URL (e.g. `https://api.instance.ascend.io`) |
-| `ASCEND_CLOUD_API_DOMAIN` | no | Override JWT audience domain (default: `api.ascend.io`). Only needed for local dev. |
+
+That's it — 3 env vars. The SDK automatically discovers the JWT audience domain from the Instance API via `GET /api/v1/auth/config`.
 
 The Python SDK reads these automatically — `ascend_ops.Client()` with no args works if env vars are set.
 
 ### local dev
 
-When testing against a local ASE workspace, the Instance API's `CLOUD_API_DOMAIN` defaults to `api.app.local.ascend.dev`. Set the override:
-
 ```bash
-export ASCEND_CLOUD_API_DOMAIN="api.app.local.ascend.dev"
 export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.dev"
 ```
 

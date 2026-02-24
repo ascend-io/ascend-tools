@@ -13,9 +13,9 @@ use ureq::Agent;
 pub struct Auth {
     service_account_id: String,
     private_key_bytes: Vec<u8>,
-    cloud_api_domain: String,
     instance_api_url: String,
     agent: Agent,
+    cloud_api_domain: Mutex<Option<String>>,
     cached_token: Mutex<Option<CachedToken>>,
 }
 
@@ -24,11 +24,24 @@ struct CachedToken {
     expires_at: u64,
 }
 
+fn new_agent() -> Agent {
+    Agent::new_with_config(
+        ureq::config::Config::builder()
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                    .build(),
+            )
+            .http_status_as_error(false)
+            .timeout_global(Some(std::time::Duration::from_secs(30)))
+            .build(),
+    )
+}
+
 impl Auth {
     pub fn new(
         service_account_id: String,
         private_key_b64: &str,
-        cloud_api_domain: String,
         instance_api_url: String,
     ) -> Result<Self> {
         let private_key_bytes = URL_SAFE_NO_PAD
@@ -36,24 +49,12 @@ impl Auth {
             .or_else(|_| base64::engine::general_purpose::STANDARD.decode(private_key_b64.trim()))
             .context("failed to decode private key from base64")?;
 
-        let agent = Agent::new_with_config(
-            ureq::config::Config::builder()
-                .tls_config(
-                    ureq::tls::TlsConfig::builder()
-                        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-                        .build(),
-                )
-                .http_status_as_error(false)
-                .timeout_global(Some(std::time::Duration::from_secs(30)))
-                .build(),
-        );
-
         Ok(Self {
             service_account_id,
             private_key_bytes,
-            cloud_api_domain,
             instance_api_url,
-            agent,
+            agent: new_agent(),
+            cloud_api_domain: Mutex::new(None),
             cached_token: Mutex::new(None),
         })
     }
@@ -78,7 +79,8 @@ impl Auth {
         }
 
         // Refresh while holding the lock to prevent thundering herd
-        let sa_jwt = self.sign_jwt(now)?;
+        let domain = self.get_cloud_api_domain()?;
+        let sa_jwt = self.sign_jwt(now, &domain)?;
         let (instance_token, expires_at) = self.exchange_token(&sa_jwt)?;
 
         *guard = Some(CachedToken {
@@ -89,19 +91,54 @@ impl Auth {
         Ok(instance_token)
     }
 
+    /// Fetch the Cloud API domain from the Instance API's auth config endpoint.
+    /// Cached after the first call.
+    fn get_cloud_api_domain(&self) -> Result<String> {
+        let mut guard = self
+            .cloud_api_domain
+            .lock()
+            .expect("cloud_api_domain mutex poisoned");
+
+        if let Some(ref domain) = *guard {
+            return Ok(domain.clone());
+        }
+
+        let url = format!("{}/api/v1/auth/config", self.instance_api_url);
+        let mut resp = self
+            .agent
+            .get(&url)
+            .call()
+            .map_err(|e| anyhow::anyhow!("failed to fetch auth config ({url}): {e}"))?;
+
+        let status = resp.status().as_u16();
+        let body: String = resp.body_mut().read_to_string()?;
+
+        if !(200..300).contains(&status) {
+            bail!("Failed to fetch auth config (HTTP {status}): {body}");
+        }
+
+        let json: Value = serde_json::from_str(&body).context("failed to parse auth config")?;
+        let domain = json
+            .get("cloud_api_domain")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("no cloud_api_domain in auth config: {body}"))?
+            .to_string();
+
+        *guard = Some(domain.clone());
+        Ok(domain)
+    }
+
     /// Sign a JWT with the Ed25519 private key.
-    fn sign_jwt(&self, now: u64) -> Result<String> {
+    fn sign_jwt(&self, now: u64, cloud_api_domain: &str) -> Result<String> {
         let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::EdDSA);
         let claims = serde_json::json!({
             "sub": self.service_account_id,
-            "aud": format!("https://{}/auth/token", self.cloud_api_domain),
+            "aud": format!("https://{cloud_api_domain}/auth/token"),
             "exp": now + 300,
             "iat": now,
             "name": self.service_account_id,
             "service_account": self.service_account_id,
         });
-        // The private key from the Ascend UI is a raw 32-byte Ed25519 seed in base64url.
-        // jsonwebtoken::EncodingKey::from_ed_der expects PKCS#8 DER format, so we wrap it.
         let der_key = ed25519_seed_to_pkcs8_der(&self.private_key_bytes)?;
         let key = jsonwebtoken::EncodingKey::from_ed_der(&der_key);
         jsonwebtoken::encode(&header, &claims, &key).context("failed to sign JWT")
@@ -109,7 +146,6 @@ impl Auth {
 
     /// Exchange the service account JWT for an instance token
     /// via the Instance API's /api/v1/auth/token endpoint.
-    /// Returns (access_token, expires_at_unix).
     fn exchange_token(&self, sa_jwt: &str) -> Result<(String, u64)> {
         let url = format!("{}/api/v1/auth/token", self.instance_api_url);
         let mut resp = self
@@ -136,7 +172,6 @@ impl Auth {
             .ok_or_else(|| anyhow::anyhow!("no access_token in response: {resp_body}"))?
             .to_string();
 
-        // Parse expiration from response, fall back to 1 hour from now
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -161,18 +196,10 @@ impl std::fmt::Debug for Auth {
 }
 
 /// Wrap a raw 32-byte Ed25519 seed into PKCS#8 DER format.
-///
-/// PKCS#8 structure for Ed25519:
-///   SEQUENCE {
-///     INTEGER 0 (version)
-///     SEQUENCE { OID 1.3.101.112 (Ed25519) }
-///     OCTET STRING { OCTET STRING { 32-byte seed } }
-///   }
 fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
     if seed.len() != 32 {
         bail!("expected 32-byte Ed25519 seed, got {} bytes", seed.len());
     }
-    // PKCS#8 v0 prefix for Ed25519 (RFC 8410)
     let prefix: &[u8] = &[
         0x30, 0x2e, // SEQUENCE (46 bytes total)
         0x02, 0x01, 0x00, // INTEGER 0 (version)
