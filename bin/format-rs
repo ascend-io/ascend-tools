@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+echo "Formatting Rust..."
+cargo fmt --manifest-path src/ascend_ops/ascend-ops/Cargo.toml
+cargo fmt --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml
+
+echo "Rust formatting complete!"

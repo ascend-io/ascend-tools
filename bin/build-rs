@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+echo "Building ascend-ops..."
+cargo build --manifest-path src/ascend_ops/ascend-ops/Cargo.toml "$@"
+
+echo "Building ascend-ops-cli..."
+cargo build --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml "$@"
+
+echo "Rust build complete!"

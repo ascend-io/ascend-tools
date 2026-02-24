@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+echo "Running Python tests..."
+uv run pytest tests/ "$@"
+
+echo "Python tests passed!"
