@@ -109,7 +109,7 @@ enum FlowCommands {
         runtime: String,
         #[arg(long)]
         status: Option<String>,
-        #[arg(long)]
+        #[arg(short, long)]
         flow: Option<String>,
     },
     /// Get a flow run
