@@ -54,7 +54,7 @@ class Client:
         flow_name: str,
         spec: dict | None = None,
     ) -> dict:
-        spec_json = json.dumps(spec) if spec else None
+        spec_json = json.dumps(spec) if spec is not None else None
         return json.loads(self._inner.run_flow(runtime_uuid, flow_name, spec_json))
 
     def list_flow_runs(

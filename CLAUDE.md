@@ -152,12 +152,12 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 ## conventions
 
 - Rust stable toolchain (edition 2024, requires 1.85+)
-- API methods return typed structs in Rust, `serde_json::Value` is not used for responses
+- API methods return typed structs in Rust (`serde_json::Value` used only for dynamic fields like `FlowRun.error`)
 - `handle_response()` reads body as text first, then tries JSON parse (robust against non-JSON errors)
 - HTTP client uses `ureq` (synchronous) with platform TLS verifier (trusts system CA store)
 - `http_status_as_error(false)` — we handle HTTP status codes ourselves, not ureq
 - Token caching holds the mutex during refresh to prevent thundering herd
-- All clap args with env vars use `hide_env_values = true` for secrets
+- Clap args for secrets use `hide_env_values = true` (SA ID, SA key)
 - Python wrapper deserializes JSON from Rust into plain dicts (no custom Python types)
 - CLI prints tables by default, JSON with `-o json`; empty results print "No results." to stderr
 

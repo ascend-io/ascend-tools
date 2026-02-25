@@ -12,7 +12,7 @@ use ureq::Agent;
 /// via the Instance API's /api/v1/auth/token endpoint.
 pub struct Auth {
     service_account_id: String,
-    private_key_bytes: Vec<u8>,
+    key_bytes: Vec<u8>,
     instance_api_url: String,
     agent: Agent,
     cloud_api_domain: Mutex<Option<String>>,
@@ -41,17 +41,17 @@ fn new_agent() -> Agent {
 impl Auth {
     pub fn new(
         service_account_id: String,
-        private_key_b64: &str,
+        key_b64: &str,
         instance_api_url: String,
     ) -> Result<Self> {
-        let private_key_bytes = URL_SAFE_NO_PAD
-            .decode(private_key_b64.trim())
-            .or_else(|_| base64::engine::general_purpose::STANDARD.decode(private_key_b64.trim()))
-            .context("failed to decode private key from base64")?;
+        let key_bytes = URL_SAFE_NO_PAD
+            .decode(key_b64.trim())
+            .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
+            .context("failed to decode service account key from base64")?;
 
         Ok(Self {
             service_account_id,
-            private_key_bytes,
+            key_bytes,
             instance_api_url,
             agent: new_agent(),
             cloud_api_domain: Mutex::new(None),
@@ -139,7 +139,7 @@ impl Auth {
             "name": self.service_account_id,
             "service_account": self.service_account_id,
         });
-        let der_key = ed25519_seed_to_pkcs8_der(&self.private_key_bytes)?;
+        let der_key = ed25519_seed_to_pkcs8_der(&self.key_bytes)?;
         let key = jsonwebtoken::EncodingKey::from_ed_der(&der_key);
         jsonwebtoken::encode(&header, &claims, &key).context("failed to sign JWT")
     }
@@ -190,7 +190,7 @@ impl std::fmt::Debug for Auth {
         f.debug_struct("Auth")
             .field("service_account_id", &self.service_account_id)
             .field("instance_api_url", &self.instance_api_url)
-            .field("private_key", &"[REDACTED]")
+            .field("service_account_key", &"[REDACTED]")
             .finish()
     }
 }

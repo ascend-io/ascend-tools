@@ -2,14 +2,24 @@ use anyhow::{Result, bail};
 use std::env;
 
 const SA_ID_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_ID"];
-const SA_KEY_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_KEY", "ASCEND_PRIVATE_KEY"];
+const SA_KEY_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_KEY"];
 const INSTANCE_API_URL_ENV_VARS: &[&str] = &["ASCEND_INSTANCE_API_URL"];
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub service_account_id: String,
     pub service_account_key: String,
     pub instance_api_url: String,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("service_account_id", &self.service_account_id)
+            .field("service_account_key", &"[REDACTED]")
+            .field("instance_api_url", &self.instance_api_url)
+            .finish()
+    }
 }
 
 impl Config {
