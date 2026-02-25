@@ -26,7 +26,7 @@ build-backend = "maturin"
 [tool.uv]
 cache-keys = [
   { file = "pyproject.toml" },
-  { file = "src/ascend_ops/ascend-ops/**/*.rs" },
+  { file = "src/ascend_ops/ascend-ops-core/**/*.rs" },
   { file = "src/ascend_ops/ascend-ops-cli/**/*.rs" },
   { file = "src/ascend_ops/ascend-ops-py/**/*.rs" },
 ]

@@ -3,15 +3,15 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Checking Rust formatting..."
-cargo fmt --manifest-path src/ascend_ops/ascend-ops/Cargo.toml -- --check
+cargo fmt --manifest-path src/ascend_ops/ascend-ops-core/Cargo.toml -- --check
 cargo fmt --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml -- --check
 
 echo "Running clippy..."
-cargo clippy --manifest-path src/ascend_ops/ascend-ops/Cargo.toml -- -D warnings
+cargo clippy --manifest-path src/ascend_ops/ascend-ops-core/Cargo.toml -- -D warnings
 cargo clippy --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml -- -D warnings
 
 echo "Running Rust tests..."
-cargo test --manifest-path src/ascend_ops/ascend-ops/Cargo.toml
+cargo test --manifest-path src/ascend_ops/ascend-ops-core/Cargo.toml
 cargo test --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml
 
 echo "Rust checks passed!"

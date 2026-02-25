@@ -16,7 +16,7 @@ src/ascend_ops/
 ├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
 ├── py.typed                 # PEP 561 marker (package has inline types)
 │
-├── ascend-ops/              # Rust SDK crate (core library)
+├── ascend-ops-core/         # Rust SDK crate (core library)
 │   └── src/
 │       ├── lib.rs           # pub exports
 │       ├── auth.rs          # Ed25519 JWT signing, Cloud API token exchange, caching
@@ -37,7 +37,7 @@ src/ascend_ops/
 
 The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`.
 
-PyPI: `ascend-ops`. Crates.io: `ascend-ops` (SDK), `ascend-ops-cli` (binary). Installed binary: `ascend-ops`.
+PyPI: `ascend-ops`. Crates.io: `ascend-ops-core` (SDK), `ascend-ops-cli` (binary). Installed binary: `ascend-ops`.
 
 ## development
 

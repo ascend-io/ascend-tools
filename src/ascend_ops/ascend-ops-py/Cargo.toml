@@ -12,7 +12,7 @@ name = "core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ascend-ops = { path = "../ascend-ops" }
+ascend-ops-core = { path = "../ascend-ops-core" }
 ascend-ops-cli = { path = "../ascend-ops-cli" }
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py311"] }
 serde_json = "1"

@@ -44,7 +44,7 @@ jobs:
             ~/.cargo/git
             ~/.cache/uv
             ~/Library/Caches/uv
-            src/ascend_ops/ascend-ops/target
+            src/ascend_ops/ascend-ops-core/target
             src/ascend_ops/ascend-ops-cli/target
           key: wheel-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
           restore-keys: wheel-${{ matrix.target }}-

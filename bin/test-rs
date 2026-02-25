@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Running Rust tests..."
-cargo test --manifest-path src/ascend_ops/ascend-ops/Cargo.toml "$@"
+cargo test --manifest-path src/ascend_ops/ascend-ops-core/Cargo.toml "$@"
 cargo test --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml "$@"
 
 echo "Rust tests passed!"
