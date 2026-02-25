@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Integration tests for the ascend-ops CLI.
+# Integration tests for the ascend-tools CLI.
 # Requires a running ASE workspace and ASCEND_SERVICE_ACCOUNT_ID,
 # ASCEND_SERVICE_ACCOUNT_KEY, and ASCEND_INSTANCE_API_URL set.
 set -euo pipefail
 
-CLI="uv run ascend-ops"
+CLI="uv run ascend-tools"
 PASS=0
 FAIL=0
 

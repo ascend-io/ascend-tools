@@ -1,21 +1,21 @@
-# ascend-ops
+# ascend-tools
 
 SDK and CLI for the Ascend REST API. Rust core with PyO3 Python bindings.
 
-Repo: `ascend-io/ascend-ops`. Internal.
+Repo: `ascend-io/ascend-tools`. Internal.
 
 ## architecture
 
 Three Rust crates, one PyO3 bridge. Dependency chain is one-directional:
 
 ```
-src/ascend_ops/
+src/ascend_tools/
 ├── __init__.py              # re-exports Client from core (PyO3 module)
 ├── cli.py                   # CLI entry point: calls core.run(sys.argv)
 ├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
 ├── py.typed                 # PEP 561 marker (package has inline types)
 │
-├── ascend-ops-core/         # Rust SDK crate (core library)
+├── ascend-tools-core/         # Rust SDK crate (core library)
 │   └── src/
 │       ├── lib.rs           # pub exports
 │       ├── auth.rs          # Ed25519 JWT signing, Cloud API token exchange, caching
@@ -23,20 +23,20 @@ src/ascend_ops/
 │       ├── config.rs        # env var + CLI flag resolution
 │       └── models.rs        # Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
 │
-├── ascend-ops-cli/          # Rust CLI crate (depends on ascend-ops)
+├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools)
 │   └── src/
 │       ├── lib.rs           # pub fn run(args) — testable entry point
 │       ├── main.rs          # binary entry point
 │       └── cli.rs           # clap commands, table/json output, print_table helper
 │
-└── ascend-ops-py/           # PyO3 binding crate (cdylib, built by maturin)
+└── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
     └── src/
         └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
 ```
 
 The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`.
 
-PyPI: `ascend-ops`. Crates.io: `ascend-ops-core` (SDK), `ascend-ops-cli` (binary). Installed binary: `ascend-ops`.
+PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
 
 ## development
 
@@ -75,7 +75,7 @@ All SDK calls go through `/api/v1/` — no direct Cloud API calls.
 
 That's it — 3 env vars. The SDK automatically discovers the JWT audience domain from the Instance API via `GET /api/v1/auth/config`.
 
-The Python SDK reads these automatically — `ascend_ops.Client()` with no args works if env vars are set.
+The Python SDK reads these automatically — `ascend_tools.Client()` with no args works if env vars are set.
 
 ### local dev
 
@@ -86,7 +86,7 @@ export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.de
 ## CLI reference
 
 ```
-ascend-ops [-o text|json] [-V]
+ascend-tools [-o text|json] [-V]
 
   runtime list [--id, --kind, --project-uuid, --environment-uuid]
   runtime get <UUID>
@@ -104,7 +104,7 @@ No subcommand prints help. Auth params can be passed as `--service-account-id`, 
 ## Python SDK reference
 
 ```python
-from ascend_ops import Client
+from ascend_tools import Client
 
 # All params optional — resolved from env vars if not provided
 client = Client()

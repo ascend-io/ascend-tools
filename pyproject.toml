@@ -1,5 +1,5 @@
 [project]
-name = "ascend-ops"
+name = "ascend-tools"
 version = "0.1.0"
 description = "SDK and CLI for the Ascend REST API"
 requires-python = ">=3.11"
@@ -8,16 +8,16 @@ authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
 
 [project.scripts]
-ascend-ops = "ascend_ops.cli:main"
+ascend-tools = "ascend_tools.cli:main"
 
 [dependency-groups]
 dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "pytest>=8"]
 
 [tool.maturin]
-module-name = "ascend_ops.core"
-python-packages = ["ascend_ops"]
+module-name = "ascend_tools.core"
+python-packages = ["ascend_tools"]
 python-source = "src"
-manifest-path = "src/ascend_ops/ascend-ops-py/Cargo.toml"
+manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
@@ -26,7 +26,7 @@ build-backend = "maturin"
 [tool.uv]
 cache-keys = [
   { file = "pyproject.toml" },
-  { file = "src/ascend_ops/ascend-ops-core/**/*.rs" },
-  { file = "src/ascend_ops/ascend-ops-cli/**/*.rs" },
-  { file = "src/ascend_ops/ascend-ops-py/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-core/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
 ]

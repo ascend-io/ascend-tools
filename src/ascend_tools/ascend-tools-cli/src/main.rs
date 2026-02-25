@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    if let Err(e) = ascend_ops_cli::run(std::env::args()) {
+    if let Err(e) = ascend_tools_cli::run(std::env::args()) {
         eprintln!("Error: {e:#}");
         return ExitCode::FAILURE;
     }

@@ -5,4 +5,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 bin/install-rs
 bin/install-py
 
-echo "Done! Run 'ascend-ops --help' to get started."
+echo "Done! Run 'ascend-tools --help' to get started."

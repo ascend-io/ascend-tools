@@ -1,12 +1,12 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["ascend-ops"]
+# dependencies = ["ascend-tools"]
 #
 # [tool.uv.sources]
-# ascend-ops = { path = ".." }
+# ascend-tools = { path = ".." }
 # ///
-"""Integration tests for the ascend-ops Python SDK.
+"""Integration tests for the ascend-tools Python SDK.
 
 Requires a running ASE workspace with ASCEND_SERVICE_ACCOUNT_ID,
 ASCEND_SERVICE_ACCOUNT_KEY, and ASCEND_INSTANCE_API_URL set.
@@ -16,7 +16,7 @@ import os
 import sys
 import time
 
-from ascend_ops import Client
+from ascend_tools import Client
 
 PASS = 0
 FAIL = 0

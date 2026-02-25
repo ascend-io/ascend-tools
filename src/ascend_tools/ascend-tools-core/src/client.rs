@@ -39,7 +39,7 @@ impl AscendClient {
                 )
                 .http_status_as_error(false)
                 .timeout_global(Some(TIMEOUT))
-                .user_agent(concat!("ascend-ops/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("ascend-tools/", env!("CARGO_PKG_VERSION")))
                 .build(),
         );
         Ok(Self {

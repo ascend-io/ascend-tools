@@ -1,12 +1,12 @@
 use anyhow::Result;
-use ascend_ops::client::AscendClient;
-use ascend_ops::config::Config;
-use ascend_ops::models::*;
+use ascend_tools::client::AscendClient;
+use ascend_tools::config::Config;
+use ascend_tools::models::*;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 
 #[derive(Parser)]
-#[command(name = "ascend-ops", version, about = "CLI for the Ascend REST API")]
+#[command(name = "ascend-tools", version, about = "CLI for the Ascend REST API")]
 struct Cli {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
@@ -118,7 +118,7 @@ where
     let cli = Cli::parse_from(args);
 
     let Some(command) = cli.command else {
-        Cli::parse_from(["ascend-ops", "--help"]);
+        Cli::parse_from(["ascend-tools", "--help"]);
         unreachable!()
     };
 
@@ -141,7 +141,7 @@ fn handle_runtime(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-ops", "runtime", "--help"]);
+        Cli::parse_from(["ascend-tools", "runtime", "--help"]);
         unreachable!()
     };
     match cmd {
@@ -207,7 +207,7 @@ fn handle_flow(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-ops", "flow", "--help"]);
+        Cli::parse_from(["ascend-tools", "flow", "--help"]);
         unreachable!()
     };
     match cmd {
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_cli_parses_runtime_list() {
-        let cli = Cli::parse_from(["ascend-ops", "runtime", "list"]);
+        let cli = Cli::parse_from(["ascend-tools", "runtime", "list"]);
         assert!(matches!(
             cli.command,
             Some(Commands::Runtime {
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_cli_parses_flow_run() {
         let cli = Cli::parse_from([
-            "ascend-ops",
+            "ascend-tools",
             "flow",
             "run",
             "my-flow",
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn test_cli_parses_flow_list_runs() {
         let cli = Cli::parse_from([
-            "ascend-ops",
+            "ascend-tools",
             "flow",
             "list-runs",
             "--runtime",
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn test_cli_parses_flow_get_run() {
         let cli = Cli::parse_from([
-            "ascend-ops",
+            "ascend-tools",
             "flow",
             "get-run",
             "fr-abc123",
@@ -418,13 +418,13 @@ mod tests {
 
     #[test]
     fn test_cli_no_subcommand_is_none() {
-        let cli = Cli::parse_from(["ascend-ops"]);
+        let cli = Cli::parse_from(["ascend-tools"]);
         assert!(cli.command.is_none());
     }
 
     #[test]
     fn test_cli_flow_no_subcommand_is_none() {
-        let cli = Cli::parse_from(["ascend-ops", "flow"]);
+        let cli = Cli::parse_from(["ascend-tools", "flow"]);
         assert!(matches!(
             cli.command,
             Some(Commands::Flow { command: None })
@@ -433,13 +433,13 @@ mod tests {
 
     #[test]
     fn test_cli_parses_output_json() {
-        let cli = Cli::parse_from(["ascend-ops", "-o", "json", "runtime", "list"]);
+        let cli = Cli::parse_from(["ascend-tools", "-o", "json", "runtime", "list"]);
         assert!(matches!(cli.output, OutputMode::Json));
     }
 
     #[test]
     fn test_cli_default_output_is_text() {
-        let cli = Cli::parse_from(["ascend-ops", "runtime", "list"]);
+        let cli = Cli::parse_from(["ascend-tools", "runtime", "list"]);
         assert!(cli.output == OutputMode::Text);
     }
 

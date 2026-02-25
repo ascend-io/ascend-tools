@@ -1,6 +1,6 @@
-use ascend_ops::client::AscendClient;
-use ascend_ops::config::Config;
-use ascend_ops::models;
+use ascend_tools::client::AscendClient;
+use ascend_tools::config::Config;
+use ascend_tools::models;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -128,7 +128,7 @@ impl Client {
 
 #[pyfunction]
 fn run(argv: Vec<String>) -> PyResult<()> {
-    ascend_ops_cli::run(argv.iter().map(|s| s.as_str()))
+    ascend_tools_cli::run(argv.iter().map(|s| s.as_str()))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 

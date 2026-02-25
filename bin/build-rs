@@ -2,10 +2,10 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-echo "Building ascend-ops-core..."
-cargo build --manifest-path src/ascend_ops/ascend-ops-core/Cargo.toml "$@"
+echo "Building ascend-tools-core..."
+cargo build --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml "$@"
 
-echo "Building ascend-ops-cli..."
-cargo build --manifest-path src/ascend_ops/ascend-ops-cli/Cargo.toml "$@"
+echo "Building ascend-tools-cli..."
+cargo build --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml "$@"
 
 echo "Rust build complete!"

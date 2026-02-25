@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-echo "Building ascend-ops Python bindings..."
+echo "Building ascend-tools Python bindings..."
 uv run maturin develop
 
 echo "Python build complete!"

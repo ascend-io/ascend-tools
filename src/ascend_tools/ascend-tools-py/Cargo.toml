@@ -1,7 +1,7 @@
 [workspace]
 
 [package]
-name = "ascend-ops-py"
+name = "ascend-tools-py"
 version = "0.1.0"
 edition = "2024"
 authors = ["Cody <cody.peterson@ascend.io>"]
@@ -12,8 +12,8 @@ name = "core"
 crate-type = ["cdylib"]
 
 [dependencies]
-ascend-ops-core = { path = "../ascend-ops-core" }
-ascend-ops-cli = { path = "../ascend-ops-cli" }
+ascend-tools-core = { path = "../ascend-tools-core" }
+ascend-tools-cli = { path = "../ascend-tools-cli" }
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
 pythonize = "0.28"
 serde = "1"

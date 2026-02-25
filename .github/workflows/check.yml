@@ -17,8 +17,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cache/uv
-            src/ascend_ops/ascend-ops-core/target
-            src/ascend_ops/ascend-ops-cli/target
+            src/ascend_tools/ascend-tools-core/target
+            src/ascend_tools/ascend-tools-cli/target
           key: check-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
           restore-keys: check-${{ runner.os }}-
       - run: bin/setup
