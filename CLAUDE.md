@@ -6,12 +6,11 @@ Repo: `ascend-io/ascend-ops`. Internal.
 
 ## architecture
 
-Three Rust crates, one PyO3 bridge, thin Python wrapper. Dependency chain is one-directional:
+Three Rust crates, one PyO3 bridge. Dependency chain is one-directional:
 
 ```
 src/ascend_ops/
-├── __init__.py              # re-exports Client from client.py
-├── client.py                # Python SDK: Client class wrapping Rust, returns dicts
+├── __init__.py              # re-exports Client from core (PyO3 module)
 ├── cli.py                   # CLI entry point: calls core.run(sys.argv)
 ├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
 ├── py.typed                 # PEP 561 marker (package has inline types)
@@ -32,7 +31,7 @@ src/ascend_ops/
 │
 └── ascend-ops-py/           # PyO3 binding crate (cdylib, built by maturin)
     └── src/
-        └── lib.rs           # exposes Client class + run() to Python as ascend_ops.core
+        └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
 ```
 
 The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`.
@@ -158,7 +157,7 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 - `http_status_as_error(false)` — we handle HTTP status codes ourselves, not ureq
 - Token caching holds the mutex during refresh to prevent thundering herd
 - Clap args for secrets use `hide_env_values = true` (SA ID, SA key)
-- Python wrapper deserializes JSON from Rust into plain dicts (no custom Python types)
+- PyO3 binding uses `pythonize` to convert Rust structs directly to Python dicts (no JSON string intermediary)
 - CLI prints tables by default, JSON with `-o json`; empty results print "No results." to stderr
 
 ## related repos

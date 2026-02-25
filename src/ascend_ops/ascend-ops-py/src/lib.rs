@@ -11,7 +11,7 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    #[pyo3(signature = (service_account_id=None, service_account_key=None, instance_api_url=None))]
+    #[pyo3(signature = (*, service_account_id=None, service_account_key=None, instance_api_url=None))]
     fn new(
         service_account_id: Option<&str>,
         service_account_key: Option<&str>,
@@ -30,14 +30,15 @@ impl Client {
         Ok(Self { inner })
     }
 
-    #[pyo3(signature = (id=None, kind=None, project_uuid=None, environment_uuid=None))]
+    #[pyo3(signature = (*, id=None, kind=None, project_uuid=None, environment_uuid=None))]
     fn list_runtimes(
         &self,
+        py: Python<'_>,
         id: Option<&str>,
         kind: Option<&str>,
         project_uuid: Option<&str>,
         environment_uuid: Option<&str>,
-    ) -> PyResult<String> {
+    ) -> PyResult<Py<PyAny>> {
         let runtimes = self
             .inner
             .list_runtimes(models::RuntimeFilters {
@@ -47,58 +48,59 @@ impl Client {
                 environment_uuid: environment_uuid.map(String::from),
             })
             .map_err(to_py_err)?;
-        serde_json::to_string(&runtimes).map_err(to_py_err)
+        to_python(py, &runtimes)
     }
 
-    fn get_runtime(&self, uuid: &str) -> PyResult<String> {
+    #[pyo3(signature = (*, uuid))]
+    fn get_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
         let runtime = self.inner.get_runtime(uuid).map_err(to_py_err)?;
-        serde_json::to_string(&runtime).map_err(to_py_err)
+        to_python(py, &runtime)
     }
 
-    fn list_flows(&self, runtime_uuid: &str) -> PyResult<String> {
+    #[pyo3(signature = (*, runtime_uuid))]
+    fn list_flows(&self, py: Python<'_>, runtime_uuid: &str) -> PyResult<Py<PyAny>> {
         let flows = self.inner.list_flows(runtime_uuid).map_err(to_py_err)?;
-        serde_json::to_string(&flows).map_err(to_py_err)
+        to_python(py, &flows)
     }
 
-    #[pyo3(signature = (runtime_uuid, flow_name, spec=None))]
+    #[pyo3(signature = (*, runtime_uuid, flow_name, spec=None))]
     fn run_flow(
         &self,
+        py: Python<'_>,
         runtime_uuid: &str,
         flow_name: &str,
-        spec: Option<&str>,
-    ) -> PyResult<String> {
-        let spec_value = match spec {
-            Some(s) => Some(
-                serde_json::from_str(s)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?,
-            ),
+        spec: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyAny>> {
+        let spec_value: Option<serde_json::Value> = match spec {
+            Some(obj) => Some(pythonize::depythonize(obj)?),
             None => None,
         };
         let trigger = self
             .inner
             .run_flow(runtime_uuid, flow_name, spec_value)
             .map_err(to_py_err)?;
-        serde_json::to_string(&trigger).map_err(to_py_err)
+        to_python(py, &trigger)
     }
 
-    #[pyo3(signature = (runtime_uuid, status=None, flow=None, since=None, until=None, offset=None, limit=None))]
+    #[pyo3(signature = (*, runtime_uuid, status=None, flow_name=None, since=None, until=None, offset=None, limit=None))]
     fn list_flow_runs(
         &self,
+        py: Python<'_>,
         runtime_uuid: &str,
         status: Option<&str>,
-        flow: Option<&str>,
+        flow_name: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
         offset: Option<u64>,
         limit: Option<u64>,
-    ) -> PyResult<String> {
+    ) -> PyResult<Py<PyAny>> {
         let runs = self
             .inner
             .list_flow_runs(
                 runtime_uuid,
                 models::FlowRunFilters {
                     status: status.map(String::from),
-                    flow: flow.map(String::from),
+                    flow: flow_name.map(String::from),
                     since: since.map(String::from),
                     until: until.map(String::from),
                     offset,
@@ -106,17 +108,22 @@ impl Client {
                 },
             )
             .map_err(to_py_err)?;
-        serde_json::to_string(&runs).map_err(to_py_err)
+        to_python(py, &runs)
     }
 
-    fn get_flow_run(&self, runtime_uuid: &str, name: &str) -> PyResult<String> {
+    #[pyo3(signature = (*, runtime_uuid, name))]
+    fn get_flow_run(
+        &self,
+        py: Python<'_>,
+        runtime_uuid: &str,
+        name: &str,
+    ) -> PyResult<Py<PyAny>> {
         let run = self
             .inner
             .get_flow_run(runtime_uuid, name)
             .map_err(to_py_err)?;
-        serde_json::to_string(&run).map_err(to_py_err)
+        to_python(py, &run)
     }
-
 }
 
 #[pyfunction]
@@ -130,6 +137,12 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
     Ok(())
+}
+
+fn to_python(py: Python<'_>, value: &impl serde::Serialize) -> PyResult<Py<PyAny>> {
+    pythonize::pythonize(py, value)
+        .map(Bound::unbind)
+        .map_err(to_py_err)
 }
 
 fn to_py_err(e: impl std::fmt::Display) -> PyErr {

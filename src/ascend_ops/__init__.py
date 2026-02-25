@@ -1,3 +1,3 @@
-from ascend_ops.client import Client
+from ascend_ops.core import Client
 
 __all__ = ["Client"]
