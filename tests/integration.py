@@ -1,3 +1,11 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["ascend-ops"]
+#
+# [tool.uv.sources]
+# ascend-ops = { path = ".." }
+# ///
 """Integration tests for the ascend-ops Python SDK.
 
 Requires a running ASE workspace with ASCEND_SERVICE_ACCOUNT_ID,
@@ -31,7 +39,11 @@ def main():
 
     print("=== preflight ===")
 
-    for var in ("ASCEND_SERVICE_ACCOUNT_ID", "ASCEND_SERVICE_ACCOUNT_KEY", "ASCEND_INSTANCE_API_URL"):
+    for var in (
+        "ASCEND_SERVICE_ACCOUNT_ID",
+        "ASCEND_SERVICE_ACCOUNT_KEY",
+        "ASCEND_INSTANCE_API_URL",
+    ):
         if not os.environ.get(var):
             print(f"ERROR: {var} is not set", file=sys.stderr)
             sys.exit(1)
@@ -46,7 +58,11 @@ def main():
 
     runtimes = client.list_runtimes()
     check(isinstance(runtimes, list), "list_runtimes returns list")
-    check(len(runtimes) > 0, "list_runtimes returns at least 1 runtime", f"got {len(runtimes)}")
+    check(
+        len(runtimes) > 0,
+        "list_runtimes returns at least 1 runtime",
+        f"got {len(runtimes)}",
+    )
 
     if not runtimes:
         print("ERROR: cannot continue without at least one runtime", file=sys.stderr)
@@ -61,18 +77,39 @@ def main():
     got = client.get_runtime(uuid=runtime_uuid)
     check(got["uuid"] == runtime_uuid, "get_runtime returns correct uuid")
 
-    for field in ("uuid", "id", "title", "kind", "project_uuid", "environment_uuid", "created_at", "updated_at"):
-        check(got.get(field) is not None, f"get_runtime has field '{field}'", f"value: {got.get(field)}")
+    for field in (
+        "uuid",
+        "id",
+        "title",
+        "kind",
+        "project_uuid",
+        "environment_uuid",
+        "created_at",
+        "updated_at",
+    ):
+        check(
+            got.get(field) is not None,
+            f"get_runtime has field '{field}'",
+            f"value: {got.get(field)}",
+        )
 
     # filter by id
     filtered = client.list_runtimes(id=runtime_id)
-    check(len(filtered) == 1, "list_runtimes(id=...) returns exactly 1", f"got {len(filtered)}")
+    check(
+        len(filtered) == 1,
+        "list_runtimes(id=...) returns exactly 1",
+        f"got {len(filtered)}",
+    )
     check(filtered[0]["uuid"] == runtime_uuid, "filtered runtime has correct uuid")
 
     # filter by kind
     kind = runtime["kind"]
     by_kind = client.list_runtimes(kind=kind)
-    check(len(by_kind) >= 1, f"list_runtimes(kind={kind!r}) returns >= 1", f"got {len(by_kind)}")
+    check(
+        len(by_kind) >= 1,
+        f"list_runtimes(kind={kind!r}) returns >= 1",
+        f"got {len(by_kind)}",
+    )
     check(all(r["kind"] == kind for r in by_kind), "all results match kind filter")
 
     # ---------- flows ----------
@@ -105,10 +142,21 @@ def main():
     # test get_flow_run on existing run
     if runs_before:
         existing_run = runs_before[0]
-        got_run = client.get_flow_run(runtime_uuid=runtime_uuid, name=existing_run["name"])
-        check(got_run["name"] == existing_run["name"], "get_flow_run returns correct run")
+        got_run = client.get_flow_run(
+            runtime_uuid=runtime_uuid, name=existing_run["name"]
+        )
+        check(
+            got_run["name"] == existing_run["name"], "get_flow_run returns correct run"
+        )
 
-        for field in ("name", "flow", "status", "runtime_uuid", "build_uuid", "created_at"):
+        for field in (
+            "name",
+            "flow",
+            "status",
+            "runtime_uuid",
+            "build_uuid",
+            "created_at",
+        ):
             check(got_run.get(field) is not None, f"get_flow_run has field '{field}'")
 
         # verify status is a known value
@@ -118,12 +166,22 @@ def main():
         )
 
     # test pagination
-    limited = client.list_flow_runs(runtime_uuid=runtime_uuid, flow_name=flow_name, limit=1)
-    check(len(limited) <= 1, "list_flow_runs(limit=1) returns at most 1", f"got {len(limited)}")
+    limited = client.list_flow_runs(
+        runtime_uuid=runtime_uuid, flow_name=flow_name, limit=1
+    )
+    check(
+        len(limited) <= 1,
+        "list_flow_runs(limit=1) returns at most 1",
+        f"got {len(limited)}",
+    )
 
     if runs_before_count > 1:
-        offset_runs = client.list_flow_runs(runtime_uuid=runtime_uuid, flow_name=flow_name, offset=1, limit=1)
-        check(len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1")
+        offset_runs = client.list_flow_runs(
+            runtime_uuid=runtime_uuid, flow_name=flow_name, offset=1, limit=1
+        )
+        check(
+            len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1"
+        )
         if offset_runs and runs_before_count > 1:
             check(
                 offset_runs[0]["name"] != runs_before[0]["name"],
@@ -136,8 +194,13 @@ def main():
 
     trigger = client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name)
     check(isinstance(trigger, dict), "run_flow returns dict")
-    check(trigger.get("event_uuid") is not None, f"run_flow has event_uuid: {trigger.get('event_uuid')}")
-    check(trigger.get("event_type") == "ScheduleFlowRun", f"event_type is ScheduleFlowRun")
+    check(
+        trigger.get("event_uuid") is not None,
+        f"run_flow has event_uuid: {trigger.get('event_uuid')}",
+    )
+    check(
+        trigger.get("event_type") == "ScheduleFlowRun", "event_type is ScheduleFlowRun"
+    )
 
     # ---------- flow runs (after) ----------
 
@@ -168,10 +231,17 @@ def main():
 
     for status in ("pending", "running", "succeeded", "failed"):
         by_status = client.list_flow_runs(runtime_uuid=runtime_uuid, status=status)
-        check(isinstance(by_status, list), f"list_flow_runs(status={status!r}) returns list")
+        check(
+            isinstance(by_status, list),
+            f"list_flow_runs(status={status!r}) returns list",
+        )
         if by_status:
             wrong = [r for r in by_status if r["status"] != status]
-            check(len(wrong) == 0, f"all {status} runs have correct status", f"{len(wrong)} have wrong status")
+            check(
+                len(wrong) == 0,
+                f"all {status} runs have correct status",
+                f"{len(wrong)} have wrong status",
+            )
 
     # ---------- run_flow with empty spec ----------
 
