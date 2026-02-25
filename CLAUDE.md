@@ -94,8 +94,7 @@ ascend-ops [-o text|json] [-V]
 
   flow list -r/--runtime <UUID>
   flow run <FLOW_NAME> -r/--runtime <UUID> [--spec '{}']
-  flow backfill <FLOW_NAME> -r/--runtime <UUID> [--spec '{}']
-  flow list-runs -r/--runtime <UUID> [--status, --flow]
+  flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name]
   flow get-run <RUN_NAME> -r/--runtime <UUID>
 ```
 
@@ -126,11 +125,10 @@ client.get_runtime(uuid="...")
 # Flows
 client.list_flows(runtime_uuid="...")
 client.run_flow(runtime_uuid="...", flow_name="sales")
-client.backfill_flow(runtime_uuid="...", flow_name="sales")
 
 # Flow runs
 client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow="sales", limit=10)
+client.list_flow_runs(runtime_uuid="...", flow_name="sales", limit=10)
 client.get_flow_run(runtime_uuid="...", name="fr-...")
 ```
 
@@ -142,12 +140,12 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/v1/auth/config` | GET | Get JWT audience domain for SA authentication |
 | `/api/v1/auth/token` | POST | Exchange SA JWT for instance token (no pre-existing token required) |
 | `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, project_uuid, environment_uuid) |
 | `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
 | `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
 | `/api/v1/runtimes/{uuid}/flows/{name}:run` | POST | Trigger a flow run |
-| `/api/v1/runtimes/{uuid}/flows/{name}:backfill` | POST | Trigger a backfill |
 | `/api/v1/flow-runs` | GET | List flow runs (requires runtime_uuid, filters: status, flow, since, until) |
 | `/api/v1/flow-runs/{name}` | GET | Get a flow run (requires runtime_uuid query param) |
 

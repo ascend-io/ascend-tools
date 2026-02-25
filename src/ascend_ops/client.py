@@ -14,7 +14,6 @@ class Client:
       - ASCEND_SERVICE_ACCOUNT_ID
       - ASCEND_SERVICE_ACCOUNT_KEY
       - ASCEND_INSTANCE_API_URL
-      - ASCEND_CLOUD_API_DOMAIN (defaults to api.ascend.io, only needed for local dev)
     """
 
     def __init__(
