@@ -81,27 +81,6 @@ impl Client {
         serde_json::to_string(&trigger).map_err(to_py_err)
     }
 
-    #[pyo3(signature = (runtime_uuid, flow_name, spec=None))]
-    fn backfill_flow(
-        &self,
-        runtime_uuid: &str,
-        flow_name: &str,
-        spec: Option<&str>,
-    ) -> PyResult<String> {
-        let spec_value = match spec {
-            Some(s) => Some(
-                serde_json::from_str(s)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?,
-            ),
-            None => None,
-        };
-        let trigger = self
-            .inner
-            .backfill_flow(runtime_uuid, flow_name, spec_value)
-            .map_err(to_py_err)?;
-        serde_json::to_string(&trigger).map_err(to_py_err)
-    }
-
     #[pyo3(signature = (runtime_uuid, status=None, flow=None, since=None, until=None, offset=None, limit=None))]
     fn list_flow_runs(
         &self,

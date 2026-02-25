@@ -58,22 +58,12 @@ class Client:
         spec_json = json.dumps(spec) if spec else None
         return json.loads(self._inner.run_flow(runtime_uuid, flow_name, spec_json))
 
-    def backfill_flow(
-        self,
-        *,
-        runtime_uuid: str,
-        flow_name: str,
-        spec: dict | None = None,
-    ) -> dict:
-        spec_json = json.dumps(spec) if spec else None
-        return json.loads(self._inner.backfill_flow(runtime_uuid, flow_name, spec_json))
-
     def list_flow_runs(
         self,
         *,
         runtime_uuid: str,
         status: str | None = None,
-        flow: str | None = None,
+        flow_name: str | None = None,
         since: str | None = None,
         until: str | None = None,
         offset: int | None = None,
@@ -81,7 +71,7 @@ class Client:
     ) -> list[dict]:
         return json.loads(
             self._inner.list_flow_runs(
-                runtime_uuid, status, flow, since, until, offset, limit
+                runtime_uuid, status, flow_name, since, until, offset, limit
             )
         )
 

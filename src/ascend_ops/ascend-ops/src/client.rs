@@ -103,23 +103,6 @@ impl AscendClient {
         )
     }
 
-    pub fn backfill_flow(
-        &self,
-        runtime_uuid: &str,
-        flow_name: &str,
-        spec: Option<Value>,
-    ) -> Result<FlowRunTrigger> {
-        let body = serde_json::json!({ "spec": spec });
-        self.post_json(
-            &format!(
-                "/api/v1/runtimes/{}/flows/{}:backfill",
-                encode_path(runtime_uuid),
-                encode_path(flow_name)
-            ),
-            &body,
-        )
-    }
-
     // -- Flow runs --
 
     pub fn list_flow_runs(

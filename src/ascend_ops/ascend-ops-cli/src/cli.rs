@@ -92,17 +92,6 @@ enum FlowCommands {
         #[arg(long)]
         spec: Option<String>,
     },
-    /// Backfill a flow
-    Backfill {
-        /// Flow name
-        flow_name: String,
-        /// Runtime UUID
-        #[arg(short, long, required = true)]
-        runtime: String,
-        /// Optional spec as JSON
-        #[arg(long)]
-        spec: Option<String>,
-    },
     /// List flow runs
     ListRuns {
         #[arg(short, long, required = true)]
@@ -110,7 +99,7 @@ enum FlowCommands {
         #[arg(long)]
         status: Option<String>,
         #[arg(short, long)]
-        flow: Option<String>,
+        flow_name: Option<String>,
     },
     /// Get a flow run
     GetRun {
@@ -245,28 +234,16 @@ fn handle_flow(
                 OutputMode::Text => println!("{}", trigger.event_uuid),
             }
         }
-        FlowCommands::Backfill {
-            runtime,
-            flow_name,
-            spec,
-        } => {
-            let spec_value = parse_spec(spec)?;
-            let trigger = client.backfill_flow(&runtime, &flow_name, spec_value)?;
-            match output {
-                OutputMode::Json => print_json(&trigger)?,
-                OutputMode::Text => println!("{}", trigger.event_uuid),
-            }
-        }
         FlowCommands::ListRuns {
             runtime,
             status,
-            flow,
+            flow_name,
         } => {
             let runs = client.list_flow_runs(
                 &runtime,
                 FlowRunFilters {
                     status,
-                    flow,
+                    flow: flow_name,
                     ..Default::default()
                 },
             )?;

@@ -20,12 +20,6 @@ class Client:
         flow_name: str,
         spec: str | None = None,
     ) -> str: ...
-    def backfill_flow(
-        self,
-        runtime_uuid: str,
-        flow_name: str,
-        spec: str | None = None,
-    ) -> str: ...
     def list_flow_runs(
         self,
         runtime_uuid: str,
