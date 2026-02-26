@@ -2,6 +2,8 @@
 
 SDK, CLI, and MCP server for the Ascend REST API.
 
+> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access.
+
 ## Install
 
 ```bash
