@@ -104,10 +104,7 @@ impl AscendMcpServer {
         Parameters(params): Parameters<ResumeRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        blocking(client, move |c| {
-            c.resume_runtime(&params.runtime_uuid)
-        })
-        .await
+        blocking(client, move |c| c.resume_runtime(&params.runtime_uuid)).await
     }
 
     #[tool(description = "Pause a running Ascend runtime")]

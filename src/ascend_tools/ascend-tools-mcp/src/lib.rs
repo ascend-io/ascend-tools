@@ -83,7 +83,9 @@ pub async fn run_http(config: Result<Config>, bind_addr: &str) -> Result<()> {
             move || {
                 let Some(config) = config.clone() else {
                     return Ok(AscendMcpServer::with_client_init_error(
-                        config_error.clone().unwrap_or_else(|| "missing config".to_string()),
+                        config_error
+                            .clone()
+                            .unwrap_or_else(|| "missing config".to_string()),
                     ));
                 };
                 match AscendClient::new(config) {
