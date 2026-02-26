@@ -344,7 +344,9 @@ def main():
     runtime_uuid = runtime["uuid"]
     runtime_id = runtime["id"]
     is_paused = runtime.get("paused", False)
-    print(f"  using runtime: {runtime_id} ({runtime_uuid}){' [paused]' if is_paused else ''}")
+    print(
+        f"  using runtime: {runtime_id} ({runtime_uuid}){' [paused]' if is_paused else ''}"
+    )
 
     # get runtime
     got = client.get_runtime(runtime_uuid)
