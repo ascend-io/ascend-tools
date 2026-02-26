@@ -32,7 +32,8 @@ src/ascend_tools/
 │   └── src/
 │       ├── lib.rs           # pub fn run(args) — testable entry point
 │       ├── main.rs          # binary entry point
-│       └── cli.rs           # clap commands, table/json output, print_table helper
+│       ├── cli.rs           # clap commands, table/json output, print_table helper
+│       └── skill.md         # SKILL.md template (embedded via include_str!, installed by `skill install`)
 │
 └── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
     └── src/
@@ -102,6 +103,8 @@ ascend-tools [-o text|json] [-V]
   flow run <FLOW_NAME> -r/--runtime <UUID> [--spec '{}']
   flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name]
   flow get-run <RUN_NAME> -r/--runtime <UUID>
+
+  skill install --target <PATH>
 
   mcp [--http] [--bind <ADDR>]
 ```
@@ -208,6 +211,7 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 - MCP tool parameters use `schemars` `JsonSchema` derive for automatic JSON Schema generation; doc comments on fields become schema descriptions
 - MCP `FlowRunSpec` uses `#[serde(flatten)]` with a catch-all map for forward compatibility with new backend fields
 - PyO3 `run()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
+- When adding or changing CLI commands, update `src/ascend_tools/ascend-tools-cli/src/skill.md` to keep the skill in sync
 
 ## related repos
 

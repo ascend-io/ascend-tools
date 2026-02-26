@@ -1,9 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::models::*;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "ascend-tools", version, about = "CLI for the Ascend REST API")]
@@ -53,6 +54,11 @@ enum Commands {
         /// Bind address for HTTP transport
         #[arg(long, default_value = "127.0.0.1:8000")]
         bind: String,
+    },
+    /// Manage skills
+    Skill {
+        #[command(subcommand)]
+        command: Option<SkillCommands>,
     },
 }
 
@@ -132,6 +138,19 @@ enum FlowCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum SkillCommands {
+    /// Install the ascend-tools skill
+    #[command(arg_required_else_help = true)]
+    Install {
+        /// Target directory
+        ///
+        /// Examples: ./.claude/skills, ~/.claude/skills, ./.agents/skills
+        #[arg(long, required = true)]
+        target: String,
+    },
+}
+
 pub fn run<I, T>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = T>,
@@ -143,6 +162,11 @@ where
         Cli::command().print_help()?;
         return Ok(());
     };
+
+    // Commands that don't require authentication
+    if let Commands::Skill { command } = command {
+        return handle_skill(command);
+    }
 
     let config = Config::with_overrides(
         cli.service_account_id.as_deref(),
@@ -164,7 +188,7 @@ where
     match command {
         Commands::Runtime { command } => handle_runtime(&client, command, &cli.output),
         Commands::Flow { command } => handle_flow(&client, command, &cli.output),
-        Commands::Mcp { .. } => unreachable!(),
+        Commands::Mcp { .. } | Commands::Skill { .. } => unreachable!(),
     }
 }
 
@@ -348,6 +372,39 @@ fn handle_flow(
         }
     }
     Ok(())
+}
+
+// -- skill --
+
+const SKILL_CONTENT: &str = include_str!("skill.md");
+
+fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
+    let Some(cmd) = cmd else {
+        Cli::command()
+            .find_subcommand_mut("skill")
+            .expect("skill subcommand exists")
+            .print_help()?;
+        return Ok(());
+    };
+    match cmd {
+        SkillCommands::Install { target } => {
+            let target = if target.starts_with('~') {
+                let home = std::env::var("HOME").context("HOME environment variable not set")?;
+                PathBuf::from(target.replacen('~', &home, 1))
+            } else {
+                PathBuf::from(&target)
+            };
+            let dir = target.join("ascend-tools");
+            std::fs::create_dir_all(&dir)
+                .with_context(|| format!("failed to create directory {}", dir.display()))?;
+            let path = dir.join("SKILL.md");
+            std::fs::write(&path, SKILL_CONTENT)
+                .with_context(|| format!("failed to write {}", path.display()))?;
+            let abs = std::fs::canonicalize(&path).unwrap_or(path);
+            println!("Installed ascend-tools skill to {}", abs.display());
+            Ok(())
+        }
+    }
 }
 
 // -- output helpers --
@@ -541,6 +598,23 @@ mod tests {
                 vec!["1000".into(), "b".into()],
             ],
         );
+    }
+
+    #[test]
+    fn test_cli_parses_skill_install() {
+        let cli = Cli::parse_from([
+            "ascend-tools",
+            "skill",
+            "install",
+            "--target",
+            "./.claude/skills",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Skill {
+                command: Some(SkillCommands::Install { .. })
+            })
+        ));
     }
 
     #[test]
