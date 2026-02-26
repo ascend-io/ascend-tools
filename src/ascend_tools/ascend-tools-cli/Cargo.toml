@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "ascend-tools-cli"
 version = "0.1.0"

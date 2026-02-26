@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools"
 
 echo "Running Rust tests..."
-cargo test --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml "$@"
-cargo test --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml "$@"
-cargo test --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml "$@"
+cargo test --workspace "$@"
 
 echo "Rust tests passed!"

@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools"
 
-echo "Building ascend-tools-core..."
-cargo build --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml "$@"
-
-echo "Building ascend-tools-mcp..."
-cargo build --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml "$@"
-
-echo "Building ascend-tools-cli..."
-cargo build --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml "$@"
+echo "Building Rust workspace..."
+cargo build "$@"
 
 echo "Rust build complete!"

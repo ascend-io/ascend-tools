@@ -6,7 +6,7 @@ Repo: `ascend-io/ascend-tools`. Internal.
 
 ## architecture
 
-Four Rust crates, one PyO3 bridge. Dependency chain is one-directional:
+Four Rust crates, one PyO3 bridge. The core/mcp/cli crates share a Cargo workspace (`src/ascend_tools/Cargo.toml`). Dependency chain is one-directional:
 
 ```
 src/ascend_tools/
@@ -40,7 +40,7 @@ src/ascend_tools/
         └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
 ```
 
-The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`. The `-mcp` crate uses `rmcp` (checked out locally at `rust-sdk/`) for the MCP protocol implementation.
+The `-py` crate is **not** in the Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop` and has its own Cargo.lock. The `-mcp` crate uses `rmcp` for the MCP protocol implementation.
 
 PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
 
@@ -54,7 +54,8 @@ bin/test        # run tests (bin/test-rs, bin/test-py)
 bin/install     # install locally (bin/install-rs, bin/install-py)
 ```
 
-Rust checks: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`
+Rust workspace is at `src/ascend_tools/`. Run workspace commands from there:
+`cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`
 Python checks: `ruff check .`, `ruff format --check .`
 
 After code changes, always run `bin/check` before committing.
