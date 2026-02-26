@@ -221,6 +221,115 @@ if [ "$PENDING_COUNT" -gt 0 ]; then
   fi
 fi
 
+# ---------- run_flow with spec ----------
+
+echo "=== run_flow with spec ==="
+
+SPEC_EMPTY=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{}' 2>&1)
+if echo "$SPEC_EMPTY" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  pass "flow run --spec '{}' works"
+else
+  fail "flow run --spec '{}'" "missing event_uuid"
+fi
+
+SPEC_FR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"full_refresh":true}' 2>&1)
+if echo "$SPEC_FR" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  pass "flow run --spec full_refresh works"
+else
+  fail "flow run --spec full_refresh" "missing event_uuid"
+fi
+
+SPEC_PARAMS=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"parameters":{"key":"value"}}' 2>&1)
+if echo "$SPEC_PARAMS" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  pass "flow run --spec parameters works"
+else
+  fail "flow run --spec parameters" "missing event_uuid"
+fi
+
+SPEC_MULTI=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"run_tests":false,"halt_flow_on_error":true,"runner_overrides":{"size":"Medium"}}' 2>&1)
+if echo "$SPEC_MULTI" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  pass "flow run --spec multiple fields works"
+else
+  fail "flow run --spec multiple fields" "missing event_uuid"
+fi
+
+# ---------- runtime pause/resume ----------
+
+RUNTIME_KIND=$(echo "$JSON" | jq -r '.[0].kind')
+if [ "$RUNTIME_KIND" != "workspace" ]; then
+  skip "runtime is not a workspace — skipping pause/resume tests"
+else
+  echo "=== runtime pause ==="
+
+  PAUSE_JSON=$($CLI -o json runtime pause "$RUNTIME_UUID" 2>&1)
+  PAUSED=$(echo "$PAUSE_JSON" | jq -r '.paused')
+  if [ "$PAUSED" = "true" ]; then
+    pass "runtime pause sets paused=true"
+  else
+    fail "runtime pause" "expected paused=true, got $PAUSED"
+  fi
+
+  # wait for health to clear
+  for delay in 1 2 3; do
+    HEALTH=$(${CLI} -o json runtime get "$RUNTIME_UUID" 2>&1 | jq -r '.health')
+    [ "$HEALTH" = "null" ] && break
+    sleep "$delay"
+  done
+  if [ "$HEALTH" = "null" ]; then
+    pass "paused runtime has health=null"
+  else
+    fail "paused runtime health" "expected null, got $HEALTH"
+  fi
+
+  # flow run without --resume should fail
+  PAUSED_ERR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" 2>&1 || true)
+  if echo "$PAUSED_ERR" | grep -qi "paused\|resume"; then
+    pass "flow run on paused runtime fails with descriptive error"
+  else
+    fail "flow run on paused runtime" "expected error mentioning paused/resume, got: $PAUSED_ERR"
+  fi
+
+  echo "=== runtime resume via flow run ==="
+
+  RESUME_TRIGGER=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --resume 2>&1)
+  if echo "$RESUME_TRIGGER" | jq -e '.event_uuid' > /dev/null 2>&1; then
+    pass "flow run --resume succeeds"
+  else
+    fail "flow run --resume" "missing event_uuid"
+  fi
+
+  AFTER_RESUME=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1)
+  PAUSED_AFTER=$(echo "$AFTER_RESUME" | jq -r '.paused')
+  if [ "$PAUSED_AFTER" = "false" ]; then
+    pass "runtime is unpaused after --resume"
+  else
+    fail "runtime after --resume" "expected paused=false, got $PAUSED_AFTER"
+  fi
+
+  echo "=== runtime resume (explicit) ==="
+
+  # wait for health to restore
+  for delay in 2 3 5 5; do
+    sleep "$delay"
+    HEALTH=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1 | jq -r '.health')
+    [ "$HEALTH" != "null" ] && break
+  done
+  if [ "$HEALTH" != "null" ]; then
+    pass "runtime health restored: $HEALTH"
+  else
+    skip "runtime health not yet available after 15s"
+  fi
+
+  # resume on already-running runtime should be idempotent
+  RESUME_IDEM=$($CLI -o json runtime resume "$RUNTIME_UUID" 2>&1)
+  PAUSED_IDEM=$(echo "$RESUME_IDEM" | jq -r '.paused')
+  if [ "$PAUSED_IDEM" = "false" ]; then
+    pass "runtime resume is idempotent"
+  else
+    fail "runtime resume idempotent" "expected paused=false, got $PAUSED_IDEM"
+  fi
+fi
+
 # ---------- summary ----------
 
 echo ""

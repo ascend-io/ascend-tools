@@ -276,6 +276,43 @@ def main():
     trigger2 = client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name, spec={})
     check(trigger2.get("event_uuid") is not None, "run_flow with empty spec works")
 
+    # spec with full_refresh
+    trigger3_fr = client.run_flow(
+        runtime_uuid=runtime_uuid,
+        flow_name=flow_name,
+        spec={"full_refresh": True},
+    )
+    check(
+        trigger3_fr.get("event_uuid") is not None,
+        "run_flow with full_refresh=True works",
+    )
+
+    # spec with parameters
+    trigger3_params = client.run_flow(
+        runtime_uuid=runtime_uuid,
+        flow_name=flow_name,
+        spec={"parameters": {"key": "value"}},
+    )
+    check(
+        trigger3_params.get("event_uuid") is not None,
+        "run_flow with parameters works",
+    )
+
+    # spec with multiple fields
+    trigger3_multi = client.run_flow(
+        runtime_uuid=runtime_uuid,
+        flow_name=flow_name,
+        spec={
+            "run_tests": False,
+            "halt_flow_on_error": True,
+            "runner_overrides": {"size": "Medium"},
+        },
+    )
+    check(
+        trigger3_multi.get("event_uuid") is not None,
+        "run_flow with multiple spec fields works",
+    )
+
     # ---------- runtime pause/resume ----------
 
     if runtime["kind"] != "workspace":
@@ -288,6 +325,13 @@ def main():
 
         got_paused = client.get_runtime(uuid=runtime_uuid)
         check(got_paused.get("paused") is True, "get_runtime confirms paused")
+
+        # health may take a moment to clear after pause (runtime pods shutting down)
+        for delay in (1, 2, 3):
+            if got_paused.get("health") is None:
+                break
+            time.sleep(delay)
+            got_paused = client.get_runtime(uuid=runtime_uuid)
         check(got_paused.get("health") is None, "paused runtime has health=None")
 
         # run_flow without wakeup should fail on a paused runtime
