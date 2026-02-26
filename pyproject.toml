@@ -11,13 +11,25 @@ dependencies = []
 ascend-tools = "ascend_tools:main"
 
 [dependency-groups]
-dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "pytest>=8"]
+dev = [
+    "maturin>=1.0,<2.0",
+    "ruff>=0.9",
+    "pytest>=8",
+    "ipython>=9.10.0",
+]
 
 [tool.maturin]
 module-name = "ascend_tools.core"
 python-packages = ["ascend_tools"]
 python-source = "src"
 manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple/"
+
+[[tool.uv.index]]
+url = "https://us-python.pkg.dev/ascend-io-ops-artifacts/private-pypi/simple"
+default = true
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
