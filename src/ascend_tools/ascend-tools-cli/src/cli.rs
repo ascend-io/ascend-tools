@@ -168,13 +168,12 @@ where
         return handle_skill(command);
     }
 
-    let config = Config::with_overrides(
-        cli.service_account_id.as_deref(),
-        cli.service_account_key.as_deref(),
-        cli.instance_api_url.as_deref(),
-    )?;
-
     if let Commands::Mcp { http, bind } = command {
+        let config = Config::with_overrides(
+            cli.service_account_id.as_deref(),
+            cli.service_account_key.as_deref(),
+            cli.instance_api_url.as_deref(),
+        );
         let rt = tokio::runtime::Runtime::new()?;
         return if http {
             rt.block_on(ascend_tools_mcp::run_http(config, &bind))
@@ -182,6 +181,12 @@ where
             rt.block_on(ascend_tools_mcp::run_stdio(config))
         };
     }
+
+    let config = Config::with_overrides(
+        cli.service_account_id.as_deref(),
+        cli.service_account_key.as_deref(),
+        cli.instance_api_url.as_deref(),
+    )?;
 
     let client = AscendClient::new(config)?;
 

@@ -32,7 +32,8 @@ async fn blocking<T: serde::Serialize + Send + 'static>(
 
 #[derive(Clone)]
 pub struct AscendMcpServer {
-    client: Arc<AscendClient>,
+    client: Option<Arc<AscendClient>>,
+    client_init_error: Option<String>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -40,9 +41,33 @@ pub struct AscendMcpServer {
 impl AscendMcpServer {
     pub fn new(client: AscendClient) -> Self {
         Self {
-            client: Arc::new(client),
+            client: Some(Arc::new(client)),
+            client_init_error: None,
             tool_router: Self::tool_router(),
         }
+    }
+
+    pub fn with_client_init_error(error: impl Into<String>) -> Self {
+        Self {
+            client: None,
+            client_init_error: Some(error.into()),
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    fn client(&self) -> Result<&Arc<AscendClient>, McpError> {
+        self.client.as_ref().ok_or_else(|| {
+            let detail = self
+                .client_init_error
+                .as_deref()
+                .unwrap_or("unknown initialization error");
+            McpError::internal_error(
+                format!(
+                    "Ascend client is not configured: {detail}. Set ASCEND_SERVICE_ACCOUNT_ID, ASCEND_SERVICE_ACCOUNT_KEY, and ASCEND_INSTANCE_API_URL in the MCP server environment."
+                ),
+                None,
+            )
+        })
     }
 
     #[tool(
@@ -52,7 +77,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListRuntimesParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| {
+        let client = self.client()?;
+        blocking(client, move |c| {
             c.list_runtimes(RuntimeFilters {
                 id: params.id,
                 kind: params.kind,
@@ -68,7 +94,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<GetRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| c.get_runtime(&params.uuid)).await
+        let client = self.client()?;
+        blocking(client, move |c| c.get_runtime(&params.uuid)).await
     }
 
     #[tool(description = "Resume a paused Ascend runtime")]
@@ -76,7 +103,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ResumeRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| {
+        let client = self.client()?;
+        blocking(client, move |c| {
             c.resume_runtime(&params.runtime_uuid)
         })
         .await
@@ -87,7 +115,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<PauseRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| c.pause_runtime(&params.runtime_uuid)).await
+        let client = self.client()?;
+        blocking(client, move |c| c.pause_runtime(&params.runtime_uuid)).await
     }
 
     #[tool(description = "List flows in an Ascend runtime")]
@@ -95,7 +124,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListFlowsParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| c.list_flows(&params.runtime_uuid)).await
+        let client = self.client()?;
+        blocking(client, move |c| c.list_flows(&params.runtime_uuid)).await
     }
 
     #[tool(
@@ -105,13 +135,14 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<RunFlowParams>,
     ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
         let spec = params
             .spec
             .map(serde_json::to_value)
             .transpose()
             .map_err(|e| McpError::internal_error(format!("invalid spec: {e}"), None))?;
         let resume = params.resume.unwrap_or(false);
-        blocking(&self.client, move |c| {
+        blocking(client, move |c| {
             c.run_flow(&params.runtime_uuid, &params.flow_name, spec, resume)
         })
         .await
@@ -124,7 +155,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListFlowRunsParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| {
+        let client = self.client()?;
+        blocking(client, move |c| {
             c.list_flow_runs(
                 &params.runtime_uuid,
                 FlowRunFilters {
@@ -145,7 +177,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<GetFlowRunParams>,
     ) -> Result<CallToolResult, McpError> {
-        blocking(&self.client, move |c| {
+        let client = self.client()?;
+        blocking(client, move |c| {
             c.get_flow_run(&params.runtime_uuid, &params.name)
         })
         .await

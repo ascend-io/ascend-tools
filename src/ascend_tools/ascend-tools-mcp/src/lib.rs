@@ -28,13 +28,24 @@ fn init_tracing() {
         .try_init();
 }
 
-pub async fn run_stdio(config: Config) -> Result<()> {
+pub async fn run_stdio(config: Result<Config>) -> Result<()> {
     reset_sigint();
     init_tracing();
     tracing::info!("Starting Ascend MCP server (stdio)");
 
-    let client = AscendClient::new(config)?;
-    let server = AscendMcpServer::new(client);
+    let server = match config {
+        Ok(config) => match AscendClient::new(config) {
+            Ok(client) => AscendMcpServer::new(client),
+            Err(e) => {
+                tracing::error!("Ascend client initialization failed: {e:#}");
+                AscendMcpServer::with_client_init_error(format!("{e:#}"))
+            }
+        },
+        Err(e) => {
+            tracing::error!("Ascend config resolution failed: {e:#}");
+            AscendMcpServer::with_client_init_error(format!("{e:#}"))
+        }
+    };
 
     let service = server
         .serve(rmcp::transport::stdio())
@@ -48,18 +59,47 @@ pub async fn run_stdio(config: Config) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_http(config: Config, bind_addr: &str) -> Result<()> {
+pub async fn run_http(config: Result<Config>, bind_addr: &str) -> Result<()> {
     reset_sigint();
     init_tracing();
     tracing::info!("Starting Ascend MCP server (HTTP) on {bind_addr}");
 
     let ct = tokio_util::sync::CancellationToken::new();
+    let (config, config_error) = match config {
+        Ok(config) => (Some(config), None),
+        Err(e) => {
+            let message = format!("{e:#}");
+            tracing::error!("Ascend config resolution failed: {message}");
+            (None, Some(message))
+        }
+    };
+    let client_init_error: std::sync::Arc<std::sync::Mutex<Option<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
 
     let service = StreamableHttpService::new(
-        move || {
-            let client = AscendClient::new(config.clone())
-                .map_err(|e| std::io::Error::other(format!("{e:#}")))?;
-            Ok(AscendMcpServer::new(client))
+        {
+            let client_init_error = client_init_error.clone();
+            let config_error = config_error.clone();
+            move || {
+                let Some(config) = config.clone() else {
+                    return Ok(AscendMcpServer::with_client_init_error(
+                        config_error.clone().unwrap_or_else(|| "missing config".to_string()),
+                    ));
+                };
+                match AscendClient::new(config) {
+                    Ok(client) => Ok(AscendMcpServer::new(client)),
+                    Err(e) => {
+                        let message = format!("{e:#}");
+                        if let Ok(mut guard) = client_init_error.lock() {
+                            if guard.as_deref() != Some(message.as_str()) {
+                                tracing::error!("Ascend client initialization failed: {message}");
+                                *guard = Some(message.clone());
+                            }
+                        }
+                        Ok(AscendMcpServer::with_client_init_error(message))
+                    }
+                }
+            }
         },
         LocalSessionManager::default().into(),
         StreamableHttpServerConfig {

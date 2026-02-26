@@ -25,7 +25,7 @@ src/ascend_tools/
 ├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 6 tools via rmcp #[tool_router]
+│       ├── server.rs        # AscendMcpServer — 8 tools via rmcp #[tool_router]
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
@@ -97,9 +97,11 @@ ascend-tools [-o text|json] [-V]
 
   runtime list [--id, --kind, --project-uuid, --environment-uuid]
   runtime get <UUID>
+  runtime resume <UUID>
+  runtime pause <UUID>
 
-  flow list -r/--runtime <UUID>
-  flow run <FLOW_NAME> -r/--runtime <UUID> [--spec '{}']
+  flow list --runtime <UUID>
+  flow run <FLOW_NAME> --runtime <UUID> [--spec '{}'] [--resume]
   flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name]
   flow get-run <RUN_NAME> -r/--runtime <UUID>
 
@@ -159,15 +161,56 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 |------|-------------|
 | `list_runtimes` | List runtimes with optional filters (id, kind, project_uuid, environment_uuid) |
 | `get_runtime` | Get a runtime by UUID |
+| `resume_runtime` | Resume a paused runtime |
+| `pause_runtime` | Pause a running runtime |
 | `list_flows` | List flows in a runtime |
-| `run_flow` | Trigger a flow run with typed spec (full_refresh, components, parameters, etc.) |
+| `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
 
 ### usage with Claude Code
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+claude mcp add --transport stdio ascend-tools -- uvx --refresh --from ./ascend-tools ascend-tools mcp
+```
+
+Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
+If Claude is launched without your shell env, set them explicitly:
+
+```bash
+claude mcp add --transport stdio \
+  -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
+  -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
+  -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
+  ascend-tools -- uvx --refresh --from ./ascend-tools ascend-tools mcp
+```
+
+### usage with Codex CLI
+
+```bash
+codex mcp add ascend-tools -- uvx --refresh --from "$(pwd)" ascend-tools mcp
+```
+
+If Codex is launched without your shell env, set them explicitly:
+
+```bash
+codex mcp add \
+  --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
+  --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
+  --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
+  ascend-tools -- uvx --refresh --from "$(pwd)" ascend-tools mcp
+```
+
+```bash
+codex mcp get ascend-tools --json
+```
+
+```bash
+codex mcp list
+```
+
+```bash
+codex mcp remove ascend-tools
 ```
 
 Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.

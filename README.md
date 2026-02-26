@@ -38,6 +38,18 @@ Get a runtime:
 ascend-tools runtime get <UUID>
 ```
 
+Resume a runtime:
+
+```bash
+ascend-tools runtime resume <UUID>
+```
+
+Pause a runtime:
+
+```bash
+ascend-tools runtime pause <UUID>
+```
+
 List flows:
 
 ```bash
@@ -48,6 +60,12 @@ Run a flow:
 
 ```bash
 ascend-tools flow run <FLOW_NAME> --runtime <UUID>
+```
+
+Run a flow and resume the runtime first if paused:
+
+```bash
+ascend-tools flow run <FLOW_NAME> --runtime <UUID> --resume
 ```
 
 Run a flow with full refresh:
@@ -103,10 +121,55 @@ ascend-tools mcp --http --bind 127.0.0.1:8000
 ### Claude Code setup
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+claude mcp add --transport stdio ascend-tools -- uvx --refresh --from ./ascend-tools ascend-tools mcp
 ```
 
 The Ascend auth env vars are inherited from your shell. Verify with `/mcp` inside Claude Code.
+If Claude is launched without your shell env, add vars explicitly:
+
+```bash
+claude mcp add --transport stdio \
+  -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
+  -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
+  -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
+  ascend-tools -- uvx --refresh --from ./ascend-tools ascend-tools mcp
+```
+
+### Codex CLI setup
+
+```bash
+codex mcp add ascend-tools -- uvx --refresh --from "$(pwd)" ascend-tools mcp
+```
+
+If Codex is launched without your shell env, add vars explicitly:
+
+```bash
+codex mcp add \
+  --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
+  --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
+  --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
+  ascend-tools -- uvx --refresh --from "$(pwd)" ascend-tools mcp
+```
+
+Inspect the MCP server config:
+
+```bash
+codex mcp get ascend-tools --json
+```
+
+List all configured MCP servers:
+
+```bash
+codex mcp list
+```
+
+Remove the config:
+
+```bash
+codex mcp remove ascend-tools
+```
+
+The Ascend auth env vars are inherited from your shell when Codex launches the server.
 
 ### Tools
 
@@ -114,7 +177,9 @@ The Ascend auth env vars are inherited from your shell. Verify with `/mcp` insid
 |------|-------------|
 | `list_runtimes` | List runtimes with optional filters |
 | `get_runtime` | Get a runtime by UUID |
+| `resume_runtime` | Resume a paused runtime |
+| `pause_runtime` | Pause a running runtime |
 | `list_flows` | List flows in a runtime |
-| `run_flow` | Trigger a flow run (supports full_refresh, components, parameters, etc.) |
+| `run_flow` | Trigger a flow run (supports resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
