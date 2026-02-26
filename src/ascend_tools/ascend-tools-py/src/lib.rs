@@ -57,19 +57,32 @@ impl Client {
         to_python(py, &runtime)
     }
 
+    #[pyo3(signature = (*, uuid))]
+    fn resume_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
+        let runtime = self.inner.resume_runtime(uuid).map_err(to_py_err)?;
+        to_python(py, &runtime)
+    }
+
+    #[pyo3(signature = (*, uuid))]
+    fn pause_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
+        let runtime = self.inner.pause_runtime(uuid).map_err(to_py_err)?;
+        to_python(py, &runtime)
+    }
+
     #[pyo3(signature = (*, runtime_uuid))]
     fn list_flows(&self, py: Python<'_>, runtime_uuid: &str) -> PyResult<Py<PyAny>> {
         let flows = self.inner.list_flows(runtime_uuid).map_err(to_py_err)?;
         to_python(py, &flows)
     }
 
-    #[pyo3(signature = (*, runtime_uuid, flow_name, spec=None))]
+    #[pyo3(signature = (*, runtime_uuid, flow_name, spec=None, resume=false))]
     fn run_flow(
         &self,
         py: Python<'_>,
         runtime_uuid: &str,
         flow_name: &str,
         spec: Option<&Bound<'_, PyAny>>,
+        resume: bool,
     ) -> PyResult<Py<PyAny>> {
         let spec_value: Option<serde_json::Value> = match spec {
             Some(obj) => Some(pythonize::depythonize(obj)?),
@@ -77,7 +90,7 @@ impl Client {
         };
         let trigger = self
             .inner
-            .run_flow(runtime_uuid, flow_name, spec_value)
+            .run_flow(runtime_uuid, flow_name, spec_value, resume)
             .map_err(to_py_err)?;
         to_python(py, &trigger)
     }
@@ -127,9 +140,11 @@ impl Client {
 }
 
 #[pyfunction]
-fn run(argv: Vec<String>) -> PyResult<()> {
-    ascend_tools_cli::run(argv.iter().map(|s| s.as_str()))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+fn run(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
+    py.detach(|| {
+        ascend_tools_cli::run(argv.iter().map(|s| s.as_str()))
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    })
 }
 
 #[pymodule]

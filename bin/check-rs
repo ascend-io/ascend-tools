@@ -4,14 +4,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Checking Rust formatting..."
 cargo fmt --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml -- --check
+cargo fmt --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml -- --check
 cargo fmt --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml -- --check
 
 echo "Running clippy..."
 cargo clippy --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml -- -D warnings
+cargo clippy --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml -- -D warnings
 cargo clippy --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml -- -D warnings
 
 echo "Running Rust tests..."
 cargo test --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml
+cargo test --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml
 cargo test --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml
 
 echo "Rust checks passed!"

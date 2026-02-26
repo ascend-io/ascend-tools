@@ -12,6 +12,8 @@ pub struct Runtime {
     pub created_at: String,
     pub updated_at: String,
     pub health: Option<String>,
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

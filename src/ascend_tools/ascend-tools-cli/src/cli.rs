@@ -2,7 +2,7 @@ use anyhow::Result;
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::models::*;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 
 #[derive(Parser)]
@@ -11,23 +11,16 @@ struct Cli {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
 
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_ID",
-        hide_env_values = true
-    )]
+    /// Service account ID [env: ASCEND_SERVICE_ACCOUNT_ID]
+    #[arg(long, global = true)]
     service_account_id: Option<String>,
 
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_KEY",
-        hide_env_values = true
-    )]
+    /// Service account key [env: ASCEND_SERVICE_ACCOUNT_KEY]
+    #[arg(long, global = true)]
     service_account_key: Option<String>,
 
-    #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
+    /// Instance API URL [env: ASCEND_INSTANCE_API_URL]
+    #[arg(long, global = true)]
     instance_api_url: Option<String>,
 
     #[command(subcommand)]
@@ -52,6 +45,15 @@ enum Commands {
         #[command(subcommand)]
         command: Option<FlowCommands>,
     },
+    /// Start an MCP server
+    Mcp {
+        /// Use HTTP transport instead of stdio
+        #[arg(long)]
+        http: bool,
+        /// Bind address for HTTP transport
+        #[arg(long, default_value = "127.0.0.1:8000")]
+        bind: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -68,7 +70,20 @@ enum RuntimeCommands {
         environment_uuid: Option<String>,
     },
     /// Get a runtime
+    #[command(arg_required_else_help = true)]
     Get {
+        /// Runtime UUID
+        uuid: String,
+    },
+    /// Resume a paused runtime
+    #[command(arg_required_else_help = true)]
+    Resume {
+        /// Runtime UUID
+        uuid: String,
+    },
+    /// Pause a running runtime
+    #[command(arg_required_else_help = true)]
+    Pause {
         /// Runtime UUID
         uuid: String,
     },
@@ -77,11 +92,13 @@ enum RuntimeCommands {
 #[derive(Subcommand)]
 enum FlowCommands {
     /// List flows in a runtime
+    #[command(arg_required_else_help = true)]
     List {
         #[arg(short, long, required = true)]
         runtime: String,
     },
     /// Run a flow
+    #[command(arg_required_else_help = true)]
     Run {
         /// Flow name
         flow_name: String,
@@ -91,8 +108,12 @@ enum FlowCommands {
         /// Optional spec as JSON
         #[arg(long)]
         spec: Option<String>,
+        /// Resume the runtime if paused before submitting
+        #[arg(long)]
+        resume: bool,
     },
     /// List flow runs
+    #[command(arg_required_else_help = true)]
     ListRuns {
         #[arg(short, long, required = true)]
         runtime: String,
@@ -102,6 +123,7 @@ enum FlowCommands {
         flow_name: Option<String>,
     },
     /// Get a flow run
+    #[command(arg_required_else_help = true)]
     GetRun {
         /// Flow run name
         name: String,
@@ -118,8 +140,8 @@ where
     let cli = Cli::parse_from(args);
 
     let Some(command) = cli.command else {
-        Cli::parse_from(["ascend-tools", "--help"]);
-        unreachable!()
+        Cli::command().print_help()?;
+        return Ok(());
     };
 
     let config = Config::with_overrides(
@@ -127,11 +149,22 @@ where
         cli.service_account_key.as_deref(),
         cli.instance_api_url.as_deref(),
     )?;
+
+    if let Commands::Mcp { http, bind } = command {
+        let rt = tokio::runtime::Runtime::new()?;
+        return if http {
+            rt.block_on(ascend_tools_mcp::run_http(config, &bind))
+        } else {
+            rt.block_on(ascend_tools_mcp::run_stdio(config))
+        };
+    }
+
     let client = AscendClient::new(config)?;
 
     match command {
         Commands::Runtime { command } => handle_runtime(&client, command, &cli.output),
         Commands::Flow { command } => handle_flow(&client, command, &cli.output),
+        Commands::Mcp { .. } => unreachable!(),
     }
 }
 
@@ -141,8 +174,11 @@ fn handle_runtime(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-tools", "runtime", "--help"]);
-        unreachable!()
+        Cli::command()
+            .find_subcommand_mut("runtime")
+            .expect("runtime subcommand exists")
+            .print_help()?;
+        return Ok(());
     };
     match cmd {
         RuntimeCommands::List {
@@ -163,12 +199,17 @@ fn handle_runtime(
                     let rows: Vec<Vec<String>> = runtimes
                         .iter()
                         .map(|r| {
+                            let health = if r.paused {
+                                "paused".into()
+                            } else {
+                                r.health.clone().unwrap_or_else(|| "-".into())
+                            };
                             vec![
                                 r.uuid.clone(),
                                 r.id.clone(),
                                 r.title.clone(),
                                 r.kind.clone(),
-                                r.health.clone().unwrap_or_else(|| "-".into()),
+                                health,
                             ]
                         })
                         .collect();
@@ -181,11 +222,16 @@ fn handle_runtime(
             match output {
                 OutputMode::Json => print_json(&r)?,
                 OutputMode::Text => {
+                    let health = if r.paused {
+                        "paused".into()
+                    } else {
+                        r.health.clone().unwrap_or_else(|| "-".into())
+                    };
                     println!("UUID:         {}", r.uuid);
                     println!("ID:           {}", r.id);
                     println!("Title:        {}", r.title);
                     println!("Kind:         {}", r.kind);
-                    println!("Health:       {}", r.health.unwrap_or_else(|| "-".into()));
+                    println!("Health:       {health}");
                     println!("Project:      {}", r.project_uuid);
                     println!("Environment:  {}", r.environment_uuid);
                     println!(
@@ -195,6 +241,20 @@ fn handle_runtime(
                     println!("Created:      {}", r.created_at);
                     println!("Updated:      {}", r.updated_at);
                 }
+            }
+        }
+        RuntimeCommands::Resume { uuid } => {
+            let r = client.resume_runtime(&uuid)?;
+            match output {
+                OutputMode::Json => print_json(&r)?,
+                OutputMode::Text => println!("Resumed runtime {}", r.uuid),
+            }
+        }
+        RuntimeCommands::Pause { uuid } => {
+            let r = client.pause_runtime(&uuid)?;
+            match output {
+                OutputMode::Json => print_json(&r)?,
+                OutputMode::Text => println!("Paused runtime {}", r.uuid),
             }
         }
     }
@@ -207,8 +267,11 @@ fn handle_flow(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        Cli::parse_from(["ascend-tools", "flow", "--help"]);
-        unreachable!()
+        Cli::command()
+            .find_subcommand_mut("flow")
+            .expect("flow subcommand exists")
+            .print_help()?;
+        return Ok(());
     };
     match cmd {
         FlowCommands::List { runtime } => {
@@ -226,9 +289,10 @@ fn handle_flow(
             runtime,
             flow_name,
             spec,
+            resume,
         } => {
             let spec_value = parse_spec(spec)?;
-            let trigger = client.run_flow(&runtime, &flow_name, spec_value)?;
+            let trigger = client.run_flow(&runtime, &flow_name, spec_value, resume)?;
             match output {
                 OutputMode::Json => print_json(&trigger)?,
                 OutputMode::Text => println!("{}", trigger.event_uuid),
@@ -477,5 +541,35 @@ mod tests {
                 vec!["1000".into(), "b".into()],
             ],
         );
+    }
+
+    #[test]
+    fn test_cli_parses_mcp_stdio() {
+        let cli = Cli::parse_from(["ascend-tools", "mcp"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Mcp { http: false, .. })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_mcp_http() {
+        let cli = Cli::parse_from(["ascend-tools", "mcp", "--http"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Mcp { http: true, .. })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_mcp_bind() {
+        let cli = Cli::parse_from(["ascend-tools", "mcp", "--http", "--bind", "0.0.0.0:9000"]);
+        match cli.command {
+            Some(Commands::Mcp { http, bind }) => {
+                assert!(http);
+                assert_eq!(bind, "0.0.0.0:9000");
+            }
+            _ => panic!("expected Mcp command"),
+        }
     }
 }

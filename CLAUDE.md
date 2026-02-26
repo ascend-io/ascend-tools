@@ -1,17 +1,16 @@
 # ascend-tools
 
-SDK and CLI for the Ascend REST API. Rust core with PyO3 Python bindings.
+SDK, CLI, and MCP server for the Ascend REST API. Rust core with PyO3 Python bindings.
 
 Repo: `ascend-io/ascend-tools`. Internal.
 
 ## architecture
 
-Three Rust crates, one PyO3 bridge. Dependency chain is one-directional:
+Four Rust crates, one PyO3 bridge. Dependency chain is one-directional:
 
 ```
 src/ascend_tools/
-├── __init__.py              # re-exports Client from core (PyO3 module)
-├── cli.py                   # CLI entry point: calls core.run(sys.argv)
+├── __init__.py              # re-exports Client, CLI entry point (main)
 ├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
 ├── py.typed                 # PEP 561 marker (package has inline types)
 │
@@ -23,7 +22,13 @@ src/ascend_tools/
 │       ├── config.rs        # env var + CLI flag resolution
 │       └── models.rs        # Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
 │
-├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools)
+├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
+│   └── src/
+│       ├── lib.rs           # run_stdio() and run_http() entry points
+│       ├── server.rs        # AscendMcpServer — 6 tools via rmcp #[tool_router]
+│       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
+│
+├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
 │   └── src/
 │       ├── lib.rs           # pub fn run(args) — testable entry point
 │       ├── main.rs          # binary entry point
@@ -35,6 +40,8 @@ src/ascend_tools/
 ```
 
 The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`.
+
+The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`. The `-mcp` crate uses `rmcp` (checked out locally at `rust-sdk/`) for the MCP protocol implementation.
 
 PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
 
@@ -95,6 +102,8 @@ ascend-tools [-o text|json] [-V]
   flow run <FLOW_NAME> -r/--runtime <UUID> [--spec '{}']
   flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name]
   flow get-run <RUN_NAME> -r/--runtime <UUID>
+
+  mcp [--http] [--bind <ADDR>]
 ```
 
 Default output is table format. Use `-o json` for machine-readable output.
@@ -133,6 +142,43 @@ client.get_flow_run(runtime_uuid="...", name="fr-...")
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
 
+## MCP server
+
+The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing AscendClient methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
+
+### transports
+
+- **stdio** (default): `ascend-tools mcp` — communicates over stdin/stdout. Used by Claude Code and most MCP clients.
+- **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`. Used for remote/shared deployments.
+
+### tools
+
+| Tool | Description |
+|------|-------------|
+| `list_runtimes` | List runtimes with optional filters (id, kind, project_uuid, environment_uuid) |
+| `get_runtime` | Get a runtime by UUID |
+| `list_flows` | List flows in a runtime |
+| `run_flow` | Trigger a flow run with typed spec (full_refresh, components, parameters, etc.) |
+| `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
+| `get_flow_run` | Get a flow run by name |
+
+### usage with Claude Code
+
+```bash
+claude mcp add --transport stdio ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+```
+
+Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
+
+### architecture notes
+
+- Uses `rmcp` SDK (local path dep at `rust-sdk/crates/rmcp`) for MCP protocol
+- `AscendClient` is sync (ureq); tools use `tokio::task::spawn_blocking` to bridge to async
+- `AscendClient` wrapped in `Arc` for the `Clone` requirement (contains `Mutex` in Auth)
+- Tracing writes to stderr only (stdout is the MCP protocol channel for stdio transport)
+- `reset_sigint()` clears Python's SIGINT handler so Ctrl+C works when running through PyO3
+- HTTP mode creates a fresh `AscendClient` per session via `StreamableHttpService` factory
+
 ## backend API
 
 The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-backend/src/ascend_backend/instance/api/v1/`. These return plain JSON (not JSON:API).
@@ -159,6 +205,9 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 - Clap args for secrets use `hide_env_values = true` (SA ID, SA key)
 - PyO3 binding uses `pythonize` to convert Rust structs directly to Python dicts (no JSON string intermediary)
 - CLI prints tables by default, JSON with `-o json`; empty results print "No results." to stderr
+- MCP tool parameters use `schemars` `JsonSchema` derive for automatic JSON Schema generation; doc comments on fields become schema descriptions
+- MCP `FlowRunSpec` uses `#[serde(flatten)]` with a catch-all map for forward compatibility with new backend fields
+- PyO3 `run()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
 
 ## related repos
 

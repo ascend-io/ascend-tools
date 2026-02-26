@@ -4,6 +4,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Formatting Rust..."
 cargo fmt --manifest-path src/ascend_tools/ascend-tools-core/Cargo.toml
+cargo fmt --manifest-path src/ascend_tools/ascend-tools-mcp/Cargo.toml
 cargo fmt --manifest-path src/ascend_tools/ascend-tools-cli/Cargo.toml
 
 echo "Rust formatting complete!"

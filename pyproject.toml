@@ -8,7 +8,7 @@ authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
 
 [project.scripts]
-ascend-tools = "ascend_tools.cli:main"
+ascend-tools = "ascend_tools:main"
 
 [dependency-groups]
 dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "pytest>=8"]
@@ -27,6 +27,7 @@ build-backend = "maturin"
 cache-keys = [
   { file = "pyproject.toml" },
   { file = "src/ascend_tools/ascend-tools-core/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-mcp/**/*.rs" },
   { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
   { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
 ]

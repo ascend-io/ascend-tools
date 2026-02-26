@@ -1,19 +1,52 @@
 use anyhow::{Context, Result, bail};
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
-use std::time::Duration;
 use ureq::Agent;
 
 use crate::auth::Auth;
 use crate::config::Config;
 use crate::models::*;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
-
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
+
+/// Encode for use in URL query parameter values.
+/// Uses NON_ALPHANUMERIC to correctly encode &, =, +, and other reserved characters.
+const QUERY_VALUE: &AsciiSet = NON_ALPHANUMERIC;
 
 fn encode_path(s: &str) -> String {
     utf8_percent_encode(s, PATH_SEGMENT).to_string()
+}
+
+fn encode_query_value(s: &str) -> String {
+    utf8_percent_encode(s, QUERY_VALUE).to_string()
+}
+
+/// Builds a URL query string from key-value pairs.
+struct QueryString(Vec<String>);
+
+impl QueryString {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    fn push(&mut self, key: &str, value: impl std::fmt::Display) {
+        self.0
+            .push(format!("{key}={}", encode_query_value(&value.to_string())));
+    }
+
+    fn push_opt(&mut self, key: &str, value: Option<impl std::fmt::Display>) {
+        if let Some(v) = value {
+            self.push(key, v);
+        }
+    }
+
+    fn finish(self) -> String {
+        if self.0.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", self.0.join("&"))
+        }
+    }
 }
 
 /// Client for the Ascend Instance API v1.
@@ -30,20 +63,8 @@ impl AscendClient {
             &config.service_account_key,
             config.instance_api_url.clone(),
         )?;
-        let agent = Agent::new_with_config(
-            ureq::config::Config::builder()
-                .tls_config(
-                    ureq::tls::TlsConfig::builder()
-                        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-                        .build(),
-                )
-                .http_status_as_error(false)
-                .timeout_global(Some(TIMEOUT))
-                .user_agent(concat!("ascend-tools/", env!("CARGO_PKG_VERSION")))
-                .build(),
-        );
         Ok(Self {
-            agent,
+            agent: crate::new_agent(),
             instance_api_url: config.instance_api_url,
             auth,
         })
@@ -52,29 +73,24 @@ impl AscendClient {
     // -- Runtimes --
 
     pub fn list_runtimes(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
-        let mut params = Vec::new();
-        if let Some(ref id) = filters.id {
-            params.push(format!("id={}", encode_path(id)));
-        }
-        if let Some(ref kind) = filters.kind {
-            params.push(format!("kind={}", encode_path(kind)));
-        }
-        if let Some(ref p) = filters.project_uuid {
-            params.push(format!("project_uuid={}", encode_path(p)));
-        }
-        if let Some(ref e) = filters.environment_uuid {
-            params.push(format!("environment_uuid={}", encode_path(e)));
-        }
-        let qs = if params.is_empty() {
-            String::new()
-        } else {
-            format!("?{}", params.join("&"))
-        };
-        self.get(&format!("/api/v1/runtimes{qs}"))
+        let mut qs = QueryString::new();
+        qs.push_opt("id", filters.id.as_deref());
+        qs.push_opt("kind", filters.kind.as_deref());
+        qs.push_opt("project_uuid", filters.project_uuid.as_deref());
+        qs.push_opt("environment_uuid", filters.environment_uuid.as_deref());
+        self.get(&format!("/api/v1/runtimes{}", qs.finish()))
     }
 
     pub fn get_runtime(&self, uuid: &str) -> Result<Runtime> {
         self.get(&format!("/api/v1/runtimes/{}", encode_path(uuid)))
+    }
+
+    pub fn resume_runtime(&self, uuid: &str) -> Result<Runtime> {
+        self.post_empty(&format!("/api/v1/runtimes/{}:resume", encode_path(uuid)))
+    }
+
+    pub fn pause_runtime(&self, uuid: &str) -> Result<Runtime> {
+        self.post_empty(&format!("/api/v1/runtimes/{}:pause", encode_path(uuid)))
     }
 
     // -- Flows --
@@ -91,7 +107,27 @@ impl AscendClient {
         runtime_uuid: &str,
         flow_name: &str,
         spec: Option<Value>,
+        wakeup: bool,
     ) -> Result<FlowRunTrigger> {
+        if wakeup {
+            self.resume_runtime(runtime_uuid)?;
+        } else {
+            let runtime = self.get_runtime(runtime_uuid)?;
+            if runtime.paused {
+                bail!(
+                    "Runtime is paused. Use --resume (CLI) or resume=True (SDK) to resume before running."
+                );
+            }
+            match runtime.health.as_deref() {
+                Some("running") => {}
+                Some("starting") => {
+                    bail!("Runtime is starting, not yet ready to accept flow runs.")
+                }
+                Some("error") => bail!("Runtime is in error state and cannot run flows."),
+                Some(other) => bail!("Runtime health is '{other}', expected 'running'."),
+                None => bail!("Runtime has no health status. It may be initializing."),
+            }
+        }
         let body = serde_json::json!({ "spec": spec });
         self.post_json(
             &format!(
@@ -110,34 +146,22 @@ impl AscendClient {
         runtime_uuid: &str,
         filters: FlowRunFilters,
     ) -> Result<Vec<FlowRun>> {
-        let mut params = vec![format!("runtime_uuid={}", encode_path(runtime_uuid))];
-        if let Some(ref s) = filters.status {
-            params.push(format!("status={}", encode_path(s)));
-        }
-        if let Some(ref f) = filters.flow {
-            params.push(format!("flow={}", encode_path(f)));
-        }
-        if let Some(ref s) = filters.since {
-            params.push(format!("since={}", encode_path(s)));
-        }
-        if let Some(ref u) = filters.until {
-            params.push(format!("until={}", encode_path(u)));
-        }
-        if let Some(o) = filters.offset {
-            params.push(format!("offset={o}"));
-        }
-        if let Some(l) = filters.limit {
-            params.push(format!("limit={l}"));
-        }
-        let qs = format!("?{}", params.join("&"));
-        self.get(&format!("/api/v1/flow-runs{qs}"))
+        let mut qs = QueryString::new();
+        qs.push("runtime_uuid", runtime_uuid);
+        qs.push_opt("status", filters.status.as_deref());
+        qs.push_opt("flow", filters.flow.as_deref());
+        qs.push_opt("since", filters.since.as_deref());
+        qs.push_opt("until", filters.until.as_deref());
+        qs.push_opt("offset", filters.offset);
+        qs.push_opt("limit", filters.limit);
+        self.get(&format!("/api/v1/flow-runs{}", qs.finish()))
     }
 
     pub fn get_flow_run(&self, runtime_uuid: &str, name: &str) -> Result<FlowRun> {
         self.get(&format!(
             "/api/v1/flow-runs/{}?runtime_uuid={}",
             encode_path(name),
-            encode_path(runtime_uuid)
+            encode_query_value(runtime_uuid)
         ))
     }
 
@@ -155,15 +179,28 @@ impl AscendClient {
         handle_response(resp)
     }
 
-    fn post_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
+    fn post_empty<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let token = self.auth.get_token()?;
         let url = format!("{}{path}", self.instance_api_url);
         let resp = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {token}"))
+            .send_empty()
+            .context(format!("POST {path}"))?;
+        handle_response(resp)
+    }
+
+    fn post_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
+        let token = self.auth.get_token()?;
+        let url = format!("{}{path}", self.instance_api_url);
+        let json_body = serde_json::to_string(body)?;
+        let resp = self
+            .agent
+            .post(&url)
+            .header("Authorization", &format!("Bearer {token}"))
             .header("Content-Type", "application/json")
-            .send(serde_json::to_string(body)?.as_bytes())
+            .send(json_body.as_bytes())
             .context(format!("POST {path}"))?;
         handle_response(resp)
     }

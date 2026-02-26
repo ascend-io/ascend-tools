@@ -24,20 +24,6 @@ struct CachedToken {
     expires_at: u64,
 }
 
-fn new_agent() -> Agent {
-    Agent::new_with_config(
-        ureq::config::Config::builder()
-            .tls_config(
-                ureq::tls::TlsConfig::builder()
-                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-                    .build(),
-            )
-            .http_status_as_error(false)
-            .timeout_global(Some(std::time::Duration::from_secs(30)))
-            .build(),
-    )
-}
-
 impl Auth {
     pub fn new(
         service_account_id: String,
@@ -53,7 +39,7 @@ impl Auth {
             service_account_id,
             key_bytes,
             instance_api_url,
-            agent: new_agent(),
+            agent: crate::new_agent(),
             cloud_api_domain: Mutex::new(None),
             cached_token: Mutex::new(None),
         })
@@ -195,7 +181,20 @@ impl std::fmt::Debug for Auth {
     }
 }
 
-/// Wrap a raw 32-byte Ed25519 seed into PKCS#8 DER format.
+/// Wrap a raw 32-byte Ed25519 seed into PKCS#8 v1 DER format (RFC 8410 §7).
+///
+/// We hand-roll the DER rather than using the `pkcs8` crate because:
+/// - The encoding is fixed-size (48 bytes) with no conditional branches
+/// - Ed25519 PKCS#8 has a single canonical form (no parameters, no public key)
+/// - Adding `pkcs8` as a direct dep would require coordinating features (`alloc`)
+///   across three separate Cargo.lock files (core, cli, py)
+///
+/// Structure:
+///   SEQUENCE {
+///     INTEGER 0                          -- version (v1)
+///     SEQUENCE { OID 1.3.101.112 }       -- algorithm (Ed25519)
+///     OCTET STRING { OCTET STRING seed } -- privateKey (CurvePrivateKey)
+///   }
 fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
     if seed.len() != 32 {
         bail!("expected 32-byte Ed25519 seed, got {} bytes", seed.len());
