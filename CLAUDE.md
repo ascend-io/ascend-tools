@@ -40,8 +40,6 @@ src/ascend_tools/
         └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
 ```
 
-The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`.
-
 The `-py` crate is **not** in a Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop`. The `-mcp` crate uses `rmcp` (checked out locally at `rust-sdk/`) for the MCP protocol implementation.
 
 PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.

@@ -334,7 +334,7 @@ def main():
             got_paused = client.get_runtime(uuid=runtime_uuid)
         check(got_paused.get("health") is None, "paused runtime has health=None")
 
-        # run_flow without wakeup should fail on a paused runtime
+        # run_flow without resume should fail on a paused runtime
         try:
             client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name)
             check(False, "run_flow on paused runtime should raise", "no error raised")

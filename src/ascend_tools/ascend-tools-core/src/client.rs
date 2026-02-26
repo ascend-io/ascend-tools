@@ -5,7 +5,7 @@ use ureq::Agent;
 
 use crate::auth::Auth;
 use crate::config::Config;
-use crate::models::*;
+use crate::models::{Flow, FlowRun, FlowRunFilters, FlowRunTrigger, Runtime, RuntimeFilters};
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
 
@@ -58,13 +58,15 @@ pub struct AscendClient {
 
 impl AscendClient {
     pub fn new(config: Config) -> Result<Self> {
+        let agent = crate::new_agent();
         let auth = Auth::new(
             config.service_account_id,
             &config.service_account_key,
             config.instance_api_url.clone(),
+            agent.clone(),
         )?;
         Ok(Self {
-            agent: crate::new_agent(),
+            agent,
             instance_api_url: config.instance_api_url,
             auth,
         })
@@ -107,9 +109,9 @@ impl AscendClient {
         runtime_uuid: &str,
         flow_name: &str,
         spec: Option<Value>,
-        wakeup: bool,
+        resume: bool,
     ) -> Result<FlowRunTrigger> {
-        if wakeup {
+        if resume {
             self.resume_runtime(runtime_uuid)?;
         } else {
             let runtime = self.get_runtime(runtime_uuid)?;

@@ -29,6 +29,7 @@ impl Auth {
         service_account_id: String,
         key_b64: &str,
         instance_api_url: String,
+        agent: Agent,
     ) -> Result<Self> {
         let key_bytes = URL_SAFE_NO_PAD
             .decode(key_b64.trim())
@@ -39,7 +40,7 @@ impl Auth {
             service_account_id,
             key_bytes,
             instance_api_url,
-            agent: crate::new_agent(),
+            agent,
             cloud_api_domain: Mutex::new(None),
             cached_token: Mutex::new(None),
         })

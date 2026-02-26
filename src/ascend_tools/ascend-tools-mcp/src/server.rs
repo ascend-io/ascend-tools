@@ -8,9 +8,12 @@ use rmcp::{
 };
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::*;
+use ascend_tools::models::{FlowRunFilters, RuntimeFilters};
 
-use crate::params::*;
+use crate::params::{
+    GetFlowRunParams, GetRuntimeParams, ListFlowRunsParams, ListFlowsParams, ListRuntimesParams,
+    PauseRuntimeParams, ResumeRuntimeParams, RunFlowParams,
+};
 
 fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
     let json = serde_json::to_string_pretty(value)

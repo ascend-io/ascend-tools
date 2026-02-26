@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
-use ascend_tools::models::*;
+use ascend_tools::models::{FlowRunFilters, RuntimeFilters};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -223,17 +223,12 @@ fn handle_runtime(
                     let rows: Vec<Vec<String>> = runtimes
                         .iter()
                         .map(|r| {
-                            let health = if r.paused {
-                                "paused".into()
-                            } else {
-                                r.health.clone().unwrap_or_else(|| "-".into())
-                            };
                             vec![
                                 r.uuid.clone(),
                                 r.id.clone(),
                                 r.title.clone(),
                                 r.kind.clone(),
-                                health,
+                                display_health(r),
                             ]
                         })
                         .collect();
@@ -246,16 +241,11 @@ fn handle_runtime(
             match output {
                 OutputMode::Json => print_json(&r)?,
                 OutputMode::Text => {
-                    let health = if r.paused {
-                        "paused".into()
-                    } else {
-                        r.health.clone().unwrap_or_else(|| "-".into())
-                    };
                     println!("UUID:         {}", r.uuid);
                     println!("ID:           {}", r.id);
                     println!("Title:        {}", r.title);
                     println!("Kind:         {}", r.kind);
-                    println!("Health:       {health}");
+                    println!("Health:       {}", display_health(&r));
                     println!("Project:      {}", r.project_uuid);
                     println!("Environment:  {}", r.environment_uuid);
                     println!(
@@ -404,6 +394,14 @@ fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
             println!("Installed ascend-tools skill to {}", abs.display());
             Ok(())
         }
+    }
+}
+
+fn display_health(r: &ascend_tools::models::Runtime) -> String {
+    if r.paused {
+        "paused".into()
+    } else {
+        r.health.clone().unwrap_or_else(|| "-".into())
     }
 }
 
