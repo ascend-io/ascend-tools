@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
 use std::env;
 
-const SA_ID_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_ID"];
-const SA_KEY_ENV_VARS: &[&str] = &["ASCEND_SERVICE_ACCOUNT_KEY"];
-const INSTANCE_API_URL_ENV_VARS: &[&str] = &["ASCEND_INSTANCE_API_URL"];
+const SA_ID_ENV: &str = "ASCEND_SERVICE_ACCOUNT_ID";
+const SA_KEY_ENV: &str = "ASCEND_SERVICE_ACCOUNT_KEY";
+const INSTANCE_API_URL_ENV: &str = "ASCEND_INSTANCE_API_URL";
 
 #[derive(Clone)]
 pub struct Config {
@@ -25,13 +25,9 @@ impl std::fmt::Debug for Config {
 impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            service_account_id: resolve_required("service_account_id", SA_ID_ENV_VARS, None)?,
-            service_account_key: resolve_required("service_account_key", SA_KEY_ENV_VARS, None)?,
-            instance_api_url: resolve_required(
-                "instance_api_url",
-                INSTANCE_API_URL_ENV_VARS,
-                None,
-            )?,
+            service_account_id: resolve_required("service_account_id", SA_ID_ENV, None)?,
+            service_account_key: resolve_required("service_account_key", SA_KEY_ENV, None)?,
+            instance_api_url: resolve_required("instance_api_url", INSTANCE_API_URL_ENV, None)?,
         })
     }
 
@@ -43,39 +39,36 @@ impl Config {
         Ok(Self {
             service_account_id: resolve_required(
                 "service_account_id",
-                SA_ID_ENV_VARS,
+                SA_ID_ENV,
                 service_account_id,
             )?,
             service_account_key: resolve_required(
                 "service_account_key",
-                SA_KEY_ENV_VARS,
+                SA_KEY_ENV,
                 service_account_key,
             )?,
             instance_api_url: resolve_required(
                 "instance_api_url",
-                INSTANCE_API_URL_ENV_VARS,
+                INSTANCE_API_URL_ENV,
                 instance_api_url,
             )?,
         })
     }
 }
 
-fn resolve_required(name: &str, env_vars: &[&str], cli_value: Option<&str>) -> Result<String> {
+fn resolve_required(name: &str, env_var: &str, cli_value: Option<&str>) -> Result<String> {
     if let Some(v) = cli_value {
         if !v.is_empty() {
             return Ok(v.to_string());
         }
     }
-    for var in env_vars {
-        if let Ok(v) = env::var(var) {
-            if !v.is_empty() {
-                return Ok(v);
-            }
+    if let Ok(v) = env::var(env_var) {
+        if !v.is_empty() {
+            return Ok(v);
         }
     }
     bail!(
-        "{name} is required. Set {} or pass --{}",
-        env_vars[0],
+        "{name} is required. Set {env_var} or pass --{}",
         name.replace('_', "-")
     )
 }
@@ -86,13 +79,13 @@ mod tests {
 
     #[test]
     fn test_resolve_required_with_cli_value() {
-        let result = resolve_required("test", &["NONEXISTENT_VAR"], Some("cli-value"));
+        let result = resolve_required("test", "NONEXISTENT_VAR", Some("cli-value"));
         assert_eq!(result.unwrap(), "cli-value");
     }
 
     #[test]
     fn test_resolve_required_missing() {
-        let result = resolve_required("test_field", &["NONEXISTENT_VAR_12345"], None);
+        let result = resolve_required("test_field", "NONEXISTENT_VAR_12345", None);
         assert!(result.is_err());
     }
 }

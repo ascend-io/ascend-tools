@@ -15,8 +15,17 @@ use crate::params::{
     PauseRuntimeParams, ResumeRuntimeParams, RunFlowParams,
 };
 
-fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(value)
+/// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
+async fn blocking<T: serde::Serialize + Send + 'static>(
+    client: &Arc<AscendClient>,
+    f: impl FnOnce(&AscendClient) -> anyhow::Result<T> + Send + 'static,
+) -> Result<CallToolResult, McpError> {
+    let client = client.clone();
+    let result = tokio::task::spawn_blocking(move || f(&client))
+        .await
+        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
+        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
+    let json = serde_json::to_string_pretty(&result)
         .map_err(|e| McpError::internal_error(format!("JSON serialization error: {e}"), None))?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
@@ -43,9 +52,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListRuntimesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            client.list_runtimes(RuntimeFilters {
+        blocking(&self.client, move |c| {
+            c.list_runtimes(RuntimeFilters {
                 id: params.id,
                 kind: params.kind,
                 project_uuid: params.project_uuid,
@@ -53,10 +61,6 @@ impl AscendMcpServer {
             })
         })
         .await
-        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
     }
 
     #[tool(description = "Get details of a specific Ascend runtime by UUID")]
@@ -64,13 +68,7 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<GetRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result = tokio::task::spawn_blocking(move || client.get_runtime(&params.uuid))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-            .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
+        blocking(&self.client, move |c| c.get_runtime(&params.uuid)).await
     }
 
     #[tool(description = "Resume a paused Ascend runtime")]
@@ -78,14 +76,10 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ResumeRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result =
-            tokio::task::spawn_blocking(move || client.resume_runtime(&params.runtime_uuid))
-                .await
-                .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-                .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
+        blocking(&self.client, move |c| {
+            c.resume_runtime(&params.runtime_uuid)
+        })
+        .await
     }
 
     #[tool(description = "Pause a running Ascend runtime")]
@@ -93,14 +87,7 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<PauseRuntimeParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result =
-            tokio::task::spawn_blocking(move || client.pause_runtime(&params.runtime_uuid))
-                .await
-                .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-                .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
+        blocking(&self.client, move |c| c.pause_runtime(&params.runtime_uuid)).await
     }
 
     #[tool(description = "List flows in an Ascend runtime")]
@@ -108,13 +95,7 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListFlowsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result = tokio::task::spawn_blocking(move || client.list_flows(&params.runtime_uuid))
-            .await
-            .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-            .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
+        blocking(&self.client, move |c| c.list_flows(&params.runtime_uuid)).await
     }
 
     #[tool(
@@ -124,21 +105,16 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<RunFlowParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
         let spec = params
             .spec
             .map(serde_json::to_value)
             .transpose()
             .map_err(|e| McpError::internal_error(format!("invalid spec: {e}"), None))?;
         let resume = params.resume.unwrap_or(false);
-        let result = tokio::task::spawn_blocking(move || {
-            client.run_flow(&params.runtime_uuid, &params.flow_name, spec, resume)
+        blocking(&self.client, move |c| {
+            c.run_flow(&params.runtime_uuid, &params.flow_name, spec, resume)
         })
         .await
-        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
     }
 
     #[tool(
@@ -148,9 +124,8 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<ListFlowRunsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            client.list_flow_runs(
+        blocking(&self.client, move |c| {
+            c.list_flow_runs(
                 &params.runtime_uuid,
                 FlowRunFilters {
                     status: params.status,
@@ -163,10 +138,6 @@ impl AscendMcpServer {
             )
         })
         .await
-        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
     }
 
     #[tool(description = "Get details of a specific flow run by name")]
@@ -174,15 +145,10 @@ impl AscendMcpServer {
         &self,
         Parameters(params): Parameters<GetFlowRunParams>,
     ) -> Result<CallToolResult, McpError> {
-        let client = self.client.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            client.get_flow_run(&params.runtime_uuid, &params.name)
+        blocking(&self.client, move |c| {
+            c.get_flow_run(&params.runtime_uuid, &params.name)
         })
         .await
-        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        json_result(&result)
     }
 }
 

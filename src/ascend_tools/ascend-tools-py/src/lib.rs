@@ -17,12 +17,9 @@ impl Client {
         service_account_key: Option<&str>,
         instance_api_url: Option<&str>,
     ) -> PyResult<Self> {
-        let config = Config::with_overrides(
-            service_account_id,
-            service_account_key,
-            instance_api_url,
-        )
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let config =
+            Config::with_overrides(service_account_id, service_account_key, instance_api_url)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
         let inner = AscendClient::new(config)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -39,13 +36,14 @@ impl Client {
         project_uuid: Option<&str>,
         environment_uuid: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
-        let runtimes = self
-            .inner
-            .list_runtimes(models::RuntimeFilters {
-                id: id.map(String::from),
-                kind: kind.map(String::from),
-                project_uuid: project_uuid.map(String::from),
-                environment_uuid: environment_uuid.map(String::from),
+        let runtimes = py
+            .detach(|| {
+                self.inner.list_runtimes(models::RuntimeFilters {
+                    id: id.map(String::from),
+                    kind: kind.map(String::from),
+                    project_uuid: project_uuid.map(String::from),
+                    environment_uuid: environment_uuid.map(String::from),
+                })
             })
             .map_err(to_py_err)?;
         to_python(py, &runtimes)
@@ -53,25 +51,33 @@ impl Client {
 
     #[pyo3(signature = (*, uuid))]
     fn get_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
-        let runtime = self.inner.get_runtime(uuid).map_err(to_py_err)?;
+        let runtime = py
+            .detach(|| self.inner.get_runtime(uuid))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
     #[pyo3(signature = (*, uuid))]
     fn resume_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
-        let runtime = self.inner.resume_runtime(uuid).map_err(to_py_err)?;
+        let runtime = py
+            .detach(|| self.inner.resume_runtime(uuid))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
     #[pyo3(signature = (*, uuid))]
     fn pause_runtime(&self, py: Python<'_>, uuid: &str) -> PyResult<Py<PyAny>> {
-        let runtime = self.inner.pause_runtime(uuid).map_err(to_py_err)?;
+        let runtime = py
+            .detach(|| self.inner.pause_runtime(uuid))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
     #[pyo3(signature = (*, runtime_uuid))]
     fn list_flows(&self, py: Python<'_>, runtime_uuid: &str) -> PyResult<Py<PyAny>> {
-        let flows = self.inner.list_flows(runtime_uuid).map_err(to_py_err)?;
+        let flows = py
+            .detach(|| self.inner.list_flows(runtime_uuid))
+            .map_err(to_py_err)?;
         to_python(py, &flows)
     }
 
@@ -88,9 +94,11 @@ impl Client {
             Some(obj) => Some(pythonize::depythonize(obj)?),
             None => None,
         };
-        let trigger = self
-            .inner
-            .run_flow(runtime_uuid, flow_name, spec_value, resume)
+        let trigger = py
+            .detach(|| {
+                self.inner
+                    .run_flow(runtime_uuid, flow_name, spec_value, resume)
+            })
             .map_err(to_py_err)?;
         to_python(py, &trigger)
     }
@@ -107,33 +115,28 @@ impl Client {
         offset: Option<u64>,
         limit: Option<u64>,
     ) -> PyResult<Py<PyAny>> {
-        let runs = self
-            .inner
-            .list_flow_runs(
-                runtime_uuid,
-                models::FlowRunFilters {
-                    status: status.map(String::from),
-                    flow: flow_name.map(String::from),
-                    since: since.map(String::from),
-                    until: until.map(String::from),
-                    offset,
-                    limit,
-                },
-            )
+        let runs = py
+            .detach(|| {
+                self.inner.list_flow_runs(
+                    runtime_uuid,
+                    models::FlowRunFilters {
+                        status: status.map(String::from),
+                        flow: flow_name.map(String::from),
+                        since: since.map(String::from),
+                        until: until.map(String::from),
+                        offset,
+                        limit,
+                    },
+                )
+            })
             .map_err(to_py_err)?;
         to_python(py, &runs)
     }
 
     #[pyo3(signature = (*, runtime_uuid, name))]
-    fn get_flow_run(
-        &self,
-        py: Python<'_>,
-        runtime_uuid: &str,
-        name: &str,
-    ) -> PyResult<Py<PyAny>> {
-        let run = self
-            .inner
-            .get_flow_run(runtime_uuid, name)
+    fn get_flow_run(&self, py: Python<'_>, runtime_uuid: &str, name: &str) -> PyResult<Py<PyAny>> {
+        let run = py
+            .detach(|| self.inner.get_flow_run(runtime_uuid, name))
             .map_err(to_py_err)?;
         to_python(py, &run)
     }
