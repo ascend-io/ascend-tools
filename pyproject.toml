@@ -19,7 +19,6 @@ ascend-tools = "ascend_tools:main"
 dev = [
     "maturin>=1.0,<2.0",
     "ruff>=0.9",
-    "pytest>=8",
     "ipython>=9.10.0",
 ]
 

@@ -50,7 +50,7 @@ PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (
 bin/build       # build Rust + Python (bin/build-rs, bin/build-py)
 bin/check       # lint + test (bin/check-rs, bin/check-py)
 bin/format      # auto-format (bin/format-rs, bin/format-py)
-bin/test        # run tests (bin/test-rs, bin/test-py)
+bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)
 ```
 

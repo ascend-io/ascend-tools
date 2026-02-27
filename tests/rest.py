@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.13"
 # dependencies = ["httpx", "cryptography"]
 # ///
 """REST API integration tests for the Ascend Instance API.
