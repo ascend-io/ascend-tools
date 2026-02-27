@@ -6,4 +6,7 @@ echo "Running ruff..."
 uv run ruff check .
 uv run ruff format --check .
 
+echo "Running ty..."
+uv run ty check
+
 echo "Python checks passed!"

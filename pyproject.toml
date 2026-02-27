@@ -16,11 +16,7 @@ Homepage = "https://github.com/ascend-io/ascend-tools"
 ascend-tools = "ascend_tools:main"
 
 [dependency-groups]
-dev = [
-    "maturin>=1.0,<2.0",
-    "ruff>=0.9",
-    "ipython>=9.10.0",
-]
+dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "ipython>=9.10.0", "ty>=0.0.19"]
 
 [tool.maturin]
 module-name = "ascend_tools.core"
@@ -40,3 +36,8 @@ cache-keys = [
   { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
   { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
 ]
+
+[tool.ty.src]
+# Exclude self-contained uv scripts — ty can't resolve their inline
+# script dependencies. See https://github.com/astral-sh/ty/issues/691
+exclude = ["tests/rest.py"]
