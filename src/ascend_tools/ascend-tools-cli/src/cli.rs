@@ -392,7 +392,7 @@ fn handle_flow(
 
 // -- skill --
 
-const SKILL_CONTENT: &str = include_str!("skill.md");
+const SKILL_CONTENT: &str = include_str!("skill-cli.md");
 
 fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
     let Some(cmd) = cmd else {
