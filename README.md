@@ -1,8 +1,8 @@
 # ascend-tools
 
-SDK, CLI, and MCP server for the Ascend REST API.
+CLI, SDK, and MCP server for the Ascend REST API.
 
-> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access.
+> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
 
 ## Install
 
