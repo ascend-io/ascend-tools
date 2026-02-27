@@ -57,14 +57,23 @@ impl Config {
 }
 
 fn resolve_required(name: &str, env_var: &str, cli_value: Option<&str>) -> Result<String> {
+    resolve(name, env_var, cli_value, env::var(env_var).ok().as_deref())
+}
+
+fn resolve(
+    name: &str,
+    env_var: &str,
+    cli_value: Option<&str>,
+    env_value: Option<&str>,
+) -> Result<String> {
     if let Some(v) = cli_value {
         if !v.is_empty() {
             return Ok(v.to_string());
         }
     }
-    if let Ok(v) = env::var(env_var) {
+    if let Some(v) = env_value {
         if !v.is_empty() {
-            return Ok(v);
+            return Ok(v.to_string());
         }
     }
     bail!(
@@ -78,14 +87,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_resolve_required_with_cli_value() {
-        let result = resolve_required("test", "NONEXISTENT_VAR", Some("cli-value"));
+    fn test_resolve_with_cli_value() {
+        let result = resolve("test", "TEST_VAR", Some("cli-value"), None);
         assert_eq!(result.unwrap(), "cli-value");
     }
 
     #[test]
-    fn test_resolve_required_missing() {
-        let result = resolve_required("test_field", "NONEXISTENT_VAR_12345", None);
+    fn test_resolve_missing() {
+        let result = resolve("test_field", "TEST_VAR", None, None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_cli_overrides_env() {
+        let result = resolve("test", "TEST_VAR", Some("from-cli"), Some("from-env"));
+        assert_eq!(result.unwrap(), "from-cli");
+    }
+
+    #[test]
+    fn test_resolve_falls_back_to_env() {
+        let result = resolve("test", "TEST_VAR", None, Some("from-env"));
+        assert_eq!(result.unwrap(), "from-env");
+    }
+
+    #[test]
+    fn test_resolve_empty_cli_falls_back_to_env() {
+        let result = resolve("test", "TEST_VAR", Some(""), Some("from-env"));
+        assert_eq!(result.unwrap(), "from-env");
+    }
+
+    #[test]
+    fn test_resolve_empty_env_errors() {
+        let result = resolve("test_field", "TEST_VAR", None, Some(""));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_error_message_format() {
+        let err = resolve("instance_api_url", "ASCEND_INSTANCE_API_URL", None, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("ASCEND_INSTANCE_API_URL"));
+        assert!(err.contains("--instance-api-url"));
     }
 }

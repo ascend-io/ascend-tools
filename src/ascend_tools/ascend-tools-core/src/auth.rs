@@ -25,6 +25,9 @@ struct CachedToken {
 }
 
 impl Auth {
+    /// Create a new Auth instance.
+    ///
+    /// `key_b64` accepts both URL-safe no-pad (RFC 4648 §5) and standard base64 encodings.
     pub fn new(
         service_account_id: String,
         key_b64: &str,
@@ -211,4 +214,148 @@ fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
     der.extend_from_slice(prefix);
     der.extend_from_slice(seed);
     Ok(der)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_agent() -> Agent {
+        crate::new_agent()
+    }
+
+    fn test_seed() -> [u8; 32] {
+        [42u8; 32]
+    }
+
+    fn test_auth(seed: &[u8; 32]) -> Auth {
+        let b64 = URL_SAFE_NO_PAD.encode(seed);
+        Auth::new(
+            "asc-sa-test".into(),
+            &b64,
+            "https://example.com".into(),
+            test_agent(),
+        )
+        .unwrap()
+    }
+
+    // -- PKCS#8 DER encoding --
+
+    #[test]
+    fn pkcs8_der_output_is_48_bytes() {
+        let der = ed25519_seed_to_pkcs8_der(&[0u8; 32]).unwrap();
+        assert_eq!(der.len(), 48);
+    }
+
+    #[test]
+    fn pkcs8_der_has_correct_prefix() {
+        let der = ed25519_seed_to_pkcs8_der(&[0u8; 32]).unwrap();
+        let expected_prefix: &[u8] = &[
+            0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22,
+            0x04, 0x20,
+        ];
+        assert_eq!(&der[..16], expected_prefix);
+    }
+
+    #[test]
+    fn pkcs8_der_embeds_seed() {
+        let seed: Vec<u8> = (0..32).collect();
+        let der = ed25519_seed_to_pkcs8_der(&seed).unwrap();
+        assert_eq!(&der[16..], &seed[..]);
+    }
+
+    #[test]
+    fn pkcs8_der_rejects_wrong_length() {
+        assert!(ed25519_seed_to_pkcs8_der(&[]).is_err());
+        assert!(ed25519_seed_to_pkcs8_der(&[0u8; 16]).is_err());
+        assert!(ed25519_seed_to_pkcs8_der(&[0u8; 64]).is_err());
+    }
+
+    #[test]
+    fn pkcs8_der_roundtrip_with_jsonwebtoken() {
+        let der = ed25519_seed_to_pkcs8_der(&test_seed()).unwrap();
+        let key = jsonwebtoken::EncodingKey::from_ed_der(&der);
+        let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::EdDSA);
+        let claims = serde_json::json!({"sub": "test"});
+        assert!(jsonwebtoken::encode(&header, &claims, &key).is_ok());
+    }
+
+    // -- Base64 decoding --
+
+    #[test]
+    fn auth_new_accepts_url_safe_base64() {
+        let b64 = URL_SAFE_NO_PAD.encode(test_seed());
+        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        assert!(auth.is_ok());
+    }
+
+    #[test]
+    fn auth_new_accepts_standard_base64() {
+        // 0xFF bytes produce +/ in STANDARD but -_ in URL_SAFE
+        let b64 = base64::engine::general_purpose::STANDARD.encode([0xFF_u8; 32]);
+        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        assert!(auth.is_ok());
+    }
+
+    #[test]
+    fn auth_new_rejects_invalid_base64() {
+        let auth = Auth::new(
+            "sa".into(),
+            "!!!invalid!!!",
+            "https://x.com".into(),
+            test_agent(),
+        );
+        assert!(auth.is_err());
+    }
+
+    #[test]
+    fn auth_new_trims_whitespace() {
+        let b64 = format!("  {}  \n", URL_SAFE_NO_PAD.encode(test_seed()));
+        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        assert!(auth.is_ok());
+    }
+
+    // -- JWT signing --
+
+    #[test]
+    fn sign_jwt_produces_three_part_token() {
+        let auth = test_auth(&test_seed());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let jwt = auth.sign_jwt(now, "api.cloud.ascend.io").unwrap();
+        assert_eq!(jwt.split('.').count(), 3);
+    }
+
+    #[test]
+    fn sign_jwt_has_correct_claims() {
+        let auth = test_auth(&test_seed());
+        let now = 1_700_000_000u64;
+        let jwt = auth.sign_jwt(now, "api.cloud.ascend.io").unwrap();
+
+        // Decode the payload (second segment) without signature verification
+        let payload_b64 = jwt.split('.').nth(1).unwrap();
+        // jsonwebtoken uses URL_SAFE_NO_PAD for JWT segments
+        let payload_bytes = URL_SAFE_NO_PAD.decode(payload_b64).unwrap();
+        let claims: Value = serde_json::from_slice(&payload_bytes).unwrap();
+
+        assert_eq!(claims["sub"], "asc-sa-test");
+        assert_eq!(claims["aud"], "https://api.cloud.ascend.io/auth/token");
+        assert_eq!(claims["exp"], now + 300);
+        assert_eq!(claims["iat"], now);
+        assert_eq!(claims["name"], "asc-sa-test");
+        assert_eq!(claims["service_account"], "asc-sa-test");
+    }
+
+    // -- Debug redaction --
+
+    #[test]
+    fn debug_redacts_key() {
+        let seed = test_seed();
+        let auth = test_auth(&seed);
+        let debug = format!("{auth:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains(&URL_SAFE_NO_PAD.encode(seed)));
+    }
 }

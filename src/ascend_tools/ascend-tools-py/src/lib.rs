@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::models;
