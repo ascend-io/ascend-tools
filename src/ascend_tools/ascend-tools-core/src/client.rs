@@ -111,15 +111,16 @@ impl AscendClient {
         spec: Option<Value>,
         resume: bool,
     ) -> Result<FlowRunTrigger> {
-        if resume {
-            self.resume_runtime(runtime_uuid)?;
-        } else {
-            let runtime = self.get_runtime(runtime_uuid)?;
-            if runtime.paused {
+        let runtime = self.get_runtime(runtime_uuid)?;
+        if runtime.paused {
+            if resume {
+                self.resume_runtime(runtime_uuid)?;
+            } else {
                 bail!(
                     "Runtime is paused. Use --resume (CLI) or resume=True (SDK) to resume before running."
                 );
             }
+        } else {
             match runtime.health.as_deref() {
                 Some("running") => {}
                 Some("starting") => {
@@ -130,15 +131,15 @@ impl AscendClient {
                 None => bail!("Runtime has no health status. It may be initializing."),
             }
         }
-        let body = serde_json::json!({ "spec": spec });
-        self.post_json(
-            &format!(
-                "/api/v1/runtimes/{}/flows/{}:run",
-                encode_path(runtime_uuid),
-                encode_path(flow_name)
-            ),
-            &body,
-        )
+        let path = format!(
+            "/api/v1/runtimes/{}/flows/{}:run",
+            encode_path(runtime_uuid),
+            encode_path(flow_name)
+        );
+        match spec {
+            Some(spec) => self.post_json(&path, &serde_json::json!({ "spec": spec })),
+            None => self.post_empty(&path),
+        }
     }
 
     // -- Flow runs --

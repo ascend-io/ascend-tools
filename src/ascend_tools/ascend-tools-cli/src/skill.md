@@ -33,7 +33,7 @@ ascend-tools runtime pause <UUID>
 ```bash
 ascend-tools flow list --runtime <UUID>
 ascend-tools flow run <FLOW_NAME> --runtime <UUID> [--spec '<JSON>'] [--resume]
-ascend-tools flow list-runs --runtime <UUID> [--status <STATUS>] [--flow-name <NAME>]
+ascend-tools flow list-runs --runtime <UUID> [--status <STATUS>] [--flow-name <NAME>] [--since <ISO8601>] [--until <ISO8601>] [--offset <N>] [--limit <N>]
 ascend-tools flow get-run <RUN_NAME> --runtime <UUID>
 ```
 
@@ -47,7 +47,7 @@ ascend-tools flow run my-flow --runtime <UUID> --spec '{"components": ["componen
 ascend-tools flow run my-flow --runtime <UUID> --spec '{"run_tests": false}'
 ```
 
-Available spec fields: `full_refresh`, `components`, `component_categories`, `parameters`, `run_tests`, `halt_flow_on_error`, `disable_optimizers`, `runner_overrides`.
+Available spec fields: `full_refresh`, `components`, `component_categories`, `parameters`, `run_tests`, `store_test_results`, `halt_flow_on_error`, `disable_optimizers`, `update_materialization_type`, `deep_data_pruning`, `backfill_missing_statistics`, `disable_incremental_metadata_collection`, `runner_overrides`.
 
 ## Output
 

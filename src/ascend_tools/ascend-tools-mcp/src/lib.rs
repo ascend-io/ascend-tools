@@ -15,6 +15,9 @@ use tracing_subscriber::EnvFilter;
 /// Python's SIGINT handler swallows the signal instead of propagating it,
 /// which prevents tokio's ctrl_c() from ever firing.
 fn reset_sigint() {
+    // SAFETY: Setting SIGINT to the default disposition (SIG_DFL) is always safe.
+    // This is needed because Python's SIGINT handler (installed by PyO3) swallows
+    // the signal, preventing tokio's ctrl_c() from firing.
     unsafe {
         libc::signal(libc::SIGINT, libc::SIG_DFL);
     }

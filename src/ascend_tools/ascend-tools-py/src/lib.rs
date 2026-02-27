@@ -38,12 +38,12 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let runtimes = py
             .detach(|| {
-                self.inner.list_runtimes(models::RuntimeFilters {
-                    id: id.map(String::from),
-                    kind: kind.map(String::from),
-                    project_uuid: project_uuid.map(String::from),
-                    environment_uuid: environment_uuid.map(String::from),
-                })
+                let mut filters = models::RuntimeFilters::default();
+                filters.id = id.map(String::from);
+                filters.kind = kind.map(String::from);
+                filters.project_uuid = project_uuid.map(String::from);
+                filters.environment_uuid = environment_uuid.map(String::from);
+                self.inner.list_runtimes(filters)
             })
             .map_err(to_py_err)?;
         to_python(py, &runtimes)
@@ -117,17 +117,14 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let runs = py
             .detach(|| {
-                self.inner.list_flow_runs(
-                    runtime_uuid,
-                    models::FlowRunFilters {
-                        status: status.map(String::from),
-                        flow: flow_name.map(String::from),
-                        since: since.map(String::from),
-                        until: until.map(String::from),
-                        offset,
-                        limit,
-                    },
-                )
+                let mut filters = models::FlowRunFilters::default();
+                filters.status = status.map(String::from);
+                filters.flow = flow_name.map(String::from);
+                filters.since = since.map(String::from);
+                filters.until = until.map(String::from);
+                filters.offset = offset;
+                filters.limit = limit;
+                self.inner.list_flow_runs(runtime_uuid, filters)
             })
             .map_err(to_py_err)?;
         to_python(py, &runs)

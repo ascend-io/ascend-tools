@@ -138,10 +138,7 @@ class Auth:
         url = f"{self.instance_api_url}/api/v1/auth/token"
         resp = self._http.post(
             url,
-            headers={
-                "Authorization": f"Bearer {sa_jwt}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {sa_jwt}"},
         )
         resp.raise_for_status()
         data = resp.json()
@@ -210,21 +207,24 @@ class AscendClient:
         spec: dict | None = None,
         resume: bool = False,
     ) -> dict:
-        if resume:
-            self.resume_runtime(runtime_uuid)
-        else:
-            runtime = self.get_runtime(runtime_uuid)
-            if runtime.get("paused"):
+        runtime = self.get_runtime(runtime_uuid)
+        if runtime.get("paused"):
+            if resume:
+                self.resume_runtime(runtime_uuid)
+            else:
                 raise RuntimeError(
                     "Runtime is paused. Use resume=True to resume before running."
                 )
+        else:
             health = runtime.get("health")
             if health != "running":
                 raise RuntimeError(f"Runtime health is '{health}', expected 'running'.")
-        return self._post_json(
-            f"/api/v1/runtimes/{_encode(runtime_uuid)}/flows/{_encode(flow_name)}:run",
-            {"spec": spec},
+        path = (
+            f"/api/v1/runtimes/{_encode(runtime_uuid)}/flows/{_encode(flow_name)}:run"
         )
+        if spec is not None:
+            return self._post_json(path, {"spec": spec})
+        return self._post_empty(path)
 
     # -- Flow runs --
 

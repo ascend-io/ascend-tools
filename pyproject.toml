@@ -6,6 +6,11 @@ requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/ascend-io/ascend-tools"
+Homepage = "https://github.com/ascend-io/ascend-tools"
 
 [project.scripts]
 ascend-tools = "ascend_tools:main"
@@ -23,13 +28,6 @@ module-name = "ascend_tools.core"
 python-packages = ["ascend_tools"]
 python-source = "src"
 manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
-
-[[tool.uv.index]]
-url = "https://pypi.org/simple/"
-
-[[tool.uv.index]]
-url = "https://us-python.pkg.dev/ascend-io-ops-artifacts/private-pypi/simple"
-default = true
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

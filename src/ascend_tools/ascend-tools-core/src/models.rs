@@ -40,6 +40,7 @@ pub struct FlowRunTrigger {
 
 /// Filters for listing runtimes.
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct RuntimeFilters {
     pub id: Option<String>,
     pub kind: Option<String>,
@@ -49,6 +50,7 @@ pub struct RuntimeFilters {
 
 /// Filters for listing flow runs.
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct FlowRunFilters {
     pub status: Option<String>,
     pub flow: Option<String>,

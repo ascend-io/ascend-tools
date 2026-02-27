@@ -6,6 +6,8 @@ SDK, CLI, and MCP server for the Ascend REST API.
 
 ## Install
 
+Pre-built binaries are available for Linux and macOS. Windows users should use Linux/macOS.
+
 ```bash
 uv tool install ascend-tools
 ```

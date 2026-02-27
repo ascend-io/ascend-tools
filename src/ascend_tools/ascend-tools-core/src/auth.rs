@@ -55,7 +55,7 @@ impl Auth {
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock before Unix epoch")
             .as_secs();
 
         // Return cached token if still valid (with 5-minute buffer)
@@ -139,7 +139,6 @@ impl Auth {
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {sa_jwt}"))
-            .header("Content-Type", "application/json")
             .send_empty()
             .map_err(|e| anyhow::anyhow!("failed to exchange token ({url}): {e}"))?;
 
@@ -161,7 +160,7 @@ impl Auth {
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock before Unix epoch")
             .as_secs();
         let expires_at = json
             .get("expiration")

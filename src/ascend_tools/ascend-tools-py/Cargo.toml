@@ -6,6 +6,8 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
 
 [lib]
 name = "core"

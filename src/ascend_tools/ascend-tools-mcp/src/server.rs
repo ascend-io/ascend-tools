@@ -79,12 +79,12 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.list_runtimes(RuntimeFilters {
-                id: params.id,
-                kind: params.kind,
-                project_uuid: params.project_uuid,
-                environment_uuid: params.environment_uuid,
-            })
+            let mut filters = RuntimeFilters::default();
+            filters.id = params.id;
+            filters.kind = params.kind;
+            filters.project_uuid = params.project_uuid;
+            filters.environment_uuid = params.environment_uuid;
+            c.list_runtimes(filters)
         })
         .await
     }
@@ -154,17 +154,14 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.list_flow_runs(
-                &params.runtime_uuid,
-                FlowRunFilters {
-                    status: params.status,
-                    flow: params.flow_name,
-                    since: params.since,
-                    until: params.until,
-                    offset: params.offset,
-                    limit: params.limit,
-                },
-            )
+            let mut filters = FlowRunFilters::default();
+            filters.status = params.status;
+            filters.flow = params.flow_name;
+            filters.since = params.since;
+            filters.until = params.until;
+            filters.offset = params.offset;
+            filters.limit = params.limit;
+            c.list_flow_runs(&params.runtime_uuid, filters)
         })
         .await
     }

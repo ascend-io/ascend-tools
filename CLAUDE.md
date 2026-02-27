@@ -102,7 +102,7 @@ ascend-tools [-o text|json] [-V]
 
   flow list --runtime <UUID>
   flow run <FLOW_NAME> --runtime <UUID> [--spec '{}'] [--resume]
-  flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name]
+  flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> -r/--runtime <UUID>
 
   skill install --target <PATH>

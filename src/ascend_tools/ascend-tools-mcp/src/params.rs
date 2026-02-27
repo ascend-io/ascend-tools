@@ -53,32 +53,45 @@ pub struct RunFlowParams {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct FlowRunSpec {
     /// List of component names to run. If omitted, all components in the flow are run.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub components: Option<Vec<String>>,
     /// List of component categories to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub component_categories: Option<Vec<String>>,
     /// If true, drop all internal data and metadata tables/views and recompute from scratch.
     /// WARNING: This is a destructive operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub full_refresh: Option<bool>,
     /// Whether to run tests after processing data. Defaults to true.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub run_tests: Option<bool>,
     /// Whether to store test results.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub store_test_results: Option<bool>,
     /// Whether to halt the flow on error.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub halt_flow_on_error: Option<bool>,
     /// Whether to disable optimizers.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_optimizers: Option<bool>,
     /// Whether to update component materialization types (e.g. between simple, view, incremental, smart).
     /// WARNING: If materialization type changes are detected, existing data will be dropped and recomputed.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub update_materialization_type: Option<bool>,
     /// Whether to use deep data pruning for Smart Table component data maintenance (slower but full table scan).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub deep_data_pruning: Option<bool>,
     /// Whether to backfill block statistics for existing data blocks without statistics.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub backfill_missing_statistics: Option<bool>,
     /// Whether to disable collection of incremental read/transform component metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_incremental_metadata_collection: Option<bool>,
     /// Custom parameters dictionary passed to the flow.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<serde_json::Value>,
     /// Runner configuration overrides for this flow run (e.g. {"size": "Medium"} or {"size": {"cpu": "8", "memory": "32Gi"}}).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub runner_overrides: Option<serde_json::Value>,
     /// Capture any additional fields for forward compatibility.
     #[serde(flatten)]

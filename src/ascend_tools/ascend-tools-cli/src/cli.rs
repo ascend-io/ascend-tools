@@ -12,16 +12,21 @@ struct Cli {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
 
-    /// Service account ID [env: ASCEND_SERVICE_ACCOUNT_ID]
-    #[arg(long, global = true)]
+    /// Service account ID
+    #[arg(long, global = true, env = "ASCEND_SERVICE_ACCOUNT_ID")]
     service_account_id: Option<String>,
 
-    /// Service account key [env: ASCEND_SERVICE_ACCOUNT_KEY]
-    #[arg(long, global = true)]
+    /// Service account key
+    #[arg(
+        long,
+        global = true,
+        env = "ASCEND_SERVICE_ACCOUNT_KEY",
+        hide_env_values = true
+    )]
     service_account_key: Option<String>,
 
-    /// Instance API URL [env: ASCEND_INSTANCE_API_URL]
-    #[arg(long, global = true)]
+    /// Instance API URL
+    #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
     instance_api_url: Option<String>,
 
     #[command(subcommand)]
@@ -52,7 +57,7 @@ enum Commands {
         #[arg(long)]
         http: bool,
         /// Bind address for HTTP transport
-        #[arg(long, default_value = "127.0.0.1:8000")]
+        #[arg(long, default_value = "127.0.0.1:8000", requires = "http")]
         bind: String,
     },
     /// Manage skills
@@ -127,6 +132,18 @@ enum FlowCommands {
         status: Option<String>,
         #[arg(short, long)]
         flow_name: Option<String>,
+        /// Filter by start time (ISO 8601)
+        #[arg(long)]
+        since: Option<String>,
+        /// Filter by end time (ISO 8601)
+        #[arg(long)]
+        until: Option<String>,
+        /// Pagination offset
+        #[arg(long)]
+        offset: Option<u64>,
+        /// Pagination limit
+        #[arg(long)]
+        limit: Option<u64>,
     },
     /// Get a flow run
     #[command(arg_required_else_help = true)]
@@ -216,12 +233,12 @@ fn handle_runtime(
             project_uuid,
             environment_uuid,
         } => {
-            let runtimes = client.list_runtimes(RuntimeFilters {
-                id,
-                kind,
-                project_uuid,
-                environment_uuid,
-            })?;
+            let mut filters = RuntimeFilters::default();
+            filters.id = id;
+            filters.kind = kind;
+            filters.project_uuid = project_uuid;
+            filters.environment_uuid = environment_uuid;
+            let runtimes = client.list_runtimes(filters)?;
             match output {
                 OutputMode::Json => print_json(&runtimes)?,
                 OutputMode::Text => {
@@ -321,15 +338,19 @@ fn handle_flow(
             runtime,
             status,
             flow_name,
+            since,
+            until,
+            offset,
+            limit,
         } => {
-            let runs = client.list_flow_runs(
-                &runtime,
-                FlowRunFilters {
-                    status,
-                    flow: flow_name,
-                    ..Default::default()
-                },
-            )?;
+            let mut filters = FlowRunFilters::default();
+            filters.status = status;
+            filters.flow = flow_name;
+            filters.since = since;
+            filters.until = until;
+            filters.offset = offset;
+            filters.limit = limit;
+            let runs = client.list_flow_runs(&runtime, filters)?;
             match output {
                 OutputMode::Json => print_json(&runs)?,
                 OutputMode::Text => {
@@ -520,6 +541,47 @@ mod tests {
                 command: Some(FlowCommands::ListRuns { .. })
             })
         ));
+    }
+
+    #[test]
+    fn test_cli_parses_flow_list_runs_all_filters() {
+        let cli = Cli::parse_from([
+            "ascend-tools",
+            "flow",
+            "list-runs",
+            "--runtime",
+            "uuid-123",
+            "--status",
+            "running",
+            "--flow-name",
+            "sales",
+            "--since",
+            "2025-01-01T00:00:00Z",
+            "--until",
+            "2025-12-31T23:59:59Z",
+            "--offset",
+            "10",
+            "--limit",
+            "50",
+        ]);
+        match cli.command {
+            Some(Commands::Flow {
+                command:
+                    Some(FlowCommands::ListRuns {
+                        since,
+                        until,
+                        offset,
+                        limit,
+                        ..
+                    }),
+            }) => {
+                assert_eq!(since.as_deref(), Some("2025-01-01T00:00:00Z"));
+                assert_eq!(until.as_deref(), Some("2025-12-31T23:59:59Z"));
+                assert_eq!(offset, Some(10));
+                assert_eq!(limit, Some(50));
+            }
+            _ => panic!("expected ListRuns command"),
+        }
     }
 
     #[test]
