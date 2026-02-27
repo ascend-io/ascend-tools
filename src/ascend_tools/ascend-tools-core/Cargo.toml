@@ -8,6 +8,7 @@ license = "MIT"
 description = "SDK for the Ascend REST API"
 repository = "https://github.com/ascend-io/ascend-tools"
 homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
 
 [lib]
 name = "ascend_tools"
