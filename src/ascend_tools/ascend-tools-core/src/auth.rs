@@ -39,6 +39,13 @@ impl Auth {
             .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
             .context("failed to decode service account key from base64")?;
 
+        if key_bytes.len() != 32 {
+            bail!(
+                "service account key must be 32 bytes (Ed25519 seed), got {}",
+                key_bytes.len()
+            );
+        }
+
         Ok(Self {
             service_account_id,
             key_bytes,
@@ -233,7 +240,7 @@ mod tests {
         Auth::new(
             "asc-sa-test".into(),
             &b64,
-            "https://example.com".into(),
+            "https://ascend.io".into(),
             test_agent(),
         )
         .unwrap()
@@ -285,7 +292,7 @@ mod tests {
     #[test]
     fn auth_new_accepts_url_safe_base64() {
         let b64 = URL_SAFE_NO_PAD.encode(test_seed());
-        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        let auth = Auth::new("sa".into(), &b64, "https://ascend.io".into(), test_agent());
         assert!(auth.is_ok());
     }
 
@@ -293,8 +300,30 @@ mod tests {
     fn auth_new_accepts_standard_base64() {
         // 0xFF bytes produce +/ in STANDARD but -_ in URL_SAFE
         let b64 = base64::engine::general_purpose::STANDARD.encode([0xFF_u8; 32]);
-        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        let auth = Auth::new("sa".into(), &b64, "https://ascend.io".into(), test_agent());
         assert!(auth.is_ok());
+    }
+
+    #[test]
+    fn auth_new_rejects_wrong_key_length() {
+        let b64_short = URL_SAFE_NO_PAD.encode([0u8; 16]);
+        let auth = Auth::new(
+            "sa".into(),
+            &b64_short,
+            "https://ascend.io".into(),
+            test_agent(),
+        );
+        assert!(auth.is_err());
+        assert!(auth.unwrap_err().to_string().contains("32 bytes"));
+
+        let b64_long = URL_SAFE_NO_PAD.encode([0u8; 64]);
+        let auth = Auth::new(
+            "sa".into(),
+            &b64_long,
+            "https://ascend.io".into(),
+            test_agent(),
+        );
+        assert!(auth.is_err());
     }
 
     #[test]
@@ -302,7 +331,7 @@ mod tests {
         let auth = Auth::new(
             "sa".into(),
             "!!!invalid!!!",
-            "https://x.com".into(),
+            "https://ascend.io".into(),
             test_agent(),
         );
         assert!(auth.is_err());
@@ -311,7 +340,7 @@ mod tests {
     #[test]
     fn auth_new_trims_whitespace() {
         let b64 = format!("  {}  \n", URL_SAFE_NO_PAD.encode(test_seed()));
-        let auth = Auth::new("sa".into(), &b64, "https://x.com".into(), test_agent());
+        let auth = Auth::new("sa".into(), &b64, "https://ascend.io".into(), test_agent());
         assert!(auth.is_ok());
     }
 
