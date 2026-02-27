@@ -56,7 +56,7 @@ bin/install     # install locally (bin/install-rs, bin/install-py)
 
 Rust workspace is at `src/ascend_tools/`. Run workspace commands from there:
 `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`
-Python checks: `ruff check .`, `ruff format --check .`
+Python checks: `ruff check .`, `ruff format --check .`, `ty check`
 
 After code changes, always run `bin/check` before committing.
 
