@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+echo "Formatting Python..."
+uv run ruff check --fix .
+uv run ruff format .
+
+echo "Python formatting complete!"

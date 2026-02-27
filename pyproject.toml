@@ -1,0 +1,43 @@
+[project]
+name = "ascend-tools"
+version = "0.1.0"
+description = "SDK and CLI for the Ascend REST API"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
+dependencies = []
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/ascend-io/ascend-tools"
+Homepage = "https://github.com/ascend-io/ascend-tools"
+
+[project.scripts]
+ascend-tools = "ascend_tools:main"
+
+[dependency-groups]
+dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "ipython>=9.10.0", "ty>=0.0.19"]
+
+[tool.maturin]
+module-name = "ascend_tools.core"
+python-packages = ["ascend_tools"]
+python-source = "src"
+manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.uv]
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "src/ascend_tools/ascend-tools-core/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-mcp/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
+]
+
+[tool.ty.src]
+# Exclude self-contained uv scripts — ty can't resolve their inline
+# script dependencies. See https://github.com/astral-sh/ty/issues/691
+exclude = ["tests/rest.py"]

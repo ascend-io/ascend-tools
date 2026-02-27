@@ -1,0 +1,28 @@
+[package]
+name = "ascend-tools-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+description = "CLI for the Ascend REST API"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+name = "ascend_tools_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ascend-tools"
+path = "src/main.rs"
+
+[dependencies]
+ascend-tools-core = { path = "../ascend-tools-core" }
+ascend-tools-mcp = { path = "../ascend-tools-mcp" }
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }

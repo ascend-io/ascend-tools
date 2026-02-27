@@ -1,0 +1,24 @@
+[package]
+name = "ascend-tools-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+description = "SDK for the Ascend REST API"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+name = "ascend_tools"
+path = "src/lib.rs"
+
+[dependencies]
+ureq = { version = "3", features = ["platform-verifier"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+base64 = "0.22"
+percent-encoding = "2"

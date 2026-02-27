@@ -1,0 +1,35 @@
+[package]
+name = "ascend-tools-mcp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+description = "MCP server for the Ascend REST API"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+name = "ascend_tools_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+ascend-tools-core = { path = "../ascend-tools-core" }
+rmcp = { version = "0.16", features = [
+    "server",
+    "macros",
+    "transport-io",
+    "transport-streamable-http-server",
+    "schemars",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "signal", "macros"] }
+tokio-util = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1.0"
+anyhow = "1"
+libc = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }

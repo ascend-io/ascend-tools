@@ -1,0 +1,28 @@
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+*.so
+*.dylib
+*.pyd
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Logs
+logs/

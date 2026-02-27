@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools"
+
+echo "Checking Rust formatting..."
+cargo fmt --all -- --check
+
+echo "Running clippy..."
+cargo clippy --workspace -- -D warnings
+
+echo "Running Rust tests..."
+cargo test --workspace
+
+echo "Rust checks passed!"
