@@ -4,6 +4,7 @@ mod params;
 mod server;
 
 use anyhow::Result;
+use ascend_tools::Result as CoreResult;
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use rmcp::ServiceExt;
@@ -38,7 +39,7 @@ fn init_tracing() {
         .try_init();
 }
 
-pub async fn run_stdio(config: Result<Config>) -> Result<()> {
+pub async fn run_stdio(config: CoreResult<Config>) -> Result<()> {
     reset_sigint();
     init_tracing();
     tracing::info!("Starting Ascend MCP server (stdio)");
@@ -69,7 +70,7 @@ pub async fn run_stdio(config: Result<Config>) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_http(config: Result<Config>, bind_addr: &str) -> Result<()> {
+pub async fn run_http(config: CoreResult<Config>, bind_addr: &str) -> Result<()> {
     reset_sigint();
     init_tracing();
     tracing::info!("Starting Ascend MCP server (HTTP) on {bind_addr}");

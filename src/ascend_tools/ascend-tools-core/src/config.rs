@@ -1,5 +1,6 @@
-use anyhow::{Result, bail};
 use std::env;
+
+use crate::error::{Error, Result};
 
 const SA_ID_ENV: &str = "ASCEND_SERVICE_ACCOUNT_ID";
 const SA_KEY_ENV: &str = "ASCEND_SERVICE_ACCOUNT_KEY";
@@ -76,10 +77,11 @@ fn resolve(
             return Ok(v.to_string());
         }
     }
-    bail!(
-        "{name} is required. Set {env_var} or pass --{}",
-        name.replace('_', "-")
-    )
+    Err(Error::MissingConfig {
+        field: name.to_string(),
+        env_var: env_var.to_string(),
+        flag: name.replace('_', "-"),
+    })
 }
 
 #[cfg(test)]

@@ -3,9 +3,12 @@
 pub mod auth;
 pub mod client;
 pub mod config;
+pub mod error;
 pub mod models;
 
 use ureq::Agent;
+
+pub use error::{Error, Result};
 
 pub(crate) fn new_agent() -> Agent {
     Agent::new_with_config(

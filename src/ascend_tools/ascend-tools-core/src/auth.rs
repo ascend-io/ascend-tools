@@ -1,10 +1,11 @@
-use anyhow::{Context, Result, bail};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::Value;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ureq::Agent;
+
+use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 
 /// Manages authentication for the Ascend API.
 ///
@@ -37,13 +38,12 @@ impl Auth {
         let key_bytes = URL_SAFE_NO_PAD
             .decode(key_b64.trim())
             .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
-            .context("failed to decode service account key from base64")?;
+            .map_err(|_| Error::InvalidServiceAccountKeyEncoding)?;
 
         if key_bytes.len() != 32 {
-            bail!(
-                "service account key must be 32 bytes (Ed25519 seed), got {}",
-                key_bytes.len()
-            );
+            return Err(Error::InvalidServiceAccountKeyLength {
+                got: key_bytes.len(),
+            });
         }
 
         Ok(Self {
@@ -58,14 +58,13 @@ impl Auth {
 
     /// Get a valid instance token, refreshing if needed.
     pub fn get_token(&self) -> Result<String> {
-        let mut guard = self
-            .cached_token
-            .lock()
-            .expect("token cache mutex poisoned");
+        let mut guard = self.cached_token.lock().map_err(|_| Error::MutexPoisoned {
+            name: "token cache",
+        })?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock before Unix epoch")
+            .map_err(|source| Error::SystemClockBeforeUnixEpoch { source })?
             .as_secs();
 
         // Return cached token if still valid (with 5-minute buffer)
@@ -94,7 +93,9 @@ impl Auth {
         let mut guard = self
             .cloud_api_domain
             .lock()
-            .expect("cloud_api_domain mutex poisoned");
+            .map_err(|_| Error::MutexPoisoned {
+                name: "cloud_api_domain",
+            })?;
 
         if let Some(ref domain) = *guard {
             return Ok(domain.clone());
@@ -105,20 +106,29 @@ impl Auth {
             .agent
             .get(&url)
             .call()
-            .map_err(|e| anyhow::anyhow!("failed to fetch auth config ({url}): {e}"))?;
+            .with_request_context(format!("failed to fetch auth config ({url})"))?;
 
         let status = resp.status().as_u16();
-        let body: String = resp.body_mut().read_to_string()?;
+        let body: String = resp
+            .body_mut()
+            .read_to_string()
+            .with_response_read_context("auth config response")?;
 
         if !(200..300).contains(&status) {
-            bail!("Failed to fetch auth config (HTTP {status}): {body}");
+            return Err(Error::ApiError {
+                status,
+                message: body,
+            });
         }
 
-        let json: Value = serde_json::from_str(&body).context("failed to parse auth config")?;
+        let json: Value = serde_json::from_str(&body).with_json_parse_context("auth config")?;
         let domain = json
             .get("cloud_api_domain")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("no cloud_api_domain in auth config: {body}"))?
+            .ok_or_else(|| Error::MissingField {
+                context: "auth config",
+                field: "cloud_api_domain",
+            })?
             .to_string();
 
         *guard = Some(domain.clone());
@@ -138,7 +148,8 @@ impl Auth {
         });
         let der_key = ed25519_seed_to_pkcs8_der(&self.key_bytes)?;
         let key = jsonwebtoken::EncodingKey::from_ed_der(&der_key);
-        jsonwebtoken::encode(&header, &claims, &key).context("failed to sign JWT")
+        jsonwebtoken::encode(&header, &claims, &key)
+            .map_err(|source| Error::JwtSignFailed { source })
     }
 
     /// Exchange the service account JWT for an instance token
@@ -150,27 +161,36 @@ impl Auth {
             .post(&url)
             .header("Authorization", &format!("Bearer {sa_jwt}"))
             .send_empty()
-            .map_err(|e| anyhow::anyhow!("failed to exchange token ({url}): {e}"))?;
+            .with_request_context(format!("failed to exchange token ({url})"))?;
 
         let status = resp.status().as_u16();
-        let resp_body: String = resp.body_mut().read_to_string()?;
+        let resp_body: String = resp
+            .body_mut()
+            .read_to_string()
+            .with_response_read_context("token exchange response")?;
 
         if !(200..300).contains(&status) {
-            bail!("Token exchange failed (HTTP {status}): {resp_body}");
+            return Err(Error::ApiError {
+                status,
+                message: resp_body,
+            });
         }
 
         let json: Value =
-            serde_json::from_str(&resp_body).context("failed to parse token response")?;
+            serde_json::from_str(&resp_body).with_json_parse_context("token exchange response")?;
 
         let token = json
             .get("access_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("no access_token in response: {resp_body}"))?
+            .ok_or_else(|| Error::MissingField {
+                context: "token exchange response",
+                field: "access_token",
+            })?
             .to_string();
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock before Unix epoch")
+            .map_err(|source| Error::SystemClockBeforeUnixEpoch { source })?
             .as_secs();
         let expires_at = json
             .get("expiration")
@@ -207,7 +227,7 @@ impl std::fmt::Debug for Auth {
 ///   }
 fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
     if seed.len() != 32 {
-        bail!("expected 32-byte Ed25519 seed, got {} bytes", seed.len());
+        return Err(Error::InvalidEd25519SeedLength { got: seed.len() });
     }
     let prefix: &[u8] = &[
         0x30, 0x2e, // SEQUENCE (46 bytes total)

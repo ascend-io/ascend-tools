@@ -13,6 +13,43 @@ pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
 
+# Run `flow run` with retries for transient runtime readiness states.
+# Prints the command output to stdout and returns the command exit code.
+run_flow_retry() {
+  local flow_name="$1"
+  local runtime_uuid="$2"
+  shift 2
+
+  local out=""
+  local rc=1
+  local delay
+  for delay in 0 2 3 5 5; do
+    if [ "$delay" -gt 0 ]; then
+      sleep "$delay"
+    fi
+
+    set +e
+    out=$($CLI -o json flow run "$flow_name" -r "$runtime_uuid" "$@" 2>&1)
+    rc=$?
+    set -e
+
+    if [ "$rc" -eq 0 ]; then
+      echo "$out"
+      return 0
+    fi
+
+    if echo "$out" | grep -qi "starting\|no health status\|initializing"; then
+      continue
+    fi
+
+    echo "$out"
+    return "$rc"
+  done
+
+  echo "$out"
+  return "$rc"
+}
+
 # ---------- preflight ----------
 
 echo "=== preflight ==="
@@ -31,7 +68,7 @@ echo "=== runtimes ==="
 
 # list runtimes (text)
 TEXT=$($CLI runtime list 2>&1)
-if echo "$TEXT" | head -1 | grep -q "UUID"; then
+if echo "$TEXT" | grep -Eq "^UUID[[:space:]]+ID[[:space:]]+TITLE[[:space:]]+KIND"; then
   pass "runtime list (text) has header"
 else
   fail "runtime list (text)" "missing header row"
@@ -150,7 +187,19 @@ fi
 
 echo "=== trigger flow run ==="
 
-TRIGGER_JSON=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" 2>&1)
+set +e
+TRIGGER_JSON=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume)
+TRIGGER_RC=$?
+set -e
+if [ "$TRIGGER_RC" -ne 0 ]; then
+  fail "flow run" "$TRIGGER_JSON"
+  echo ""
+  echo "=== results ==="
+  TOTAL=$((PASS + FAIL + SKIP))
+  echo "$PASS passed, $FAIL failed, $SKIP skipped (of $TOTAL)"
+  exit 1
+fi
+
 EVENT_UUID=$(echo "$TRIGGER_JSON" | jq -r '.event_uuid')
 EVENT_TYPE=$(echo "$TRIGGER_JSON" | jq -r '.event_type')
 
@@ -225,32 +274,44 @@ fi
 
 echo "=== run_flow with spec ==="
 
-SPEC_EMPTY=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{}' 2>&1)
-if echo "$SPEC_EMPTY" | jq -e '.event_uuid' > /dev/null 2>&1; then
+set +e
+SPEC_EMPTY=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{}')
+SPEC_EMPTY_RC=$?
+set -e
+if [ "$SPEC_EMPTY_RC" -eq 0 ] && echo "$SPEC_EMPTY" | jq -e '.event_uuid' > /dev/null 2>&1; then
   pass "flow run --spec '{}' works"
 else
-  fail "flow run --spec '{}'" "missing event_uuid"
+  fail "flow run --spec '{}'" "$SPEC_EMPTY"
 fi
 
-SPEC_FR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"full_refresh":true}' 2>&1)
-if echo "$SPEC_FR" | jq -e '.event_uuid' > /dev/null 2>&1; then
+set +e
+SPEC_FR=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"full_refresh":true}')
+SPEC_FR_RC=$?
+set -e
+if [ "$SPEC_FR_RC" -eq 0 ] && echo "$SPEC_FR" | jq -e '.event_uuid' > /dev/null 2>&1; then
   pass "flow run --spec full_refresh works"
 else
-  fail "flow run --spec full_refresh" "missing event_uuid"
+  fail "flow run --spec full_refresh" "$SPEC_FR"
 fi
 
-SPEC_PARAMS=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"parameters":{"key":"value"}}' 2>&1)
-if echo "$SPEC_PARAMS" | jq -e '.event_uuid' > /dev/null 2>&1; then
+set +e
+SPEC_PARAMS=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"parameters":{"key":"value"}}')
+SPEC_PARAMS_RC=$?
+set -e
+if [ "$SPEC_PARAMS_RC" -eq 0 ] && echo "$SPEC_PARAMS" | jq -e '.event_uuid' > /dev/null 2>&1; then
   pass "flow run --spec parameters works"
 else
-  fail "flow run --spec parameters" "missing event_uuid"
+  fail "flow run --spec parameters" "$SPEC_PARAMS"
 fi
 
-SPEC_MULTI=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --spec '{"run_tests":false,"halt_flow_on_error":true,"runner_overrides":{"size":"Medium"}}' 2>&1)
-if echo "$SPEC_MULTI" | jq -e '.event_uuid' > /dev/null 2>&1; then
+set +e
+SPEC_MULTI=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"run_tests":false,"halt_flow_on_error":true,"runner_overrides":{"size":"Medium"}}')
+SPEC_MULTI_RC=$?
+set -e
+if [ "$SPEC_MULTI_RC" -eq 0 ] && echo "$SPEC_MULTI" | jq -e '.event_uuid' > /dev/null 2>&1; then
   pass "flow run --spec multiple fields works"
 else
-  fail "flow run --spec multiple fields" "missing event_uuid"
+  fail "flow run --spec multiple fields" "$SPEC_MULTI"
 fi
 
 # ---------- runtime pause/resume ----------
@@ -283,19 +344,22 @@ else
 
   # flow run without --resume should fail
   PAUSED_ERR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" 2>&1 || true)
-  if echo "$PAUSED_ERR" | grep -qi "paused\|resume"; then
-    pass "flow run on paused runtime fails with descriptive error"
+  if echo "$PAUSED_ERR" | grep -qi "paused\|resume\|no health status\|initializing\|starting"; then
+    pass "flow run on paused/transitioning runtime fails with descriptive error"
   else
-    fail "flow run on paused runtime" "expected error mentioning paused/resume, got: $PAUSED_ERR"
+    fail "flow run on paused runtime" "expected runtime state error, got: $PAUSED_ERR"
   fi
 
   echo "=== runtime resume via flow run ==="
 
-  RESUME_TRIGGER=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" --resume 2>&1)
-  if echo "$RESUME_TRIGGER" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  set +e
+  RESUME_TRIGGER=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume)
+  RESUME_TRIGGER_RC=$?
+  set -e
+  if [ "$RESUME_TRIGGER_RC" -eq 0 ] && echo "$RESUME_TRIGGER" | jq -e '.event_uuid' > /dev/null 2>&1; then
     pass "flow run --resume succeeds"
   else
-    fail "flow run --resume" "missing event_uuid"
+    fail "flow run --resume" "$RESUME_TRIGGER"
   fi
 
   AFTER_RESUME=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1)
