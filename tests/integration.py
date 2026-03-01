@@ -50,6 +50,38 @@ def print_summary():
     print("all tests passed")
 
 
+def run_flow_with_retry(
+    client: Client,
+    *,
+    runtime_uuid: str,
+    flow_name: str,
+    spec: dict | None = None,
+    resume: bool = False,
+) -> dict:
+    """Run a flow with retries for transient runtime readiness states."""
+    last_error: Exception | None = None
+    for delay in (0, 2, 3, 5, 5):
+        if delay:
+            time.sleep(delay)
+        try:
+            return client.run_flow(
+                runtime_uuid=runtime_uuid,
+                flow_name=flow_name,
+                spec=spec,
+                resume=resume,
+            )
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            if "starting" in msg or "no health status" in msg or "initializing" in msg:
+                last_error = e
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("run_flow retry exhausted")
+
+
 def main():
     # ---------- preflight ----------
 
@@ -208,7 +240,10 @@ def main():
 
     print("=== trigger flow run ===")
 
-    trigger = client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name)
+    # Runtime may already be paused from previous sessions; use resume=True for baseline trigger.
+    trigger = run_flow_with_retry(
+        client, runtime_uuid=runtime_uuid, flow_name=flow_name, resume=True
+    )
     check(isinstance(trigger, dict), "run_flow returns dict")
     check(
         trigger.get("event_uuid") is not None,
@@ -273,14 +308,18 @@ def main():
 
     print("=== run_flow with spec ===")
 
-    trigger2 = client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name, spec={})
+    trigger2 = run_flow_with_retry(
+        client, runtime_uuid=runtime_uuid, flow_name=flow_name, spec={}, resume=True
+    )
     check(trigger2.get("event_uuid") is not None, "run_flow with empty spec works")
 
     # spec with full_refresh
-    trigger3_fr = client.run_flow(
+    trigger3_fr = run_flow_with_retry(
+        client,
         runtime_uuid=runtime_uuid,
         flow_name=flow_name,
         spec={"full_refresh": True},
+        resume=True,
     )
     check(
         trigger3_fr.get("event_uuid") is not None,
@@ -288,10 +327,12 @@ def main():
     )
 
     # spec with parameters
-    trigger3_params = client.run_flow(
+    trigger3_params = run_flow_with_retry(
+        client,
         runtime_uuid=runtime_uuid,
         flow_name=flow_name,
         spec={"parameters": {"key": "value"}},
+        resume=True,
     )
     check(
         trigger3_params.get("event_uuid") is not None,
@@ -299,7 +340,8 @@ def main():
     )
 
     # spec with multiple fields
-    trigger3_multi = client.run_flow(
+    trigger3_multi = run_flow_with_retry(
+        client,
         runtime_uuid=runtime_uuid,
         flow_name=flow_name,
         spec={
@@ -307,6 +349,7 @@ def main():
             "halt_flow_on_error": True,
             "runner_overrides": {"size": "Medium"},
         },
+        resume=True,
     )
     check(
         trigger3_multi.get("event_uuid") is not None,
@@ -339,16 +382,26 @@ def main():
             client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name)
             check(False, "run_flow on paused runtime should raise", "no error raised")
         except Exception as e:
+            msg = str(e).lower()
             check(
-                "paused" in str(e).lower() or "resume" in str(e).lower(),
-                "run_flow on paused runtime raises descriptive error",
+                any(
+                    term in msg
+                    for term in (
+                        "paused",
+                        "resume",
+                        "no health status",
+                        "initializing",
+                        "starting",
+                    )
+                ),
+                "run_flow on paused/transitioning runtime raises descriptive error",
                 str(e),
             )
 
         print("=== runtime resume via flow run ===")
 
-        trigger3 = client.run_flow(
-            runtime_uuid=runtime_uuid, flow_name=flow_name, resume=True
+        trigger3 = run_flow_with_retry(
+            client, runtime_uuid=runtime_uuid, flow_name=flow_name, resume=True
         )
         check(
             trigger3.get("event_uuid") is not None, "run_flow with resume=True succeeds"

@@ -18,14 +18,8 @@ Set three environment variables (from Ascend UI > Settings > Users > Create Serv
 
 ```bash
 export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
-```
-
-```bash
 export ASCEND_SERVICE_ACCOUNT_KEY="..."
-```
-
-```bash
-export ASCEND_INSTANCE_API_URL="https://api.instance.ascend.io"
+export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 ```
 
 ## CLI

@@ -1,10 +1,10 @@
-use anyhow::{Context, Result, bail};
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 use ureq::Agent;
 
 use crate::auth::Auth;
 use crate::config::Config;
+use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{Flow, FlowRun, FlowRunFilters, FlowRunTrigger, Runtime, RuntimeFilters};
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
@@ -116,19 +116,19 @@ impl AscendClient {
             if resume {
                 self.resume_runtime(runtime_uuid)?;
             } else {
-                bail!(
-                    "Runtime is paused. Use --resume (CLI) or resume=True (SDK) to resume before running."
-                );
+                return Err(Error::RuntimePaused);
             }
         } else {
             match runtime.health.as_deref() {
                 Some("running") => {}
-                Some("starting") => {
-                    bail!("Runtime is starting, not yet ready to accept flow runs.")
+                Some("starting") => return Err(Error::RuntimeStarting),
+                Some("error") => return Err(Error::RuntimeInErrorState),
+                Some(other) => {
+                    return Err(Error::RuntimeUnexpectedHealth {
+                        health: other.to_string(),
+                    });
                 }
-                Some("error") => bail!("Runtime is in error state and cannot run flows."),
-                Some(other) => bail!("Runtime health is '{other}', expected 'running'."),
-                None => bail!("Runtime has no health status. It may be initializing."),
+                None => return Err(Error::RuntimeHealthMissing),
             }
         }
         let path = format!(
@@ -173,59 +173,73 @@ impl AscendClient {
     fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let token = self.auth.get_token()?;
         let url = format!("{}{path}", self.instance_api_url);
+        let context = format!("GET {path}");
         let resp = self
             .agent
             .get(&url)
             .header("Authorization", &format!("Bearer {token}"))
             .call()
-            .context(format!("GET {path}"))?;
-        handle_response(resp)
+            .with_request_context(context.clone())?;
+        handle_response(resp, &context)
     }
 
     fn post_empty<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let token = self.auth.get_token()?;
         let url = format!("{}{path}", self.instance_api_url);
+        let context = format!("POST {path}");
         let resp = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {token}"))
             .send_empty()
-            .context(format!("POST {path}"))?;
-        handle_response(resp)
+            .with_request_context(context.clone())?;
+        handle_response(resp, &context)
     }
 
     fn post_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
         let token = self.auth.get_token()?;
         let url = format!("{}{path}", self.instance_api_url);
-        let json_body = serde_json::to_string(body)?;
+        let json_body = serde_json::to_string(body)
+            .with_json_serialize_context(format!("POST {path} request body"))?;
+        let context = format!("POST {path}");
         let resp = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .send(json_body.as_bytes())
-            .context(format!("POST {path}"))?;
-        handle_response(resp)
+            .with_request_context(context.clone())?;
+        handle_response(resp, &context)
     }
 }
 
 fn handle_response<T: serde::de::DeserializeOwned>(
     mut resp: ureq::http::Response<ureq::Body>,
+    context: &str,
 ) -> Result<T> {
     let status = resp.status().as_u16();
-    let body: String = resp.body_mut().read_to_string()?;
+    let body: String = resp
+        .body_mut()
+        .read_to_string()
+        .with_response_read_context(context.to_string())?;
 
     if !(200..300).contains(&status) {
         // Try to extract error message from JSON response
         if let Ok(json) = serde_json::from_str::<Value>(&body) {
             if let Some(detail) = json.get("detail").and_then(|v| v.as_str()) {
-                bail!("API error (HTTP {status}): {detail}");
+                return Err(Error::ApiError {
+                    status,
+                    message: detail.to_string(),
+                });
             }
         }
-        bail!("API error (HTTP {status}): {body}");
+        return Err(Error::ApiError {
+            status,
+            message: body,
+        });
     }
 
-    serde_json::from_str(&body).context("failed to parse API response")
+    serde_json::from_str(&body).with_json_parse_context(format!("{context} response"))
 }
 
 impl std::fmt::Debug for AscendClient {

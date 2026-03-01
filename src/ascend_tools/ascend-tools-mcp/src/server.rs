@@ -18,7 +18,7 @@ use crate::params::{
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
 async fn blocking<T: serde::Serialize + Send + 'static>(
     client: &Arc<AscendClient>,
-    f: impl FnOnce(&AscendClient) -> anyhow::Result<T> + Send + 'static,
+    f: impl FnOnce(&AscendClient) -> ascend_tools::Result<T> + Send + 'static,
 ) -> Result<CallToolResult, McpError> {
     let client = client.clone();
     let result = tokio::task::spawn_blocking(move || f(&client))
@@ -189,6 +189,403 @@ impl ServerHandler for AscendMcpServer {
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ascend_tools::{client::AscendClient, config::Config};
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use mockito::Server;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use super::*;
+    use crate::params::{
+        GetFlowRunParams, GetRuntimeParams, ListFlowRunsParams, ListFlowsParams,
+        ListRuntimesParams, PauseRuntimeParams, ResumeRuntimeParams, RunFlowParams,
+    };
+
+    fn test_server(server: &Server) -> AscendMcpServer {
+        let key = URL_SAFE_NO_PAD.encode([7u8; 32]);
+        let config =
+            Config::with_overrides(Some("asc-sa-test"), Some(&key), Some(server.url().as_str()))
+                .unwrap();
+        let client = AscendClient::new(config).unwrap();
+        AscendMcpServer::new(client)
+    }
+
+    fn mock_auth(server: &mut Server) {
+        server
+            .mock("GET", "/api/v1/auth/config")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"cloud_api_domain":"api.cloud.ascend.io"}"#)
+            .expect(1)
+            .create();
+
+        server
+            .mock("POST", "/api/v1/auth/token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"mcp-token","expiration":4102444800}"#)
+            .expect(1)
+            .create();
+    }
+
+    fn tool_result_json(result: CallToolResult) -> serde_json::Value {
+        let text = serde_json::to_value(result).unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    #[tokio::test]
+    async fn all_tools_succeed_with_expected_json_shapes() {
+        let mut server = Server::new_async().await;
+        mock_auth(&mut server);
+
+        let list_runtimes = server
+            .mock("GET", "/api/v1/runtimes")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!([{
+                    "uuid": "rt-1",
+                    "id": "runtime-1",
+                    "title": "Runtime 1",
+                    "kind": "deployment",
+                    "project_uuid": "p-1",
+                    "environment_uuid": "e-1",
+                    "build_uuid": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "health": "running",
+                    "paused": false
+                }])
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let get_runtime = server
+            .mock("GET", "/api/v1/runtimes/rt-1")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "uuid": "rt-1",
+                    "id": "runtime-1",
+                    "title": "Runtime 1",
+                    "kind": "deployment",
+                    "project_uuid": "p-1",
+                    "environment_uuid": "e-1",
+                    "build_uuid": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "health": "running",
+                    "paused": false
+                })
+                .to_string(),
+            )
+            .expect(2)
+            .create();
+
+        let resume_runtime = server
+            .mock("POST", "/api/v1/runtimes/rt-1:resume")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "uuid": "rt-1",
+                    "id": "runtime-1",
+                    "title": "Runtime 1",
+                    "kind": "deployment",
+                    "project_uuid": "p-1",
+                    "environment_uuid": "e-1",
+                    "build_uuid": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "health": "running",
+                    "paused": false
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let pause_runtime = server
+            .mock("POST", "/api/v1/runtimes/rt-1:pause")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "uuid": "rt-1",
+                    "id": "runtime-1",
+                    "title": "Runtime 1",
+                    "kind": "deployment",
+                    "project_uuid": "p-1",
+                    "environment_uuid": "e-1",
+                    "build_uuid": null,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "health": "running",
+                    "paused": true
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let list_flows = server
+            .mock("GET", "/api/v1/runtimes/rt-1/flows")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[{"name":"sales"}]"#)
+            .expect(1)
+            .create();
+
+        let run_flow = server
+            .mock("POST", "/api/v1/runtimes/rt-1/flows/sales:run")
+            .match_header("authorization", "Bearer mcp-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"event_uuid":"ev-1","event_type":"flow_run_requested"}"#)
+            .expect(1)
+            .create();
+
+        let list_flow_runs = server
+            .mock("GET", "/api/v1/flow-runs")
+            .match_header("authorization", "Bearer mcp-token")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("runtime_uuid".into(), "rt-1".into()),
+                mockito::Matcher::UrlEncoded("status".into(), "running".into()),
+                mockito::Matcher::UrlEncoded("flow".into(), "sales".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!([{
+                    "name": "fr-1",
+                    "flow": "sales",
+                    "build_uuid": "b-1",
+                    "runtime_uuid": "rt-1",
+                    "status": "running",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "error": null
+                }])
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let get_flow_run = server
+            .mock("GET", "/api/v1/flow-runs/fr-1")
+            .match_header("authorization", "Bearer mcp-token")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "runtime_uuid".into(),
+                "rt-1".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "name": "fr-1",
+                    "flow": "sales",
+                    "build_uuid": "b-1",
+                    "runtime_uuid": "rt-1",
+                    "status": "running",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "error": null
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let mcp = test_server(&server);
+
+        let runtimes = mcp
+            .list_runtimes(Parameters(ListRuntimesParams {
+                id: None,
+                kind: None,
+                project_uuid: None,
+                environment_uuid: None,
+            }))
+            .await
+            .unwrap();
+        assert!(tool_result_json(runtimes).is_array());
+
+        let runtime = mcp
+            .get_runtime(Parameters(GetRuntimeParams {
+                uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(runtime)["uuid"], "rt-1");
+
+        let resumed = mcp
+            .resume_runtime(Parameters(ResumeRuntimeParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(resumed)["paused"], false);
+
+        let paused = mcp
+            .pause_runtime(Parameters(PauseRuntimeParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(paused)["paused"], true);
+
+        let flows = mcp
+            .list_flows(Parameters(ListFlowsParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(flows)[0]["name"], "sales");
+
+        let trigger = mcp
+            .run_flow(Parameters(RunFlowParams {
+                runtime_uuid: "rt-1".to_string(),
+                flow_name: "sales".to_string(),
+                spec: None,
+                resume: None,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(trigger)["event_uuid"], "ev-1");
+
+        let runs = mcp
+            .list_flow_runs(Parameters(ListFlowRunsParams {
+                runtime_uuid: "rt-1".to_string(),
+                status: Some("running".to_string()),
+                flow_name: Some("sales".to_string()),
+                since: None,
+                until: None,
+                offset: None,
+                limit: None,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(runs)[0]["name"], "fr-1");
+
+        let run = mcp
+            .get_flow_run(Parameters(GetFlowRunParams {
+                runtime_uuid: "rt-1".to_string(),
+                name: "fr-1".to_string(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(tool_result_json(run)["status"], "running");
+
+        list_runtimes.assert();
+        get_runtime.assert();
+        resume_runtime.assert();
+        pause_runtime.assert();
+        list_flows.assert();
+        run_flow.assert();
+        list_flow_runs.assert();
+        get_flow_run.assert();
+    }
+
+    #[tokio::test]
+    async fn all_tools_fail_when_client_is_unconfigured() {
+        let mcp = AscendMcpServer::with_client_init_error("missing env vars");
+
+        let mut errors = Vec::new();
+
+        errors.push(
+            mcp.list_runtimes(Parameters(ListRuntimesParams {
+                id: None,
+                kind: None,
+                project_uuid: None,
+                environment_uuid: None,
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.get_runtime(Parameters(GetRuntimeParams {
+                uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.resume_runtime(Parameters(ResumeRuntimeParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.pause_runtime(Parameters(PauseRuntimeParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.list_flows(Parameters(ListFlowsParams {
+                runtime_uuid: "rt-1".to_string(),
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.run_flow(Parameters(RunFlowParams {
+                runtime_uuid: "rt-1".to_string(),
+                flow_name: "sales".to_string(),
+                spec: None,
+                resume: None,
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.list_flow_runs(Parameters(ListFlowRunsParams {
+                runtime_uuid: "rt-1".to_string(),
+                status: None,
+                flow_name: None,
+                since: None,
+                until: None,
+                offset: None,
+                limit: None,
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+        errors.push(
+            mcp.get_flow_run(Parameters(GetFlowRunParams {
+                runtime_uuid: "rt-1".to_string(),
+                name: "fr-1".to_string(),
+            }))
+            .await
+            .unwrap_err()
+            .to_string(),
+        );
+
+        for err in errors {
+            assert!(err.contains("Ascend client is not configured"));
+            assert!(err.contains("ASCEND_SERVICE_ACCOUNT_ID"));
         }
     }
 }
