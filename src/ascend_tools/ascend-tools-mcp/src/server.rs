@@ -372,15 +372,18 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                serde_json::json!([{
-                    "name": "fr-1",
-                    "flow": "sales",
-                    "build_uuid": "b-1",
-                    "runtime_uuid": "rt-1",
-                    "status": "running",
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "error": null
-                }])
+                serde_json::json!({
+                    "items": [{
+                        "name": "fr-1",
+                        "flow": "sales",
+                        "build_uuid": "b-1",
+                        "runtime_uuid": "rt-1",
+                        "status": "running",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "error": null
+                    }],
+                    "truncated": false
+                })
                 .to_string(),
             )
             .expect(1)
@@ -478,7 +481,9 @@ mod tests {
             }))
             .await
             .unwrap();
-        assert_eq!(tool_result_json(runs)[0]["name"], "fr-1");
+        let runs_json = tool_result_json(runs);
+        assert_eq!(runs_json["items"][0]["name"], "fr-1");
+        assert_eq!(runs_json["truncated"], false);
 
         let run = mcp
             .get_flow_run(Parameters(GetFlowRunParams {

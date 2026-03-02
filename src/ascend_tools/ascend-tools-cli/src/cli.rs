@@ -350,7 +350,11 @@ fn handle_flow(
             filters.until = until;
             filters.offset = offset;
             filters.limit = limit;
-            let runs = client.list_flow_runs(&runtime, filters)?;
+            let result = client.list_flow_runs(&runtime, filters)?;
+            if result.truncated {
+                eprintln!("Warning: results may be incomplete (server-side limit reached)");
+            }
+            let runs = &result.items;
             match output {
                 OutputMode::Json => print_json(&runs)?,
                 OutputMode::Text => {

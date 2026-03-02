@@ -57,8 +57,12 @@ class Client:
         until: str | None = None,
         offset: int | None = None,
         limit: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """List flow runs, optionally filtered by status, flow name, or time range."""
+    ) -> dict[str, Any]:
+        """List flow runs, optionally filtered by status, flow name, or time range.
+
+        Returns ``{"items": [...], "truncated": bool}``. The ``truncated`` flag
+        indicates the server-side row limit was reached and results may be incomplete.
+        """
         ...
     def get_flow_run(self, *, runtime_uuid: str, name: str) -> dict[str, Any]:
         """Get a flow run by name."""

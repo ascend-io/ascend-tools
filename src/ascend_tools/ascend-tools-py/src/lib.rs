@@ -117,7 +117,7 @@ impl Client {
         offset: Option<u64>,
         limit: Option<u64>,
     ) -> PyResult<Py<PyAny>> {
-        let runs = py
+        let result = py
             .detach(|| {
                 let mut filters = models::FlowRunFilters::default();
                 filters.status = status.map(String::from);
@@ -129,7 +129,7 @@ impl Client {
                 self.inner.list_flow_runs(runtime_uuid, filters)
             })
             .map_err(to_py_err)?;
-        to_python(py, &runs)
+        to_python(py, &result)
     }
 
     #[pyo3(signature = (*, runtime_uuid, name))]

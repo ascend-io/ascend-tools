@@ -5,7 +5,9 @@ use ureq::Agent;
 use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
-use crate::models::{Flow, FlowRun, FlowRunFilters, FlowRunTrigger, Runtime, RuntimeFilters};
+use crate::models::{
+    Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Runtime, RuntimeFilters,
+};
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
 
@@ -148,7 +150,7 @@ impl AscendClient {
         &self,
         runtime_uuid: &str,
         filters: FlowRunFilters,
-    ) -> Result<Vec<FlowRun>> {
+    ) -> Result<FlowRunList> {
         let mut qs = QueryString::new();
         qs.push("runtime_uuid", runtime_uuid);
         qs.push_opt("status", filters.status.as_deref());
