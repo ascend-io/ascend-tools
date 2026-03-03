@@ -4,9 +4,11 @@ SDK, CLI, and MCP server for the Ascend REST API. Rust core with PyO3 Python bin
 
 Repo: `ascend-io/ascend-tools`. Internal.
 
+> `CLAUDE.md` is a symlink to this file (`AGENTS.md`). Edit `AGENTS.md` only.
+
 ## architecture
 
-Four Rust crates, one PyO3 bridge. The core/mcp/cli crates share a Cargo workspace (`src/ascend_tools/Cargo.toml`). Dependency chain is one-directional:
+Four Rust crates, one PyO3 bridge. The core/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
 
 ```
 src/ascend_tools/
@@ -58,7 +60,7 @@ bin/bump-version  # bump version (--patch, --minor (default), --major)
 bin/release       # tag + push release (runs check, validates GitHub/PyPI)
 ```
 
-Rust workspace is at `src/ascend_tools/`. Run workspace commands from there:
+Cargo workspace is at the repo root:
 `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`
 Python checks: `ruff check .`, `ruff format --check .`, `ty check`
 

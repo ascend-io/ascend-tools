@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Running Rust tests..."
 cargo test --workspace "$@"
