@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+echo "Checking version consistency..."
+
+TOML_FILES=(
+  pyproject.toml
+  src/ascend_tools/ascend-tools-core/Cargo.toml
+  src/ascend_tools/ascend-tools-mcp/Cargo.toml
+  src/ascend_tools/ascend-tools-cli/Cargo.toml
+  src/ascend_tools/ascend-tools-py/Cargo.toml
+)
+
+EXPECTED=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+if [ -z "$EXPECTED" ]; then
+  echo "ERROR: could not read version from pyproject.toml" >&2
+  exit 1
+fi
+
+FAIL=0
+for f in "${TOML_FILES[@]}"; do
+  V=$(grep -m1 '^version = ' "$f" | sed 's/version = "\(.*\)"/\1/')
+  if [ "$V" != "$EXPECTED" ]; then
+    echo "  MISMATCH: $f has $V (expected $EXPECTED)" >&2
+    FAIL=1
+  fi
+done
+
+if [ "$FAIL" -ne 0 ]; then
+  echo "Version check failed! Run bin/bump-version to fix." >&2
+  exit 1
+fi
+
+echo "Version check passed ($EXPECTED)"
