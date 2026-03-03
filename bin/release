@@ -98,4 +98,4 @@ echo "  created tag $TAG"
 
 git push origin "$TAG"
 echo ""
-echo "Released $TAG!"
+echo "Releasing $TAG!"
