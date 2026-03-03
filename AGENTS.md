@@ -50,10 +50,11 @@ PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (
 
 ```bash
 bin/build       # build Rust + Python (bin/build-rs, bin/build-py)
-bin/check       # lint + test (bin/check-rs, bin/check-py)
+bin/check       # lint + test (bin/check-version, bin/check-rs, bin/check-py)
 bin/format      # auto-format (bin/format-rs, bin/format-py)
 bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)
+bin/bump-version  # bump version (--patch, --minor (default), --major)
 ```
 
 Rust workspace is at `src/ascend_tools/`. Run workspace commands from there:
