@@ -68,10 +68,10 @@ impl Auth {
             .as_secs();
 
         // Return cached token if still valid (with 5-minute buffer)
-        if let Some(ref cached) = *guard {
-            if cached.expires_at > now + 300 {
-                return Ok(cached.token.clone());
-            }
+        if let Some(ref cached) = *guard
+            && cached.expires_at > now + 300
+        {
+            return Ok(cached.token.clone());
         }
 
         // Refresh while holding the lock to prevent thundering herd

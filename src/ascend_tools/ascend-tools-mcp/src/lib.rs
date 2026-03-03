@@ -103,11 +103,11 @@ pub async fn run_http(config: CoreResult<Config>, bind_addr: &str) -> Result<()>
                     Ok(client) => Ok(AscendMcpServer::new(client)),
                     Err(e) => {
                         let message = format!("{e:#}");
-                        if let Ok(mut guard) = client_init_error.lock() {
-                            if guard.as_deref() != Some(message.as_str()) {
-                                tracing::error!("Ascend client initialization failed: {message}");
-                                *guard = Some(message.clone());
-                            }
+                        if let Ok(mut guard) = client_init_error.lock()
+                            && guard.as_deref() != Some(message.as_str())
+                        {
+                            tracing::error!("Ascend client initialization failed: {message}");
+                            *guard = Some(message.clone());
                         }
                         Ok(AscendMcpServer::with_client_init_error(message))
                     }

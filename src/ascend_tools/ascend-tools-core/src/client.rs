@@ -227,13 +227,13 @@ fn handle_response<T: serde::de::DeserializeOwned>(
 
     if !(200..300).contains(&status) {
         // Try to extract error message from JSON response
-        if let Ok(json) = serde_json::from_str::<Value>(&body) {
-            if let Some(detail) = json.get("detail").and_then(|v| v.as_str()) {
-                return Err(Error::ApiError {
-                    status,
-                    message: detail.to_string(),
-                });
-            }
+        if let Ok(json) = serde_json::from_str::<Value>(&body)
+            && let Some(detail) = json.get("detail").and_then(|v| v.as_str())
+        {
+            return Err(Error::ApiError {
+                status,
+                message: detail.to_string(),
+            });
         }
         return Err(Error::ApiError {
             status,

@@ -1,8 +1,8 @@
 [package]
 name = "ascend-tools-mcp"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 description = "MCP server for the Ascend REST API"
@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 ascend-tools-core = { path = "../ascend-tools-core" }
-rmcp = { version = "0.16", features = [
+rmcp = { version = "0.17", features = [
     "server",
     "macros",
     "transport-io",
