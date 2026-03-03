@@ -122,7 +122,7 @@ fn encodes_query_values_and_path_segments() {
         ]))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body("[]")
+        .with_body(r#"{"items":[],"truncated":false}"#)
         .expect(1)
         .create();
 
@@ -155,8 +155,9 @@ fn encodes_query_values_and_path_segments() {
     filters.until = Some("2026-01-02T00:00:00Z".to_string());
     filters.offset = Some(10);
     filters.limit = Some(50);
-    let runs = client.list_flow_runs("rt /?#", filters).unwrap();
-    assert!(runs.is_empty());
+    let result = client.list_flow_runs("rt /?#", filters).unwrap();
+    assert!(result.items.is_empty());
+    assert!(!result.truncated);
 
     let run = client.get_flow_run("rt /?#", "fr/with space#hash").unwrap();
     assert_eq!(run.name, "fr/with space#hash");

@@ -32,6 +32,14 @@ pub struct FlowRun {
     pub error: Option<serde_json::Value>,
 }
 
+/// Wrapper returned by the list flow runs endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowRunList {
+    pub items: Vec<FlowRun>,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowRunTrigger {
     pub event_uuid: String,
