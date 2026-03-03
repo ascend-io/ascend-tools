@@ -2,7 +2,7 @@
 
 [package]
 name = "ascend-tools-py"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"

@@ -1,6 +1,6 @@
 [project]
 name = "ascend-tools"
-version = "0.3.1"
+version = "0.4.0"
 description = "Ascend CLI, SDK, MCP."
 requires-python = ">=3.13"
 license = "MIT"
