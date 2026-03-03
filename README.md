@@ -186,3 +186,13 @@ uvx --refresh ascend-tools --version
 | `run_flow` | Trigger a flow run (supports resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
+
+## Skills
+
+Install reference skills for AI coding assistants (Claude Code, Codex, etc.):
+
+```bash
+ascend-tools skill install --target .claude/skills --all
+```
+
+Available skills: `--cli` (default), `--python`, `--mcp`, `--all`.

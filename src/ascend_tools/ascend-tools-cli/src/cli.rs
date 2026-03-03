@@ -157,7 +157,7 @@ enum FlowCommands {
 
 #[derive(Subcommand)]
 enum SkillCommands {
-    /// Install the ascend-tools skill
+    /// Install ascend-tools skill(s)
     #[command(arg_required_else_help = true)]
     Install {
         /// Target directory
@@ -165,6 +165,18 @@ enum SkillCommands {
         /// Examples: ./.claude/skills, ~/.claude/skills, ./.agents/skills
         #[arg(long, required = true)]
         target: String,
+        /// Install the CLI skill (default if no flags given)
+        #[arg(long)]
+        cli: bool,
+        /// Install the Python SDK skill
+        #[arg(long)]
+        python: bool,
+        /// Install the MCP server skill
+        #[arg(long)]
+        mcp: bool,
+        /// Install all skills
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -396,7 +408,9 @@ fn handle_flow(
 
 // -- skill --
 
-const SKILL_CONTENT: &str = include_str!("skill-cli.md");
+const SKILL_CLI: &str = include_str!("skill-cli.md");
+const SKILL_PY: &str = include_str!("skill-py.md");
+const SKILL_MCP: &str = include_str!("skill-mcp.md");
 
 fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
     let Some(cmd) = cmd else {
@@ -407,21 +421,42 @@ fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
         return Ok(());
     };
     match cmd {
-        SkillCommands::Install { target } => {
-            let target = if target.starts_with('~') {
+        SkillCommands::Install {
+            target,
+            cli,
+            python,
+            mcp,
+            all,
+        } => {
+            let target = if target.starts_with("~/") || target == "~" {
                 let home = std::env::var("HOME").context("HOME environment variable not set")?;
                 PathBuf::from(target.replacen('~', &home, 1))
             } else {
                 PathBuf::from(&target)
             };
-            let dir = target.join("ascend-tools");
-            std::fs::create_dir_all(&dir)
-                .with_context(|| format!("failed to create directory {}", dir.display()))?;
-            let path = dir.join("SKILL.md");
-            std::fs::write(&path, SKILL_CONTENT)
-                .with_context(|| format!("failed to write {}", path.display()))?;
-            let abs = std::fs::canonicalize(&path).unwrap_or(path);
-            println!("Installed ascend-tools skill to {}", abs.display());
+
+            // --all enables everything; default to --cli when no flags are given
+            let cli = all || cli || (!python && !mcp);
+            let python = all || python;
+            let mcp = all || mcp;
+
+            for (dir_name, content, enabled) in [
+                ("ascend-tools-cli", SKILL_CLI, cli),
+                ("ascend-tools-python", SKILL_PY, python),
+                ("ascend-tools-mcp", SKILL_MCP, mcp),
+            ] {
+                if !enabled {
+                    continue;
+                }
+                let dir = target.join(dir_name);
+                std::fs::create_dir_all(&dir)
+                    .with_context(|| format!("failed to create directory {}", dir.display()))?;
+                let path = dir.join("SKILL.md");
+                std::fs::write(&path, content)
+                    .with_context(|| format!("failed to write {}", path.display()))?;
+                let abs = std::fs::canonicalize(&path).unwrap_or(path);
+                println!("Installed {dir_name} skill to {}", abs.display());
+            }
             Ok(())
         }
     }
@@ -684,6 +719,53 @@ mod tests {
                 command: Some(SkillCommands::Install { .. })
             })
         ));
+    }
+
+    #[test]
+    fn test_cli_parses_skill_install_flags() {
+        let cli = Cli::parse_from([
+            "ascend-tools",
+            "skill",
+            "install",
+            "--target",
+            "./.claude/skills",
+            "--python",
+            "--mcp",
+        ]);
+        match cli.command {
+            Some(Commands::Skill {
+                command:
+                    Some(SkillCommands::Install {
+                        cli, python, mcp, ..
+                    }),
+            }) => {
+                assert!(!cli);
+                assert!(python);
+                assert!(mcp);
+            }
+            _ => panic!("expected Install command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_skill_install_all() {
+        let cli = Cli::parse_from([
+            "ascend-tools",
+            "skill",
+            "install",
+            "--target",
+            "./.claude/skills",
+            "--all",
+        ]);
+        match cli.command {
+            Some(Commands::Skill {
+                command: Some(SkillCommands::Install { all, cli, .. }),
+            }) => {
+                assert!(all);
+                assert!(!cli);
+            }
+            _ => panic!("expected Install command"),
+        }
     }
 
     #[test]

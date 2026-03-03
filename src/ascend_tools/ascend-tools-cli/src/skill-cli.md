@@ -1,11 +1,31 @@
 ---
-name: ascend-tools
+name: ascend-tools-cli
 description: Use the ascend-tools CLI to manage Ascend runtimes, flows, and flow runs.
 ---
 
-# ascend-tools
+# ascend-tools CLI
 
 Manage Ascend runtimes, flows, and flow runs via the `ascend-tools` CLI.
+
+> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
+
+## Installation
+
+```bash
+uvx ascend-tools --help
+```
+
+Or install permanently:
+
+```bash
+uv tool install ascend-tools
+```
+
+Upgrade to the latest version:
+
+```bash
+uv tool install --upgrade ascend-tools
+```
 
 ## Authentication
 
@@ -14,7 +34,7 @@ Set three environment variables (from Ascend UI > Settings > Users > Create Serv
 ```bash
 export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
 export ASCEND_SERVICE_ACCOUNT_KEY="..."
-export ASCEND_INSTANCE_API_URL="https://api.instance.ascend.io"
+export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 ```
 
 ## Commands

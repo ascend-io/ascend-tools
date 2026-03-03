@@ -172,11 +172,60 @@ fn skill_install_writes_skill_file_to_target() {
         "ascend-tools"
     )));
     cmd.args(["skill", "install", "--target", &target_str]);
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Installed ascend-tools skill to"));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Installed ascend-tools-cli skill to",
+    ));
 
-    let skill_path = target.join("ascend-tools").join("SKILL.md");
+    let skill_path = target.join("ascend-tools-cli").join("SKILL.md");
     let content = fs::read_to_string(skill_path).unwrap();
     assert!(content.contains("Ascend"));
+}
+
+#[test]
+fn skill_install_all_variants() {
+    let temp_dir = TempDir::new().unwrap();
+    let target = temp_dir.path().join("skills");
+    let target_str = target.to_string_lossy().to_string();
+
+    let mut cmd = Command::from_std(std::process::Command::new(assert_cmd::cargo::cargo_bin!(
+        "ascend-tools"
+    )));
+    cmd.args([
+        "skill",
+        "install",
+        "--target",
+        &target_str,
+        "--cli",
+        "--python",
+        "--mcp",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Installed ascend-tools-cli skill to",
+        ))
+        .stdout(predicate::str::contains(
+            "Installed ascend-tools-python skill to",
+        ))
+        .stdout(predicate::str::contains(
+            "Installed ascend-tools-mcp skill to",
+        ));
+
+    for (dir, marker) in [
+        ("ascend-tools-cli", "ascend-tools CLI"),
+        ("ascend-tools-python", "Python SDK"),
+        ("ascend-tools-mcp", "MCP server"),
+    ] {
+        let path = target.join(dir).join("SKILL.md");
+        let content =
+            fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} should exist", path.display()));
+        assert!(
+            content.contains(marker),
+            "{dir}/SKILL.md should contain \"{marker}\""
+        );
+        assert!(
+            content.contains("private preview"),
+            "{dir}/SKILL.md should contain private preview notice"
+        );
+    }
 }
