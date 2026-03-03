@@ -228,7 +228,7 @@ class AscendClient:
 
     # -- Flow runs --
 
-    def list_flow_runs(self, runtime_uuid: str, **filters) -> list[dict]:
+    def list_flow_runs(self, runtime_uuid: str, **filters) -> dict:
         params: dict = {"runtime_uuid": runtime_uuid}
         if "flow_name" in filters:
             filters["flow"] = filters.pop("flow_name")
@@ -411,8 +411,11 @@ def main():
 
     print("=== flow runs (before trigger) ===")
 
-    runs_before = client.list_flow_runs(runtime_uuid, flow_name=flow_name)
-    check(isinstance(runs_before, list), "list_flow_runs returns list")
+    runs_before_result = client.list_flow_runs(runtime_uuid, flow_name=flow_name)
+    check(isinstance(runs_before_result, dict), "list_flow_runs returns dict")
+    check("items" in runs_before_result, "list_flow_runs has 'items' key")
+    check("truncated" in runs_before_result, "list_flow_runs has 'truncated' key")
+    runs_before = runs_before_result["items"]
     runs_before_count = len(runs_before)
     check(True, f"list_flow_runs returned {runs_before_count} run(s) before trigger")
 
@@ -441,7 +444,7 @@ def main():
         )
 
     # test pagination
-    limited = client.list_flow_runs(runtime_uuid, flow_name=flow_name, limit=1)
+    limited = client.list_flow_runs(runtime_uuid, flow_name=flow_name, limit=1)["items"]
     check(
         len(limited) <= 1,
         "list_flow_runs(limit=1) returns at most 1",
@@ -451,7 +454,7 @@ def main():
     if runs_before_count > 1:
         offset_runs = client.list_flow_runs(
             runtime_uuid, flow_name=flow_name, offset=1, limit=1
-        )
+        )["items"]
         check(
             len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1"
         )
@@ -484,7 +487,7 @@ def main():
     runs_after_count = runs_before_count
     for delay in (2, 3, 5, 5):
         time.sleep(delay)
-        runs_after = client.list_flow_runs(runtime_uuid, flow_name=flow_name)
+        runs_after = client.list_flow_runs(runtime_uuid, flow_name=flow_name)["items"]
         runs_after_count = len(runs_after)
         if runs_after_count > runs_before_count:
             break
@@ -512,10 +515,10 @@ def main():
     print("=== status filter ===")
 
     for status in ("pending", "running", "succeeded", "failed"):
-        by_status = client.list_flow_runs(runtime_uuid, status=status)
+        by_status = client.list_flow_runs(runtime_uuid, status=status)["items"]
         check(
             isinstance(by_status, list),
-            f"list_flow_runs(status={status!r}) returns list",
+            f"list_flow_runs(status={status!r}) returns list items",
         )
         if by_status:
             wrong = [r for r in by_status if r["status"] != status]
