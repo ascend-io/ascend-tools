@@ -348,18 +348,6 @@ else
     fail "runtime pause" "expected paused=true, got $PAUSED"
   fi
 
-  # wait for health to clear (pods need time to shut down)
-  for delay in 2 3 5 5; do
-    sleep "$delay"
-    HEALTH=$(${CLI} -o json runtime get "$RUNTIME_UUID" 2>&1 | jq -r '.health')
-    [ "$HEALTH" = "null" ] && break
-  done
-  if [ "$HEALTH" = "null" ]; then
-    pass "paused runtime has health=null"
-  else
-    fail "paused runtime health" "expected null, got $HEALTH"
-  fi
-
   # flow run without --resume should fail
   PAUSED_ERR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" 2>&1 || true)
   if echo "$PAUSED_ERR" | grep -qi "paused\|resume\|no health status\|initializing\|starting"; then

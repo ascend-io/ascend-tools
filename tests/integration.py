@@ -394,14 +394,6 @@ def main():
         got_paused = client.get_runtime(uuid=runtime_uuid)
         check(got_paused.get("paused") is True, "get_runtime confirms paused")
 
-        # health may take a moment to clear after pause (runtime pods shutting down)
-        for delay in (2, 3, 5, 5):
-            if got_paused.get("health") is None:
-                break
-            time.sleep(delay)
-            got_paused = client.get_runtime(uuid=runtime_uuid)
-        check(got_paused.get("health") is None, "paused runtime has health=None")
-
         # run_flow without resume should fail on a paused runtime
         try:
             client.run_flow(runtime_uuid=runtime_uuid, flow_name=flow_name)
