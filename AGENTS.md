@@ -55,6 +55,7 @@ bin/format      # auto-format (bin/format-rs, bin/format-py)
 bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)
 bin/bump-version  # bump version (--patch, --minor (default), --major)
+bin/release       # tag + push release (runs check, validates GitHub/PyPI)
 ```
 
 Rust workspace is at `src/ascend_tools/`. Run workspace commands from there:
