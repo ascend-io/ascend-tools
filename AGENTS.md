@@ -175,24 +175,28 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 ### usage with Claude Code
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+claude mcp add ascend-tools --transport stdio -- uvx ascend-tools mcp
 ```
 
 Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
 If Claude is launched without your shell env, set them explicitly:
 
 ```bash
-claude mcp add --transport stdio \
+claude mcp add ascend-tools --transport stdio \
   -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
   -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
   -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+  -- uvx ascend-tools mcp
+```
+
+```bash
+claude mcp remove ascend-tools
 ```
 
 ### usage with Codex CLI
 
 ```bash
-codex mcp add ascend-tools -- uvx --from "$(pwd)" ascend-tools mcp
+codex mcp add ascend-tools -- uvx ascend-tools mcp
 ```
 
 If Codex is launched without your shell env, set them explicitly:
@@ -202,7 +206,7 @@ codex mcp add \
   --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
   --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
   --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx --from "$(pwd)" ascend-tools mcp
+  ascend-tools -- uvx ascend-tools mcp
 ```
 
 ```bash
@@ -221,7 +225,7 @@ Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEN
 If stale behavior appears after code updates, run one refresh manually:
 
 ```bash
-uvx --refresh --from "$(pwd)" ascend-tools --version
+uvx --refresh ascend-tools --version
 ```
 
 ### architecture notes
