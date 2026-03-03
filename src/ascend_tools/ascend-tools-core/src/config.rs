@@ -67,15 +67,15 @@ fn resolve(
     cli_value: Option<&str>,
     env_value: Option<&str>,
 ) -> Result<String> {
-    if let Some(v) = cli_value {
-        if !v.is_empty() {
-            return Ok(v.to_string());
-        }
+    if let Some(v) = cli_value
+        && !v.is_empty()
+    {
+        return Ok(v.to_string());
     }
-    if let Some(v) = env_value {
-        if !v.is_empty() {
-            return Ok(v.to_string());
-        }
+    if let Some(v) = env_value
+        && !v.is_empty()
+    {
+        return Ok(v.to_string());
     }
     Err(Error::MissingConfig {
         field: name.to_string(),

@@ -2,7 +2,7 @@
 name = "ascend-tools-core"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 description = "SDK for the Ascend REST API"
