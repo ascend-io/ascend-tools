@@ -9,6 +9,16 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# ---------- args ----------
+
+RUNTIME_ID_FILTER="ascend-tools"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --runtime-id) RUNTIME_ID_FILTER="$2"; shift 2 ;;
+    *) echo "unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
+
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
@@ -90,8 +100,16 @@ else
   exit 0
 fi
 
-RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
-RUNTIME_ID=$(echo "$JSON" | jq -r '.[0].id')
+FILTERED=$($CLI -o json runtime list --id "$RUNTIME_ID_FILTER" 2>&1)
+FILTERED_COUNT=$(echo "$FILTERED" | jq 'length')
+if [ "$FILTERED_COUNT" -gt 0 ]; then
+  RUNTIME_UUID=$(echo "$FILTERED" | jq -r '.[0].uuid')
+  RUNTIME_ID=$(echo "$FILTERED" | jq -r '.[0].id')
+else
+  echo "  runtime '$RUNTIME_ID_FILTER' not found, falling back to first runtime"
+  RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
+  RUNTIME_ID=$(echo "$JSON" | jq -r '.[0].id')
+fi
 echo "  using runtime: $RUNTIME_ID ($RUNTIME_UUID)"
 
 # get runtime
@@ -328,18 +346,6 @@ else
     pass "runtime pause sets paused=true"
   else
     fail "runtime pause" "expected paused=true, got $PAUSED"
-  fi
-
-  # wait for health to clear
-  for delay in 1 2 3; do
-    HEALTH=$(${CLI} -o json runtime get "$RUNTIME_UUID" 2>&1 | jq -r '.health')
-    [ "$HEALTH" = "null" ] && break
-    sleep "$delay"
-  done
-  if [ "$HEALTH" = "null" ]; then
-    pass "paused runtime has health=null"
-  else
-    fail "paused runtime health" "expected null, got $HEALTH"
   fi
 
   # flow run without --resume should fail

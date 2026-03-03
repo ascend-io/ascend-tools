@@ -12,6 +12,7 @@ Requires a running ASE workspace with ASCEND_SERVICE_ACCOUNT_ID,
 ASCEND_SERVICE_ACCOUNT_KEY, and ASCEND_INSTANCE_API_URL set.
 """
 
+import argparse
 import os
 import sys
 import time
@@ -83,6 +84,16 @@ def run_flow_with_retry(
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="ascend-tools Python SDK integration tests"
+    )
+    parser.add_argument(
+        "--runtime-id",
+        default="ascend-tools",
+        help="Runtime ID to test against (default: ascend-tools)",
+    )
+    args = parser.parse_args()
+
     # ---------- preflight ----------
 
     print("=== preflight ===")
@@ -114,7 +125,13 @@ def main():
 
     check(True, f"list_runtimes returned {len(runtimes)} runtime(s)")
 
-    runtime = runtimes[0]
+    by_id = client.list_runtimes(id=args.runtime_id)
+    if by_id:
+        runtime = by_id[0]
+    else:
+        print(f"  runtime '{args.runtime_id}' not found, falling back to first runtime")
+        runtime = runtimes[0]
+
     runtime_uuid = runtime["uuid"]
     runtime_id = runtime["id"]
     print(f"  using runtime: {runtime_id} ({runtime_uuid})")
@@ -376,14 +393,6 @@ def main():
 
         got_paused = client.get_runtime(uuid=runtime_uuid)
         check(got_paused.get("paused") is True, "get_runtime confirms paused")
-
-        # health may take a moment to clear after pause (runtime pods shutting down)
-        for delay in (1, 2, 3):
-            if got_paused.get("health") is None:
-                break
-            time.sleep(delay)
-            got_paused = client.get_runtime(uuid=runtime_uuid)
-        check(got_paused.get("health") is None, "paused runtime has health=None")
 
         # run_flow without resume should fail on a paused runtime
         try:

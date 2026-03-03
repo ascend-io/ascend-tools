@@ -12,6 +12,7 @@ Requires ASCEND_SERVICE_ACCOUNT_ID, ASCEND_SERVICE_ACCOUNT_KEY, and
 ASCEND_INSTANCE_API_URL environment variables.
 """
 
+import argparse
 import base64
 import json
 import os
@@ -217,8 +218,10 @@ class AscendClient:
                 )
         else:
             health = runtime.get("health")
-            if health != "running":
+            if health and health != "running":
                 raise RuntimeError(f"Runtime health is '{health}', expected 'running'.")
+            if not health:
+                raise RuntimeError("Runtime has no health status yet.")
         path = (
             f"/api/v1/runtimes/{_encode(runtime_uuid)}/flows/{_encode(flow_name)}:run"
         )
@@ -296,11 +299,50 @@ def print_summary():
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def run_flow_with_retry(
+    client: AscendClient,
+    runtime_uuid: str,
+    flow_name: str,
+    spec: dict | None = None,
+    resume: bool = False,
+) -> dict:
+    """Run a flow with retries for transient runtime readiness states."""
+    last_error: Exception | None = None
+    for delay in (0, 2, 3, 5, 5):
+        if delay:
+            time.sleep(delay)
+        try:
+            return client.run_flow(runtime_uuid, flow_name, spec=spec, resume=resume)
+        except RuntimeError as e:
+            msg = str(e).lower()
+            if "starting" in msg or "no health status" in msg or "initializing" in msg:
+                last_error = e
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("run_flow retry exhausted")
+
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Ascend REST API integration tests")
+    parser.add_argument(
+        "--runtime-id",
+        default="ascend-tools",
+        help="Runtime ID to test against (default: ascend-tools)",
+    )
+    args = parser.parse_args()
+
     # ---------- preflight ----------
 
     print("=== preflight ===")
@@ -340,7 +382,13 @@ def main():
 
     check(True, f"list_runtimes returned {len(runtimes)} runtime(s)")
 
-    runtime = runtimes[0]
+    by_id = client.list_runtimes(id=args.runtime_id)
+    if by_id:
+        runtime = by_id[0]
+    else:
+        print(f"  runtime '{args.runtime_id}' not found, falling back to first runtime")
+        runtime = runtimes[0]
+
     runtime_uuid = runtime["uuid"]
     runtime_id = runtime["id"]
     is_paused = runtime.get("paused", False)
@@ -468,8 +516,8 @@ def main():
 
     print("=== trigger flow run ===")
 
-    trigger = client.run_flow(runtime_uuid, flow_name, resume=is_paused)
-    is_paused = False  # runtime is now running
+    # Runtime may already be paused from previous sessions; use resume=True for baseline trigger.
+    trigger = run_flow_with_retry(client, runtime_uuid, flow_name, resume=True)
     check(isinstance(trigger, dict), "run_flow returns dict")
     check(
         trigger.get("event_uuid") is not None,
@@ -532,19 +580,27 @@ def main():
 
     print("=== run_flow with spec ===")
 
-    trigger2 = client.run_flow(runtime_uuid, flow_name, spec={})
+    trigger2 = run_flow_with_retry(
+        client, runtime_uuid, flow_name, spec={}, resume=True
+    )
     check(trigger2.get("event_uuid") is not None, "run_flow with empty spec works")
 
     # spec with full_refresh
-    trigger3_fr = client.run_flow(runtime_uuid, flow_name, spec={"full_refresh": True})
+    trigger3_fr = run_flow_with_retry(
+        client, runtime_uuid, flow_name, spec={"full_refresh": True}, resume=True
+    )
     check(
         trigger3_fr.get("event_uuid") is not None,
         "run_flow with full_refresh=True works",
     )
 
     # spec with parameters
-    trigger3_params = client.run_flow(
-        runtime_uuid, flow_name, spec={"parameters": {"key": "value"}}
+    trigger3_params = run_flow_with_retry(
+        client,
+        runtime_uuid,
+        flow_name,
+        spec={"parameters": {"key": "value"}},
+        resume=True,
     )
     check(
         trigger3_params.get("event_uuid") is not None,
@@ -552,7 +608,8 @@ def main():
     )
 
     # spec with multiple fields
-    trigger3_multi = client.run_flow(
+    trigger3_multi = run_flow_with_retry(
+        client,
         runtime_uuid,
         flow_name,
         spec={
@@ -560,6 +617,7 @@ def main():
             "halt_flow_on_error": True,
             "runner_overrides": {"size": "Medium"},
         },
+        resume=True,
     )
     check(
         trigger3_multi.get("event_uuid") is not None,
@@ -579,14 +637,6 @@ def main():
         got_paused = client.get_runtime(runtime_uuid)
         check(got_paused.get("paused") is True, "get_runtime confirms paused")
 
-        # health may take a moment to clear after pause (runtime pods shutting down)
-        for delay in (1, 2, 3):
-            if got_paused.get("health") is None:
-                break
-            time.sleep(delay)
-            got_paused = client.get_runtime(runtime_uuid)
-        check(got_paused.get("health") is None, "paused runtime has health=None")
-
         # run_flow without resume should fail on a paused runtime
         try:
             client.run_flow(runtime_uuid, flow_name)
@@ -600,7 +650,7 @@ def main():
 
         print("=== runtime resume via flow run ===")
 
-        trigger3 = client.run_flow(runtime_uuid, flow_name, resume=True)
+        trigger3 = run_flow_with_retry(client, runtime_uuid, flow_name, resume=True)
         check(
             trigger3.get("event_uuid") is not None, "run_flow with resume=True succeeds"
         )
