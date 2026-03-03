@@ -34,13 +34,13 @@ ascend-tools mcp --http       # HTTP on 127.0.0.1:8000
 ### Claude Code
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx --from ./ascend-tools ascend-tools mcp
+claude mcp add --transport stdio ascend-tools -- uvx ascend-tools mcp
 ```
 
 ### Codex CLI
 
 ```bash
-codex mcp add ascend-tools -- uvx --from "$(pwd)" ascend-tools mcp
+codex mcp add ascend-tools -- uvx ascend-tools mcp
 ```
 
 See the [top-level README](../../../README.md) for full documentation.
