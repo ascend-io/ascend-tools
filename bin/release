@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# ---------- usage ----------
+
+usage() {
+  echo "Usage: bin/release [--force] [--allow-dirty]"
+  echo ""
+  echo "Tag and push a release for the current version."
+  echo ""
+  echo "Pre-flight checks:"
+  echo "  - Working tree is clean (override with --allow-dirty)"
+  echo "  - bin/check passes"
+  echo "  - Git tag does not already exist on GitHub"
+  echo "  - Package version does not already exist on PyPI"
+  echo ""
+  echo "Options:"
+  echo "  --force        Skip GitHub tag and PyPI existence checks"
+  echo "  --allow-dirty  Skip clean working tree check"
+  exit "${1:-0}"
+}
+
+# ---------- args ----------
+
+FORCE=false
+ALLOW_DIRTY=false
+for arg in "$@"; do
+  case "$arg" in
+    --force)       FORCE=true ;;
+    --allow-dirty) ALLOW_DIRTY=true ;;
+    --help|-h)     usage 0 ;;
+    *)
+      echo "ERROR: unknown argument: $arg" >&2
+      usage 1
+      ;;
+  esac
+done
+
+# ---------- read version ----------
+
+VERSION=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+if [ -z "$VERSION" ]; then
+  echo "ERROR: could not read version from pyproject.toml" >&2
+  exit 1
+fi
+TAG="v$VERSION"
+
+echo "Releasing $TAG"
+
+# ---------- clean working tree ----------
+
+if [ "$ALLOW_DIRTY" = false ]; then
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "ERROR: working tree is dirty. Commit or stash changes, or use --allow-dirty." >&2
+    exit 1
+  fi
+  echo "  working tree is clean"
+else
+  echo "  skipping clean working tree check (--allow-dirty)"
+fi
+
+# ---------- run checks ----------
+
+echo "Running bin/check..."
+bin/check
+echo ""
+
+# ---------- check GitHub tag ----------
+
+if [ "$FORCE" = false ]; then
+  if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+    echo "ERROR: tag $TAG already exists on GitHub. Use --force to override." >&2
+    exit 1
+  fi
+  echo "  tag $TAG does not exist on GitHub"
+else
+  echo "  skipping GitHub tag check (--force)"
+fi
+
+# ---------- check PyPI ----------
+
+if [ "$FORCE" = false ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/ascend-tools/$VERSION/json")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "ERROR: ascend-tools $VERSION already exists on PyPI. Use --force to override." >&2
+    exit 1
+  fi
+  echo "  ascend-tools $VERSION does not exist on PyPI"
+else
+  echo "  skipping PyPI check (--force)"
+fi
+
+# ---------- tag and push ----------
+
+git tag "$TAG"
+echo "  created tag $TAG"
+
+git push origin "$TAG"
+echo ""
+echo "Released $TAG!"

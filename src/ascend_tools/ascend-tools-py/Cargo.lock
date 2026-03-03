@@ -84,7 +84,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "ascend-tools-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "ascend-tools-core",
@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "jsonwebtoken",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-mcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "ascend-tools-core",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-py"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ascend-tools-cli",
  "ascend-tools-core",
