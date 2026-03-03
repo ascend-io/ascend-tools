@@ -46,7 +46,7 @@ jobs:
             ~/.cargo/git
             ~/.cache/uv
             ~/Library/Caches/uv
-            src/ascend_tools/target
+            target
           key: build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
           restore-keys: build-${{ matrix.target }}-
       - run: bin/setup
@@ -63,7 +63,7 @@ jobs:
       - name: Package
         run: |
           staging=$(mktemp -d)
-          cp src/ascend_tools/target/${{ matrix.target }}/release/ascend-tools "$staging/"
+          cp target/${{ matrix.target }}/release/ascend-tools "$staging/"
           tar -czf ascend-tools-${{ steps.tag.outputs.version }}-${{ matrix.target }}.tar.gz -C "$staging" .
       - uses: actions/upload-artifact@v4
         with:

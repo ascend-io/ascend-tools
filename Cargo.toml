@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "src/ascend_tools/ascend-tools-core",
+  "src/ascend_tools/ascend-tools-mcp",
+  "src/ascend_tools/ascend-tools-cli",
+]
+resolver = "3"

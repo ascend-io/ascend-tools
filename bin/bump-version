@@ -86,8 +86,8 @@ done
 # ---------- regenerate lock files ----------
 
 echo "Regenerating lock files..."
-(cd src/ascend_tools && cargo generate-lockfile --quiet)
-echo "  updated src/ascend_tools/Cargo.lock"
+cargo generate-lockfile --quiet
+echo "  updated Cargo.lock"
 (cd src/ascend_tools/ascend-tools-py && cargo generate-lockfile --quiet)
 echo "  updated src/ascend_tools/ascend-tools-py/Cargo.lock"
 uv lock --quiet

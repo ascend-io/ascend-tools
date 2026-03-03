@@ -1,3 +1,0 @@
-[workspace]
-members = ["ascend-tools-core", "ascend-tools-mcp", "ascend-tools-cli"]
-resolver = "3"

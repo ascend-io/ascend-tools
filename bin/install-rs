@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Installing ascend-tools-cli..."
-cargo install --path ascend-tools-cli
+cargo install --path src/ascend_tools/ascend-tools-cli
 
 echo "Rust install complete!"
