@@ -39,7 +39,7 @@ export ASCEND_INSTANCE_API_URL="https://api.<instance>.ascend.io"
 
 If env vars are not inherited from your shell, pass them explicitly to `claude mcp add` with `-e`.
 
-For Codex/local dev setups, use server name `ascend-tools-dev`.
+For local setup via uv/uvx, use server name `ascend-tools-dev`.
 
 ## Tools
 

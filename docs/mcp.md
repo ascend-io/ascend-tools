@@ -75,7 +75,7 @@ ascend-tools mcp --http --bind 127.0.0.1:8000
 
 ### Verify
 
-- Claude Code: run `/mcp` and confirm you see the server name you configured (`ascend-tools` for remote, `ascend-tools-dev` for local uv/uvx dev setup).
+- Claude Code: run `/mcp` and confirm you see the server name you configured (`ascend-tools` for remote, `ascend-tools-dev` for local setup via uv/uvx).
 - Codex CLI: run `codex mcp list` and `codex mcp get <name> --json`, then start a session and confirm MCP tools are available.
 
 ### Manage
