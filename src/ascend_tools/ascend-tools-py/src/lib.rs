@@ -149,10 +149,33 @@ fn run(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
     })
 }
 
+/// Start the MCP HTTP server. Blocks until the server is shut down.
+///
+/// Call from a background thread (e.g. `asyncio.to_thread(run_mcp_http, "127.0.0.1:4201")`)
+/// since it blocks the calling thread.
+#[pyfunction]
+#[pyo3(signature = (bind_addr, *, service_account_id=None, service_account_key=None, instance_api_url=None))]
+fn run_mcp_http(
+    py: Python<'_>,
+    bind_addr: String,
+    service_account_id: Option<&str>,
+    service_account_key: Option<&str>,
+    instance_api_url: Option<&str>,
+) -> PyResult<()> {
+    let config = Config::with_overrides(service_account_id, service_account_key, instance_api_url);
+    py.detach(move || {
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        rt.block_on(ascend_tools_mcp::run_http(config, &bind_addr))
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    })
+}
+
 #[pymodule]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
+    m.add_function(wrap_pyfunction!(run_mcp_http, m)?)?;
     Ok(())
 }
 

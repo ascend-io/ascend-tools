@@ -2,7 +2,7 @@
 
 [package]
 name = "ascend-tools-py"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
@@ -17,7 +17,9 @@ crate-type = ["cdylib"]
 [dependencies]
 ascend-tools-core = { path = "../ascend-tools-core" }
 ascend-tools-cli = { path = "../ascend-tools-cli" }
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py313"] }
+ascend-tools-mcp = { path = "../ascend-tools-mcp" }
+tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
 pythonize = "0.28"
 serde = "1"
 serde_json = "1"

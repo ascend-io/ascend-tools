@@ -176,6 +176,16 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 
 ### usage with Claude Code
 
+**Remote (recommended)** — copy `ASCEND_MCP_URL` from Settings > Instance > MCP Server:
+
+```bash
+claude mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+Auth is handled automatically via OAuth (browser login). No service account or env vars needed.
+
+**Local (alternative)** — for offline or custom setups:
+
 ```bash
 claude mcp add ascend-tools --transport stdio -- uvx ascend-tools mcp
 ```
