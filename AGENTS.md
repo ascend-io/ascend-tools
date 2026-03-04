@@ -179,7 +179,7 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 **Remote (recommended)** — copy `ASCEND_MCP_URL` from Settings > Instance > MCP Server:
 
 ```bash
-claude mcp add --transport http ascend $ASCEND_MCP_URL
+claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
 ```
 
 Auth is handled automatically via OAuth (browser login). No service account or env vars needed.
@@ -187,14 +187,14 @@ Auth is handled automatically via OAuth (browser login). No service account or e
 **Local (alternative)** — for offline or custom setups:
 
 ```bash
-claude mcp add ascend-tools --transport stdio -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
 If Claude is launched without your shell env, set them explicitly:
 
 ```bash
-claude mcp add ascend-tools --transport stdio \
+claude mcp add --transport stdio ascend-tools-dev \
   -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
   -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
   -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
@@ -203,12 +203,13 @@ claude mcp add ascend-tools --transport stdio \
 
 ```bash
 claude mcp remove ascend-tools
+claude mcp remove ascend-tools-dev
 ```
 
 ### usage with Codex CLI
 
 ```bash
-codex mcp add ascend-tools -- uvx ascend-tools mcp
+codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 If Codex is launched without your shell env, set them explicitly:
@@ -218,11 +219,11 @@ codex mcp add \
   --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
   --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
   --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
+  ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 ```bash
-codex mcp get ascend-tools --json
+codex mcp get ascend-tools-dev --json
 ```
 
 ```bash
@@ -231,10 +232,17 @@ codex mcp list
 
 ```bash
 codex mcp remove ascend-tools
+codex mcp remove ascend-tools-dev
 ```
 
 Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
 If stale behavior appears after code updates, run one refresh manually:
+
+```bash
+uvx --refresh ascend-tools --version
+```
+
+If Codex MCP startup fails with `connection closed: initialize response`, refresh once and re-add:
 
 ```bash
 uvx --refresh ascend-tools --version
