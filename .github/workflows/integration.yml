@@ -1,16 +1,17 @@
 name: Integration
 
 on:
-  merge_group:
-  workflow_dispatch:
-
-concurrency:
-  group: "${{ github.workflow }}-${{ github.event.merge_group.ref || github.ref }}"
-  cancel-in-progress: true
+  workflow_call:
+    secrets:
+      ASCEND_SERVICE_ACCOUNT_ID:
+        required: true
+      ASCEND_SERVICE_ACCOUNT_KEY:
+        required: true
+      ASCEND_INSTANCE_API_URL:
+        required: true
 
 jobs:
-  app-dev:
-    name: Integration (app-dev)
+  integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,18 +32,18 @@ jobs:
       - name: CLI integration tests
         run: ./tests/integration.sh
         env:
-          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
-          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
-          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.ASCEND_INSTANCE_API_URL }}
       - name: Python SDK integration tests
         run: ./tests/integration.py
         env:
-          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
-          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
-          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.ASCEND_INSTANCE_API_URL }}
       - name: REST API integration tests
         run: ./tests/rest.py
         env:
-          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
-          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
-          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.ASCEND_INSTANCE_API_URL }}
