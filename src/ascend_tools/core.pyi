@@ -71,3 +71,17 @@ class Client:
 def run(argv: list[str]) -> None:
     """Run the CLI with the given arguments."""
     ...
+
+def run_mcp_http(
+    bind_addr: str,
+    *,
+    service_account_id: str | None = None,
+    service_account_key: str | None = None,
+    instance_api_url: str | None = None,
+) -> None:
+    """Start the MCP HTTP server. Blocks until shut down.
+
+    Call from a background thread (e.g. ``asyncio.to_thread(run_mcp_http, "127.0.0.1:4201")``)
+    since it blocks the calling thread.
+    """
+    ...

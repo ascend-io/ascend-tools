@@ -9,39 +9,35 @@ Manage Ascend runtimes, flows, and flow runs via MCP tools.
 
 > Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
 
-## Installation
+## Setup
 
-Add to Claude Code:
+### Remote server (recommended)
+
+Copy the MCP URL from **Settings > Instance > MCP Server** in the Ascend UI, then:
+
+```bash
+claude mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+Authentication is handled automatically via OAuth. No service account or env vars needed.
+
+### Local server (alternative)
+
+For offline development or custom configurations:
 
 ```bash
 claude mcp add --transport stdio ascend-tools -- uvx ascend-tools mcp
 ```
 
-If env vars are not inherited from your shell, pass them explicitly:
-
-```bash
-claude mcp add --transport stdio \
-  -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
-  -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
-  -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
-```
-
-Upgrade to the latest version (if stale behavior appears after a release):
-
-```bash
-uvx --refresh ascend-tools --version
-```
-
-## Authentication
-
-Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
+Requires service account env vars (from Ascend UI > Settings > Users > Create Service Account):
 
 ```bash
 export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
 export ASCEND_SERVICE_ACCOUNT_KEY="..."
-export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
+export ASCEND_INSTANCE_API_URL="https://api.<instance>.ascend.io"
 ```
+
+If env vars are not inherited from your shell, pass them explicitly to `claude mcp add` with `-e`.
 
 ## Tools
 

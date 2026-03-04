@@ -7,6 +7,103 @@ on:
     branches: [main]
   merge_group:
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.merge_group.ref || github.ref }}"
+  cancel-in-progress: true
+
 jobs:
   check:
-    uses: ./.github/workflows/check.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/uv
+            target
+          key: check-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
+          restore-keys: check-${{ runner.os }}-
+      - run: bin/setup
+      - run: bin/check
+
+  integration-app-dev:
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/uv
+            target
+          key: integration-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
+          restore-keys: integration-${{ runner.os }}-
+      - run: bin/setup
+      - run: bin/build
+      - name: CLI integration tests
+        run: ./tests/integration.sh
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+      - name: Python SDK integration tests
+        run: ./tests/integration.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+      - name: REST API integration tests
+        run: ./tests/rest.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+
+  # TODO: enable after APP_ASCEND_SERVICE_ACCOUNT_* secrets are added
+  # integration-app:
+  #   if: github.event_name == 'merge_group'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.13"
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #           ~/.cache/uv
+  #           target
+  #         key: integration-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'uv.lock') }}
+  #         restore-keys: integration-${{ runner.os }}-
+  #     - run: bin/setup
+  #     - run: bin/build
+  #     - name: CLI integration tests
+  #       run: ./tests/integration.sh
+  #       env:
+  #         ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+  #         ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+  #         ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
+  #     - name: Python SDK integration tests
+  #       run: ./tests/integration.py
+  #       env:
+  #         ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+  #         ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+  #         ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
+  #     - name: REST API integration tests
+  #       run: ./tests/rest.py
+  #       env:
+  #         ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+  #         ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+  #         ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}

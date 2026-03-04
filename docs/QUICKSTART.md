@@ -4,6 +4,30 @@
 
 ascend-tools provides a CLI, Python SDK, Rust SDK, and MCP server for the Ascend REST API. This guide walks you through authentication and your first commands.
 
+## Quick start: remote MCP server
+
+The fastest way to connect an AI assistant to Ascend — no local installation needed:
+
+1. Go to **Settings > Instance > MCP Server** in the Ascend UI
+2. Copy the `ASCEND_MCP_URL`
+3. Run:
+
+```bash
+# Claude Code
+claude mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+```bash
+# Codex CLI
+codex mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+Authentication is handled automatically via OAuth (browser login). No service account required. See [Set up the MCP server](mcp.md) for more options.
+
+---
+
+The rest of this guide covers the **local** CLI, SDK, and MCP server setup (requires a service account).
+
 ## Prerequisites
 
 - An Ascend Instance with permission to create service accounts

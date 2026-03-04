@@ -1,14 +1,35 @@
 # Set up the MCP server
 
-Connect AI assistants to Ascend using the ascend-tools MCP server.
+Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 8 tools for managing runtimes and flows. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
 
-## Overview
+## Remote MCP server (recommended)
 
-The `ascend-tools mcp` subcommand starts an [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that exposes 8 tools for managing Ascend runtimes and flows. It works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
+Every Ascend instance hosts a remote MCP server — no local installation required. Find the URL at **Settings > Instance > MCP Server** in the Ascend UI.
 
-## Set up with Claude Code
+### Claude Code
 
-### Install
+```bash
+# Copy ASCEND_MCP_URL from Settings > Instance > MCP Server
+claude mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+Authentication is handled automatically via OAuth (browser login). No service account or env vars needed.
+
+### Codex CLI
+
+```bash
+codex mcp add --transport http ascend $ASCEND_MCP_URL
+```
+
+### Other MCP clients
+
+Point your client at the MCP URL from Settings using the **Streamable HTTP** transport. The server supports OAuth 2.1 with PKCE for authentication.
+
+## Local MCP server (alternative)
+
+For offline development, custom configurations, or when you prefer running tools locally.
+
+### Claude Code
 
 ```bash
 claude mcp add ascend-tools -- uvx ascend-tools mcp
@@ -26,19 +47,7 @@ claude mcp add --transport stdio \
   ascend-tools -- uvx ascend-tools mcp
 ```
 
-### Verify
-
-Run `/mcp` inside Claude Code. You should see `ascend-tools` listed with 8 tools.
-
-### Remove
-
-```bash
-claude mcp remove ascend-tools
-```
-
-## Set up with Codex CLI
-
-### Install
+### Codex CLI
 
 ```bash
 codex mcp add ascend-tools -- uvx ascend-tools mcp
@@ -54,31 +63,27 @@ codex mcp add \
   ascend-tools -- uvx ascend-tools mcp
 ```
 
-### Inspect and manage
+### Other transports
 
 ```bash
-codex mcp get ascend-tools --json
-codex mcp list
-codex mcp remove ascend-tools
-```
-
-## Set up with other MCP clients
-
-### Stdio transport (default)
-
-```bash
+# Stdio (default) — communicates over stdin/stdout
 ascend-tools mcp
-```
 
-Communicates over stdin/stdout. Most MCP clients use this transport.
-
-### HTTP transport
-
-```bash
+# HTTP — Streamable HTTP on /mcp endpoint
 ascend-tools mcp --http --bind 127.0.0.1:8000
 ```
 
-Streamable HTTP on the `/mcp` endpoint. Use for remote or shared deployments, or clients that don't support stdio.
+### Verify
+
+Run `/mcp` inside Claude Code or Codex CLI. You should see `ascend-tools` listed with 8 tools.
+
+### Manage
+
+```bash
+claude mcp remove ascend-tools
+codex mcp list
+codex mcp remove ascend-tools
+```
 
 ## Tools reference
 
