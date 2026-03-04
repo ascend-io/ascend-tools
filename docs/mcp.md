@@ -75,7 +75,7 @@ ascend-tools mcp --http --bind 127.0.0.1:8000
 
 ### Verify
 
-Run `/mcp` inside Claude Code. You should see `ascend-tools` listed with 8 tools.
+Run `/mcp` inside Claude Code or Codex CLI. You should see `ascend-tools` listed with 8 tools.
 
 ### Manage
 

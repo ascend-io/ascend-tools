@@ -15,7 +15,9 @@ The fastest way to connect an AI assistant to Ascend — no local installation n
 ```bash
 # Claude Code
 claude mcp add --transport http ascend $ASCEND_MCP_URL
+```
 
+```bash
 # Codex CLI
 codex mcp add --transport http ascend $ASCEND_MCP_URL
 ```

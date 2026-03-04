@@ -19,7 +19,7 @@ ascend-tools-core = { path = "../ascend-tools-core" }
 ascend-tools-cli = { path = "../ascend-tools-cli" }
 ascend-tools-mcp = { path = "../ascend-tools-mcp" }
 tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
 pythonize = "0.28"
 serde = "1"
 serde_json = "1"

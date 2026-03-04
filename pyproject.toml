@@ -2,7 +2,7 @@
 name = "ascend-tools"
 version = "0.5.0"
 description = "Ascend CLI, SDK, MCP."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
