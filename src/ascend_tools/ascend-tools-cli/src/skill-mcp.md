@@ -16,7 +16,7 @@ Manage Ascend runtimes, flows, and flow runs via MCP tools.
 Copy the MCP URL from **Settings > Instance > MCP Server** in the Ascend UI, then:
 
 ```bash
-claude mcp add --transport http ascend $ASCEND_MCP_URL
+claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
 ```
 
 Authentication is handled automatically via OAuth. No service account or env vars needed.
@@ -26,7 +26,7 @@ Authentication is handled automatically via OAuth. No service account or env var
 For offline development or custom configurations:
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 Requires service account env vars (from Ascend UI > Settings > Users > Create Service Account):
@@ -38,6 +38,8 @@ export ASCEND_INSTANCE_API_URL="https://api.<instance>.ascend.io"
 ```
 
 If env vars are not inherited from your shell, pass them explicitly to `claude mcp add` with `-e`.
+
+For local setup via uv/uvx, use server name `ascend-tools-dev`.
 
 ## Tools
 

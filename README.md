@@ -119,24 +119,24 @@ ascend-tools mcp --http --bind 127.0.0.1:8000
 ### Claude Code setup
 
 ```bash
-claude mcp add --transport stdio ascend-tools -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 The Ascend auth env vars are inherited from your shell. Verify with `/mcp` inside Claude Code.
 If Claude is launched without your shell env, add vars explicitly:
 
 ```bash
-claude mcp add --transport stdio \
+claude mcp add --transport stdio ascend-tools-dev \
   -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
   -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
   -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
+  -- uvx ascend-tools mcp
 ```
 
 ### Codex CLI setup
 
 ```bash
-codex mcp add ascend-tools -- uvx ascend-tools mcp
+codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 If Codex is launched without your shell env, add vars explicitly:
@@ -146,13 +146,13 @@ codex mcp add \
   --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
   --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
   --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
+  ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 Inspect the MCP server config:
 
 ```bash
-codex mcp get ascend-tools --json
+codex mcp get ascend-tools-dev --json
 ```
 
 List all configured MCP servers:
@@ -164,11 +164,17 @@ codex mcp list
 Remove the config:
 
 ```bash
-codex mcp remove ascend-tools
+codex mcp remove ascend-tools-dev
 ```
 
 The Ascend auth env vars are inherited from your shell when Codex launches the server.
 If you have stale MCP behavior after updating code, run this once to refresh the uvx cache:
+
+```bash
+uvx --refresh ascend-tools --version
+```
+
+If Codex MCP startup fails with `connection closed: initialize response`, refresh once and re-add:
 
 ```bash
 uvx --refresh ascend-tools --version

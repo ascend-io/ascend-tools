@@ -10,7 +10,7 @@ Every Ascend instance hosts a remote MCP server — no local installation requir
 
 ```bash
 # Copy ASCEND_MCP_URL from Settings > Instance > MCP Server
-claude mcp add --transport http ascend $ASCEND_MCP_URL
+claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
 ```
 
 Authentication is handled automatically via OAuth (browser login). No service account or env vars needed.
@@ -18,7 +18,7 @@ Authentication is handled automatically via OAuth (browser login). No service ac
 ### Codex CLI
 
 ```bash
-codex mcp add --transport http ascend $ASCEND_MCP_URL
+codex mcp add ascend-tools --url $ASCEND_MCP_URL
 ```
 
 ### Other MCP clients
@@ -32,7 +32,7 @@ For offline development, custom configurations, or when you prefer running tools
 ### Claude Code
 
 ```bash
-claude mcp add ascend-tools -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 Auth environment variables (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from your shell. See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
@@ -40,17 +40,17 @@ Auth environment variables (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT
 If Claude is launched without your shell env, pass them explicitly:
 
 ```bash
-claude mcp add --transport stdio \
+claude mcp add --transport stdio ascend-tools-dev \
   -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
   -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
   -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
+  -- uvx ascend-tools mcp
 ```
 
 ### Codex CLI
 
 ```bash
-codex mcp add ascend-tools -- uvx ascend-tools mcp
+codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 If Codex is launched without your shell env, pass them explicitly:
@@ -60,7 +60,7 @@ codex mcp add \
   --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
   --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
   --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
-  ascend-tools -- uvx ascend-tools mcp
+  ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
 ### Other transports
@@ -75,14 +75,17 @@ ascend-tools mcp --http --bind 127.0.0.1:8000
 
 ### Verify
 
-Run `/mcp` inside Claude Code or Codex CLI. You should see `ascend-tools` listed with 8 tools.
+- Claude Code: run `/mcp` and confirm you see the server name you configured (`ascend-tools` for remote, `ascend-tools-dev` for local setup via uv/uvx).
+- Codex CLI: run `codex mcp list` and `codex mcp get <name> --json`, then start a session and confirm MCP tools are available.
 
 ### Manage
 
 ```bash
 claude mcp remove ascend-tools
+claude mcp remove ascend-tools-dev
 codex mcp list
 codex mcp remove ascend-tools
+codex mcp remove ascend-tools-dev
 ```
 
 ## Tools reference
@@ -197,3 +200,25 @@ uvx --refresh ascend-tools --version
 ### Environment variables not inherited
 
 Some IDE-launched shells, tmux sessions, or remote environments don't inherit your shell profile. Pass the env vars explicitly during `mcp add` (see setup instructions above).
+
+### Codex startup error: `connection closed: initialize response`
+
+This means the MCP process exited before Codex received the initialize response.
+
+Most common fixes:
+
+```bash
+# 1) Re-add remote server with the correct Codex HTTP syntax
+codex mcp add ascend-tools --url $ASCEND_MCP_URL
+
+# 2) Re-add local stdio server with uvx
+codex mcp remove ascend-tools-dev
+codex mcp add \
+  --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
+  --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
+  --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
+  ascend-tools-dev -- uvx ascend-tools mcp
+
+# 3) Refresh uvx cache if behavior seems stale
+uvx --refresh ascend-tools --version
+```
