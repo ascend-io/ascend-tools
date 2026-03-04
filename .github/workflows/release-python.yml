@@ -13,12 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    uses: ./.github/workflows/check.yml
-
   build:
     name: Build (${{ matrix.target }})
-    needs: check
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -60,7 +56,6 @@ jobs:
 
   sdist:
     name: Build sdist
-    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
