@@ -61,7 +61,7 @@ def run_flow_with_retry(
 ) -> dict:
     """Run a flow with retries for transient runtime readiness states."""
     last_error: Exception | None = None
-    for delay in (0, 2, 3, 5, 5):
+    for delay in (0, 5, 10, 15, 15, 15):
         if delay:
             time.sleep(delay)
         try:

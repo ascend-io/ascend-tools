@@ -33,7 +33,7 @@ run_flow_retry() {
   local out=""
   local rc=1
   local delay
-  for delay in 0 2 3 5 5; do
+  for delay in 0 5 10 15 15 15; do
     if [ "$delay" -gt 0 ]; then
       sleep "$delay"
     fi

@@ -24,10 +24,10 @@ jobs:
       ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
 
   # TODO: enable after APP_ASCEND_SERVICE_ACCOUNT_* secrets are added
-  integration-app:
-    if: false
-    uses: ./.github/workflows/integration.yml
-    secrets:
-      ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
-      ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
-      ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
+  # integration-app:
+  #   if: github.event_name == 'merge_group'
+  #   uses: ./.github/workflows/integration.yml
+  #   secrets:
+  #     ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+  #     ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+  #     ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
