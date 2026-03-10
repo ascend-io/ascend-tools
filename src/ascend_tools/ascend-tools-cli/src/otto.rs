@@ -1,9 +1,161 @@
+use std::collections::VecDeque;
+use std::io::Write;
+use std::sync::mpsc;
+use std::time::Duration;
+
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{OttoChatRequest, OttoModel};
 use clap::Subcommand;
 
 use crate::common::{OutputMode, print_json, print_table, resolve_runtime_target};
+
+// ---------------------------------------------------------------------------
+// StreamRenderer — spinner + smoothed character-by-character output
+// ---------------------------------------------------------------------------
+
+enum RenderMsg {
+    Delta(String),
+    Done,
+}
+
+/// Renders Otto's streaming response with a spinner while waiting and
+/// smoothed character-by-character output once text starts flowing.
+struct StreamRenderer {
+    tx: Option<mpsc::Sender<RenderMsg>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/// Target characters per second for smoothed output (~200 cps).
+/// Fast enough to not feel laggy, slow enough to look smooth.
+const CHAR_DELAY: Duration = Duration::from_millis(5);
+
+impl StreamRenderer {
+    /// Start the renderer. `prefix` is printed once before the first character
+    /// (e.g. `"otto> "` in TUI mode, `""` in run mode).
+    fn start(prefix: &str) -> Self {
+        let (tx, rx) = mpsc::channel::<RenderMsg>();
+        let prefix = prefix.to_string();
+        let handle = std::thread::spawn(move || {
+            Self::render_loop(rx, &prefix);
+        });
+        Self {
+            tx: Some(tx),
+            handle: Some(handle),
+        }
+    }
+
+    fn send_delta(&self, text: String) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(RenderMsg::Delta(text));
+        }
+    }
+
+    fn finish(&mut self) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(RenderMsg::Done);
+        }
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+
+    fn render_loop(rx: mpsc::Receiver<RenderMsg>, prefix: &str) {
+        let mut stderr = std::io::stderr();
+        let mut stdout = std::io::stdout();
+
+        // Phase 1: Spinner — animate until the first Delta arrives
+        let mut buf: VecDeque<char> = VecDeque::new();
+        let mut frame = 0usize;
+        loop {
+            match rx.recv_timeout(Duration::from_millis(80)) {
+                Ok(RenderMsg::Delta(text)) => {
+                    // Clear spinner, print prefix, buffer the text
+                    let _ = write!(stderr, "\r\x1b[2K{prefix}");
+                    let _ = stderr.flush();
+                    buf.extend(text.chars());
+                    break;
+                }
+                Ok(RenderMsg::Done) => {
+                    let _ = write!(stderr, "\r\x1b[2K");
+                    let _ = stderr.flush();
+                    return;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    let _ = write!(
+                        stderr,
+                        "\r{} Ascending...",
+                        SPINNER_FRAMES[frame % SPINNER_FRAMES.len()]
+                    );
+                    let _ = stderr.flush();
+                    frame += 1;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    let _ = write!(stderr, "\r\x1b[2K");
+                    let _ = stderr.flush();
+                    return;
+                }
+            }
+        }
+
+        // Phase 2: Smoothed character output
+        loop {
+            // Drain any pending deltas into buf
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    RenderMsg::Delta(text) => buf.extend(text.chars()),
+                    RenderMsg::Done => {
+                        // Flush remaining buffer immediately
+                        for ch in &buf {
+                            let _ = write!(stdout, "{ch}");
+                        }
+                        let _ = stdout.flush();
+                        return;
+                    }
+                }
+            }
+
+            if buf.is_empty() {
+                // Buffer empty — block until next message
+                match rx.recv() {
+                    Ok(RenderMsg::Delta(text)) => buf.extend(text.chars()),
+                    Ok(RenderMsg::Done) | Err(_) => return,
+                }
+                continue;
+            }
+
+            // Print one character and sleep
+            let ch = buf.pop_front().unwrap();
+            let _ = write!(stdout, "{ch}");
+            let _ = stdout.flush();
+
+            // Adaptive speed: if buffer is large, go faster
+            if buf.len() > 200 {
+                // Way behind — flush in bulk
+                let n = buf.len().min(100);
+                let bulk: String = buf.drain(..n).collect();
+                let _ = write!(stdout, "{bulk}");
+                let _ = stdout.flush();
+            } else if buf.len() > 50 {
+                // Behind — skip delay
+            } else {
+                std::thread::sleep(CHAR_DELAY);
+            }
+        }
+    }
+}
+
+impl Drop for StreamRenderer {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CLI commands
+// ---------------------------------------------------------------------------
 
 #[derive(Subcommand)]
 pub(crate) enum OttoCommands {
@@ -123,22 +275,31 @@ pub(crate) fn handle_otto_cmd(
 
             let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
 
-            let response = client.otto_chat(&OttoChatRequest {
+            let request = OttoChatRequest {
                 prompt,
                 runtime_id,
                 thread_id: thread,
                 model: otto_model,
-            })?;
+            };
 
             match output {
                 OutputMode::Json => {
+                    let response = client.otto_chat(&request)?;
                     print_json(&serde_json::json!({
                         "message": response.message,
                         "thread_id": response.thread_id,
                     }))?;
                 }
                 OutputMode::Text => {
-                    println!("{}", response.message);
+                    let mut renderer = StreamRenderer::start("");
+                    let response = client.otto_chat_streaming(&request, |delta| {
+                        renderer.send_delta(delta.to_string());
+                    })?;
+                    renderer.finish();
+                    println!();
+                    if let Some(tid) = &response.thread_id {
+                        eprintln!("thread: {tid}");
+                    }
                 }
             }
             Ok(())
@@ -263,18 +424,25 @@ pub(crate) fn handle_otto_cmd(
                     continue;
                 }
 
-                let response = client.otto_chat(&OttoChatRequest {
-                    prompt: prompt.to_string(),
-                    runtime_id: runtime_id.clone(),
-                    thread_id: thread_id.clone(),
-                    model: otto_model.clone(),
-                })?;
+                eprintln!();
+                let mut renderer = StreamRenderer::start("otto> ");
+                let response = client.otto_chat_streaming(
+                    &OttoChatRequest {
+                        prompt: prompt.to_string(),
+                        runtime_id: runtime_id.clone(),
+                        thread_id: thread_id.clone(),
+                        model: otto_model.clone(),
+                    },
+                    |delta| {
+                        renderer.send_delta(delta.to_string());
+                    },
+                )?;
+                renderer.finish();
+                println!("\n");
 
                 if let Some(tid) = &response.thread_id {
                     thread_id = Some(tid.clone());
                 }
-
-                println!("\notto> {}\n", response.message);
             }
             Ok(())
         }

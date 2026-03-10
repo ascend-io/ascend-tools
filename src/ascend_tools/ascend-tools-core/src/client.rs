@@ -416,55 +416,113 @@ impl AscendClient {
         self.get("/api/v1/otto/providers")
     }
 
-    /// Consumes the SSE stream from `/api/v1/otto/chat` and extracts the last
-    /// assistant message text.
+    /// Send a chat message to Otto via the threads API.
+    ///
+    /// Collects the full response before returning. For real-time streaming,
+    /// use [`otto_chat_streaming`] instead.
     pub fn otto_chat(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
+        let mut full_message = String::new();
+        let response = self.otto_chat_streaming(request, |delta| {
+            full_message.push_str(delta);
+        })?;
+        Ok(OttoChatResponse {
+            message: full_message,
+            thread_id: response.thread_id,
+        })
+    }
+
+    /// Send a chat message to Otto, streaming text deltas to `on_delta` as they arrive.
+    ///
+    /// The callback receives each text chunk as it's produced. The returned
+    /// `OttoChatResponse` has an empty `message` — the caller is expected to
+    /// have accumulated the text via the callback.
+    pub fn otto_chat_streaming(
+        &self,
+        request: &OttoChatRequest,
+        mut on_delta: impl FnMut(&str),
+    ) -> Result<OttoChatResponse> {
         let body = serde_json::to_value(request)
             .with_json_serialize_context("OttoChatRequest body".to_string())?;
         let token = self.auth.get_token()?;
-        let url = format!("{}/api/v1/otto/chat", self.instance_api_url);
-        let context = "POST /api/v1/otto/chat";
+
+        // Step 1: Create thread or send message to existing thread
+        let (path, context) = if let Some(ref tid) = request.thread_id {
+            (
+                format!("/api/v1/otto/threads/{tid}/messages"),
+                format!("POST /api/v1/otto/threads/{tid}/messages"),
+            )
+        } else {
+            (
+                "/api/v1/otto/threads".to_string(),
+                "POST /api/v1/otto/threads".to_string(),
+            )
+        };
+
+        let url = format!("{}{path}", self.instance_api_url);
         let json_body = serde_json::to_string(&body)
             .with_json_serialize_context(format!("{context} request body"))?;
-        let resp = self
-            .agent
-            .post(&url)
-            .header("Authorization", &format!("Bearer {token}"))
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .send(json_body.as_bytes())
-            .with_request_context(context.to_string())?;
+        let create_resp: Value = {
+            let resp = self
+                .agent
+                .post(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .header("Content-Type", "application/json")
+                .send(json_body.as_bytes())
+                .with_request_context(context.clone())?;
+            handle_response(resp, &context)?
+        };
 
-        if !(200..300).contains(&resp.status().as_u16()) {
-            return check_error_status(resp, context).map(|()| OttoChatResponse {
+        let thread_id = create_resp
+            .get("thread_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::ApiError {
+                status: 500,
+                message: "missing thread_id in response".to_string(),
+            })?
+            .to_string();
+
+        // Step 2: Stream SSE events from the thread updates endpoint
+        let updates_path = format!("/api/v1/otto/threads/{thread_id}/updates");
+        let updates_url = format!("{}{updates_path}", self.instance_api_url);
+        let updates_context = format!("GET {updates_path}");
+        let updates_resp = self
+            .agent
+            .get(&updates_url)
+            .header("Authorization", &format!("Bearer {token}"))
+            .header("Accept", "text/event-stream")
+            .call()
+            .with_request_context(updates_context.clone())?;
+
+        if !(200..300).contains(&updates_resp.status().as_u16()) {
+            return check_error_status(updates_resp, &updates_context).map(|()| OttoChatResponse {
                 message: String::new(),
-                thread_id: None,
+                thread_id: Some(thread_id),
             });
         }
 
-        // Parse SSE stream to extract assistant message and thread_id
-        let reader = BufReader::new(resp.into_body().into_reader());
-        let mut last_message = String::new();
-        let mut thread_id = None;
+        // Parse SSE stream, calling on_delta for each text chunk
+        let reader = BufReader::new(updates_resp.into_body().into_reader());
 
         for event_result in SseReader::new(reader) {
             let event = event_result?;
-            // Try to parse the data as JSON to extract message content
-            if let Ok(data) = serde_json::from_str::<Value>(&event.data) {
-                // Look for thread_id in thread-related events
-                if let Some(tid) = data.get("thread_id").and_then(|v| v.as_str()) {
-                    thread_id = Some(tid.to_string());
-                }
-                // Look for output text content in response events
-                if let Some(text) = extract_assistant_text(&data) {
-                    last_message = text;
-                }
+
+            if event.event_type.as_deref() == Some("thread.done")
+                || event.event_type.as_deref() == Some("thread.stopped")
+            {
+                break;
+            }
+
+            if event.event_type.as_deref() == Some("response.output_text.delta")
+                && let Ok(data) = serde_json::from_str::<Value>(&event.data)
+                && let Some(delta) = data.get("delta").and_then(|v| v.as_str())
+            {
+                on_delta(delta);
             }
         }
 
         Ok(OttoChatResponse {
-            message: last_message,
-            thread_id,
+            message: String::new(),
+            thread_id: Some(thread_id),
         })
     }
 
@@ -540,29 +598,6 @@ impl AscendClient {
             .with_request_context(context.clone())?;
         check_error_status(resp, &context)
     }
-}
-
-/// Try to extract assistant text from an SSE data payload.
-///
-/// Otto uses the OpenAI Responses API format. Look for output items
-/// with type "message" / role "assistant" containing text content.
-fn extract_assistant_text(data: &Value) -> Option<String> {
-    // response.output_item.done events contain the full output item
-    let item = data.get("item").or(Some(data))?;
-    if item.get("type").and_then(|v| v.as_str()) == Some("message")
-        && item.get("role").and_then(|v| v.as_str()) == Some("assistant")
-        && let Some(content) = item.get("content").and_then(|v| v.as_array())
-    {
-        let texts: Vec<&str> = content
-            .iter()
-            .filter(|c| c.get("type").and_then(|v| v.as_str()) == Some("output_text"))
-            .filter_map(|c| c.get("text").and_then(|v| v.as_str()))
-            .collect();
-        if !texts.is_empty() {
-            return Some(texts.join(""));
-        }
-    }
-    None
 }
 
 /// Resolve exactly one item from a list, returning its UUID.
