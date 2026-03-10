@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::RuntimeUpdate;
+use ascend_tools::models::{RuntimeKind, RuntimeUpdate};
 use clap::Subcommand;
 
 use crate::common::{
@@ -157,10 +157,21 @@ pub(crate) fn handle_deployment(
             title,
             project,
             environment,
-        } => handle_runtime_list(client, "deployment", title, project, environment, output),
-        DeploymentCommands::Get { title, uuid } => {
-            handle_runtime_get(client, "deployment", &title, uuid.as_deref(), output)
-        }
+        } => handle_runtime_list(
+            client,
+            RuntimeKind::Deployment,
+            title,
+            project,
+            environment,
+            output,
+        ),
+        DeploymentCommands::Get { title, uuid } => handle_runtime_get(
+            client,
+            RuntimeKind::Deployment,
+            &title,
+            uuid.as_deref(),
+            output,
+        ),
         DeploymentCommands::Create {
             title,
             environment,
@@ -173,7 +184,7 @@ pub(crate) fn handle_deployment(
             enable_automations,
         } => handle_runtime_create(
             client,
-            "deployment",
+            RuntimeKind::Deployment,
             title,
             environment,
             project,
@@ -198,7 +209,7 @@ pub(crate) fn handle_deployment(
             enable_automations,
         } => handle_runtime_update(
             client,
-            "deployment",
+            RuntimeKind::Deployment,
             &current_title,
             uuid.as_deref(),
             RuntimeUpdate {
@@ -214,15 +225,7 @@ pub(crate) fn handle_deployment(
             output,
         ),
         DeploymentCommands::PauseAutomations { title, uuid } => {
-            let runtime_uuid =
-                client.resolve_runtime_uuid(&title, "deployment", uuid.as_deref())?;
-            let r = client.update_runtime(
-                &runtime_uuid,
-                &RuntimeUpdate {
-                    enable_automations: Some(false),
-                    ..Default::default()
-                },
-            )?;
+            let r = client.pause_deployment_automations(&title, uuid.as_deref())?;
             match output {
                 OutputMode::Json => print_json(&r)?,
                 OutputMode::Text => println!("Paused automations on deployment '{}'", r.title),
@@ -230,23 +233,20 @@ pub(crate) fn handle_deployment(
             Ok(())
         }
         DeploymentCommands::ResumeAutomations { title, uuid } => {
-            let runtime_uuid =
-                client.resolve_runtime_uuid(&title, "deployment", uuid.as_deref())?;
-            let r = client.update_runtime(
-                &runtime_uuid,
-                &RuntimeUpdate {
-                    enable_automations: Some(true),
-                    ..Default::default()
-                },
-            )?;
+            let r = client.resume_deployment_automations(&title, uuid.as_deref())?;
             match output {
                 OutputMode::Json => print_json(&r)?,
                 OutputMode::Text => println!("Resumed automations on deployment '{}'", r.title),
             }
             Ok(())
         }
-        DeploymentCommands::Delete { title, uuid, yes } => {
-            handle_runtime_delete(client, "deployment", &title, uuid.as_deref(), yes, output)
-        }
+        DeploymentCommands::Delete { title, uuid, yes } => handle_runtime_delete(
+            client,
+            RuntimeKind::Deployment,
+            &title,
+            uuid.as_deref(),
+            yes,
+            output,
+        ),
     }
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::RuntimeUpdate;
+use ascend_tools::models::{RuntimeKind, RuntimeUpdate};
 use clap::Subcommand;
 
 use crate::common::{
@@ -157,10 +157,21 @@ pub(crate) fn handle_workspace(
             title,
             project,
             environment,
-        } => handle_runtime_list(client, "workspace", title, project, environment, output),
-        WorkspaceCommands::Get { title, uuid } => {
-            handle_runtime_get(client, "workspace", &title, uuid.as_deref(), output)
-        }
+        } => handle_runtime_list(
+            client,
+            RuntimeKind::Workspace,
+            title,
+            project,
+            environment,
+            output,
+        ),
+        WorkspaceCommands::Get { title, uuid } => handle_runtime_get(
+            client,
+            RuntimeKind::Workspace,
+            &title,
+            uuid.as_deref(),
+            output,
+        ),
         WorkspaceCommands::Create {
             title,
             environment,
@@ -173,7 +184,7 @@ pub(crate) fn handle_workspace(
             auto_snooze_timeout_minutes,
         } => handle_runtime_create(
             client,
-            "workspace",
+            RuntimeKind::Workspace,
             title,
             environment,
             project,
@@ -198,7 +209,7 @@ pub(crate) fn handle_workspace(
             auto_snooze_timeout_minutes,
         } => handle_runtime_update(
             client,
-            "workspace",
+            RuntimeKind::Workspace,
             &current_title,
             uuid.as_deref(),
             RuntimeUpdate {
@@ -213,14 +224,27 @@ pub(crate) fn handle_workspace(
             },
             output,
         ),
-        WorkspaceCommands::Pause { title, uuid } => {
-            handle_runtime_pause(client, "workspace", &title, uuid.as_deref(), output)
-        }
-        WorkspaceCommands::Resume { title, uuid } => {
-            handle_runtime_resume(client, "workspace", &title, uuid.as_deref(), output)
-        }
-        WorkspaceCommands::Delete { title, uuid, yes } => {
-            handle_runtime_delete(client, "workspace", &title, uuid.as_deref(), yes, output)
-        }
+        WorkspaceCommands::Pause { title, uuid } => handle_runtime_pause(
+            client,
+            RuntimeKind::Workspace,
+            &title,
+            uuid.as_deref(),
+            output,
+        ),
+        WorkspaceCommands::Resume { title, uuid } => handle_runtime_resume(
+            client,
+            RuntimeKind::Workspace,
+            &title,
+            uuid.as_deref(),
+            output,
+        ),
+        WorkspaceCommands::Delete { title, uuid, yes } => handle_runtime_delete(
+            client,
+            RuntimeKind::Workspace,
+            &title,
+            uuid.as_deref(),
+            yes,
+            output,
+        ),
     }
 }

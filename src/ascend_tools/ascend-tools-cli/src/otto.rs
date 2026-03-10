@@ -3,7 +3,7 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::{OttoChatRequest, OttoModel};
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_json, print_table};
+use crate::common::{OutputMode, print_json, print_table, resolve_runtime_target};
 
 #[derive(Subcommand)]
 pub(crate) enum OttoCommands {
@@ -17,7 +17,11 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         workspace: Option<String>,
 
-        /// Use UUID instead of title for workspace
+        /// Deployment to use for context
+        #[arg(long)]
+        deployment: Option<String>,
+
+        /// Use UUID instead of title
         #[arg(long)]
         uuid: Option<String>,
 
@@ -49,7 +53,11 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         workspace: Option<String>,
 
-        /// Use UUID instead of title for workspace
+        /// Deployment to use for context
+        #[arg(long)]
+        deployment: Option<String>,
+
+        /// Use UUID instead of title
         #[arg(long)]
         uuid: Option<String>,
 
@@ -96,15 +104,19 @@ pub(crate) fn handle_otto_cmd(
         OttoCommands::Run {
             prompt,
             workspace,
+            deployment,
             uuid,
             provider,
             model,
             thread,
         } => {
-            let runtime_id = if let Some(uuid) = uuid {
-                Some(uuid)
-            } else if let Some(ws) = workspace {
-                Some(client.resolve_runtime_uuid(&ws, "workspace", None)?)
+            let runtime_id = if workspace.is_some() || deployment.is_some() || uuid.is_some() {
+                Some(resolve_runtime_target(
+                    client,
+                    workspace.as_deref(),
+                    deployment.as_deref(),
+                    uuid.as_deref(),
+                )?)
             } else {
                 None
             };
@@ -208,14 +220,18 @@ pub(crate) fn handle_otto_cmd(
         }
         OttoCommands::Tui {
             workspace,
+            deployment,
             uuid,
             provider,
             model,
         } => {
-            let runtime_id = if let Some(uuid) = uuid {
-                Some(uuid)
-            } else if let Some(ws) = workspace {
-                Some(client.resolve_runtime_uuid(&ws, "workspace", None)?)
+            let runtime_id = if workspace.is_some() || deployment.is_some() || uuid.is_some() {
+                Some(resolve_runtime_target(
+                    client,
+                    workspace.as_deref(),
+                    deployment.as_deref(),
+                    uuid.as_deref(),
+                )?)
             } else {
                 None
             };

@@ -321,10 +321,12 @@ pub struct GetFlowRunParams {
 pub struct OttoChatParams {
     /// Message to send to Otto
     pub prompt: String,
-    /// Workspace title for context
+    /// Workspace title for context (provide one of workspace_title, deployment_title, or uuid)
     pub workspace_title: Option<String>,
-    /// Workspace UUID (direct override)
-    pub workspace_uuid: Option<String>,
+    /// Deployment title for context (provide one of workspace_title, deployment_title, or uuid)
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override)
+    pub uuid: Option<String>,
     /// LLM provider (e.g. "openai")
     pub provider: Option<String>,
     /// LLM model (e.g. "gpt-4o")

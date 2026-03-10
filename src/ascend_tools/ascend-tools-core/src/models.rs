@@ -1,8 +1,29 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
-/// Runtime kind constants.
-pub const KIND_WORKSPACE: &str = "workspace";
-pub const KIND_DEPLOYMENT: &str = "deployment";
+/// The kind of runtime (workspace or deployment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuntimeKind {
+    Workspace,
+    Deployment,
+}
+
+impl RuntimeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Workspace => "workspace",
+            Self::Deployment => "deployment",
+        }
+    }
+}
+
+impl fmt::Display for RuntimeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// An Ascend environment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,7 +48,7 @@ pub struct Runtime {
     pub uuid: String,
     pub id: String,
     pub title: String,
-    pub kind: String,
+    pub kind: RuntimeKind,
     pub project_uuid: String,
     pub environment_uuid: String,
     pub build_uuid: Option<String>,
@@ -86,7 +107,7 @@ pub struct FlowRunTrigger {
 pub struct RuntimeFilters {
     pub id: Option<String>,
     pub title: Option<String>,
-    pub kind: Option<String>,
+    pub kind: Option<RuntimeKind>,
     pub project: Option<String>,
     pub environment: Option<String>,
 }

@@ -113,22 +113,31 @@ Create a new workspace.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `environment` | yes | string | Environment title |
-| `project` | yes | string | Project title |
-| `build_uuid` | yes | string | Build UUID |
-| `title` | no | string | Workspace title |
-| `paused` | no | boolean | Create in paused state |
+| `title` | yes | string | Workspace title |
+| `environment` | yes | string | Environment name (or UUID) |
+| `project` | yes | string | Project name (or UUID) |
+| `profile_name` | yes | string | Configuration profile name |
+| `working_git_branch` | yes | string | Git branch |
+| `base_git_branch` | no | string | Base git branch |
+| `size` | no | string | Runtime size (e.g. Small, Medium, Large) |
+| `storage_size` | no | integer | Storage size in GB |
+| `auto_snooze_timeout_minutes` | no | integer | Minutes of inactivity before auto-snooze |
 
 ### update_workspace
 
-Update an existing workspace.
+Update an existing workspace. Only provided fields are changed.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `title` | yes | string | Current workspace title |
-| `new_title` | no | string | New workspace title |
-| `build_uuid` | no | string | New build UUID |
-| `paused` | no | boolean | Paused state |
+| `current_title` | yes | string | Current workspace title |
+| `uuid` | no | string | UUID override (skip title lookup) |
+| `title` | no | string | New title |
+| `working_git_branch` | no | string | New git branch |
+| `base_git_branch` | no | string | New base git branch |
+| `profile_name` | no | string | New profile name |
+| `size` | no | string | New runtime size |
+| `storage_size` | no | integer | New storage size in GB |
+| `auto_snooze_timeout_minutes` | no | integer | New auto-snooze timeout in minutes |
 
 ### pause_workspace
 
@@ -177,22 +186,31 @@ Create a new deployment.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `environment` | yes | string | Environment title |
-| `project` | yes | string | Project title |
-| `build_uuid` | yes | string | Build UUID |
-| `title` | no | string | Deployment title |
-| `paused` | no | boolean | Create in paused state |
+| `title` | yes | string | Deployment title |
+| `environment` | yes | string | Environment name (or UUID) |
+| `project` | yes | string | Project name (or UUID) |
+| `profile_name` | yes | string | Configuration profile name |
+| `working_git_branch` | yes | string | Git branch |
+| `base_git_branch` | no | string | Base git branch |
+| `size` | no | string | Runtime size (e.g. Small, Medium, Large) |
+| `storage_size` | no | integer | Storage size in GB |
+| `enable_automations` | no | boolean | Enable automations |
 
 ### update_deployment
 
-Update an existing deployment.
+Update an existing deployment. Only provided fields are changed.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `title` | yes | string | Current deployment title |
-| `new_title` | no | string | New deployment title |
-| `build_uuid` | no | string | New build UUID |
-| `paused` | no | boolean | Paused state |
+| `current_title` | yes | string | Current deployment title |
+| `uuid` | no | string | UUID override (skip title lookup) |
+| `title` | no | string | New title |
+| `working_git_branch` | no | string | New git branch |
+| `base_git_branch` | no | string | New base git branch |
+| `profile_name` | no | string | New profile name |
+| `size` | no | string | New runtime size |
+| `storage_size` | no | integer | New storage size in GB |
+| `enable_automations` | no | boolean | Enable or disable automations |
 
 ### pause_deployment_automations
 
@@ -276,7 +294,8 @@ Chat with Otto, the Ascend AI assistant.
 |-----------|----------|------|-------------|
 | `prompt` | yes | string | Message to send to Otto |
 | `workspace_title` | no | string | Workspace title for context |
-| `workspace_uuid` | no | string | Workspace UUID (direct override) |
+| `deployment_title` | no | string | Deployment title for context |
+| `uuid` | no | string | Runtime UUID (direct override) |
 | `provider` | no | string | LLM provider ID |
 | `model` | no | string | LLM model ID |
 | `thread_id` | no | string | Thread ID to continue a conversation |

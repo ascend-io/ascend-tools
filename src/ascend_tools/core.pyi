@@ -15,17 +15,6 @@ class Client:
         service_account_key: str | None = None,
         instance_api_url: str | None = None,
     ) -> None: ...
-    def list_runtimes(
-        self,
-        *,
-        id: str | None = None,
-        title: str | None = None,
-        kind: str | None = None,
-        project: str | None = None,
-        environment: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """List runtimes, optionally filtered. Project/environment accept names or UUIDs."""
-        ...
     # -- Workspaces --
     def list_workspaces(
         self,
@@ -139,55 +128,6 @@ class Client:
         """Delete a deployment."""
         ...
 
-    # -- Runtime primitives (low-level) --
-
-    def get_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Get a runtime by UUID."""
-        ...
-    def resume_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Resume a paused runtime."""
-        ...
-    def pause_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Pause a running runtime."""
-        ...
-    def resolve_runtime_by_title(self, *, title: str, kind: str) -> dict[str, Any]:
-        """Resolve a runtime by title and kind. Returns exactly one match."""
-        ...
-    def create_runtime(
-        self,
-        *,
-        title: str,
-        kind: str,
-        environment: str,
-        project: str,
-        profile_name: str,
-        working_git_branch: str,
-        base_git_branch: str | None = None,
-        size: str | None = None,
-        storage_size: int | None = None,
-        enable_automations: bool | None = None,
-        auto_snooze_timeout_minutes: int | None = None,
-    ) -> dict[str, Any]:
-        """Create a runtime (workspace or deployment). Accepts environment/project names or UUIDs."""
-        ...
-    def update_runtime(
-        self,
-        *,
-        uuid: str,
-        title: str | None = None,
-        working_git_branch: str | None = None,
-        base_git_branch: str | None = None,
-        profile_name: str | None = None,
-        size: str | None = None,
-        storage_size: int | None = None,
-        enable_automations: bool | None = None,
-        auto_snooze_timeout_minutes: int | None = None,
-    ) -> dict[str, Any]:
-        """Update a runtime. Only provided fields are changed (PATCH semantics)."""
-        ...
-    def delete_runtime(self, *, uuid: str) -> None:
-        """Delete a runtime."""
-        ...
     def list_environments(self) -> list[dict[str, Any]]:
         """List all environments."""
         ...
@@ -203,29 +143,41 @@ class Client:
     def list_profiles(
         self,
         *,
-        runtime_uuid: str | None = None,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         project: str | None = None,
         branch: str | None = None,
     ) -> list[str]:
-        """List available profiles. Provide runtime_uuid or project+branch (name or UUID)."""
+        """List available profiles. Provide workspace/deployment title, uuid, or project+branch."""
         ...
-    def list_flows(self, *, runtime_uuid: str) -> list[dict[str, Any]]:
-        """List flows in a runtime."""
+    def list_flows(
+        self,
+        *,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List flows in a workspace or deployment."""
         ...
     def run_flow(
         self,
         *,
-        runtime_uuid: str,
         flow_name: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         spec: dict[str, Any] | None = None,
         resume: bool = False,
     ) -> dict[str, Any]:
-        """Trigger a flow run. Set resume=True to resume a paused runtime first."""
+        """Trigger a flow run. Set resume=True to resume a paused workspace first."""
         ...
     def list_flow_runs(
         self,
         *,
-        runtime_uuid: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         status: str | None = None,
         flow_name: str | None = None,
         since: str | None = None,
@@ -239,7 +191,14 @@ class Client:
         indicates the server-side row limit was reached and results may be incomplete.
         """
         ...
-    def get_flow_run(self, *, runtime_uuid: str, name: str) -> dict[str, Any]:
+    def get_flow_run(
+        self,
+        *,
+        name: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+    ) -> dict[str, Any]:
         """Get a flow run by name."""
         ...
     def list_otto_providers(self) -> list[dict[str, Any]]:
@@ -249,7 +208,9 @@ class Client:
         self,
         *,
         prompt: str,
-        runtime_uuid: str | None = None,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         thread_id: str | None = None,
         model: str | None = None,
         provider: str | None = None,

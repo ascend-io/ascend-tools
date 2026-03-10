@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::BufReader;
 
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -8,9 +9,9 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, KIND_DEPLOYMENT,
-    KIND_WORKSPACE, OttoChatRequest, OttoChatResponse, OttoProvider, Project, Runtime,
-    RuntimeCreate, RuntimeFilters, RuntimeUpdate,
+    Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, OttoChatRequest,
+    OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind,
+    RuntimeUpdate,
 };
 use crate::sse::SseReader;
 
@@ -85,7 +86,7 @@ impl AscendClient {
         let mut qs = QueryString::new();
         qs.push_opt("id", filters.id.as_deref());
         qs.push_opt("title", filters.title.as_deref());
-        qs.push_opt("kind", filters.kind.as_deref());
+        qs.push_opt("kind", filters.kind.map(|k| k.as_str()));
         qs.push_opt("project", filters.project.as_deref());
         qs.push_opt("environment", filters.environment.as_deref());
         self.get(&format!("/api/v1/runtimes{}", qs.finish()))
@@ -122,10 +123,10 @@ impl AscendClient {
     /// Resolve a runtime by its title and kind. Returns exactly one match.
     ///
     /// Errors if zero or multiple runtimes match.
-    pub fn resolve_runtime_by_title(&self, title: &str, kind: &str) -> Result<Runtime> {
+    pub fn resolve_runtime_by_title(&self, title: &str, kind: RuntimeKind) -> Result<Runtime> {
         let runtimes = self.list_runtimes(RuntimeFilters {
             title: Some(title.to_string()),
-            kind: Some(kind.to_string()),
+            kind: Some(kind),
             ..Default::default()
         })?;
         resolve_one(runtimes, kind, title, |r| (&r.uuid, &r.title))
@@ -137,7 +138,7 @@ impl AscendClient {
     pub fn resolve_runtime_uuid(
         &self,
         title: &str,
-        kind: &str,
+        kind: RuntimeKind,
         uuid_override: Option<&str>,
     ) -> Result<String> {
         if let Some(uuid) = uuid_override {
@@ -150,7 +151,7 @@ impl AscendClient {
 
     pub fn list_workspaces(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
         let mut filters = filters;
-        filters.kind = Some(KIND_WORKSPACE.into());
+        filters.kind = Some(RuntimeKind::Workspace);
         self.list_runtimes(filters)
     }
 
@@ -158,7 +159,7 @@ impl AscendClient {
         if let Some(uuid) = uuid {
             self.get_runtime(uuid)
         } else {
-            self.resolve_runtime_by_title(title, KIND_WORKSPACE)
+            self.resolve_runtime_by_title(title, RuntimeKind::Workspace)
         }
     }
 
@@ -172,22 +173,22 @@ impl AscendClient {
         uuid: Option<&str>,
         update: &RuntimeUpdate,
     ) -> Result<Runtime> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_WORKSPACE, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.update_runtime(&uuid, update)
     }
 
     pub fn pause_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_WORKSPACE, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.pause_runtime(&uuid)
     }
 
     pub fn resume_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_WORKSPACE, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.resume_runtime(&uuid)
     }
 
     pub fn delete_workspace(&self, title: &str, uuid: Option<&str>) -> Result<()> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_WORKSPACE, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.delete_runtime(&uuid)
     }
 
@@ -195,7 +196,7 @@ impl AscendClient {
 
     pub fn list_deployments(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
         let mut filters = filters;
-        filters.kind = Some(KIND_DEPLOYMENT.into());
+        filters.kind = Some(RuntimeKind::Deployment);
         self.list_runtimes(filters)
     }
 
@@ -203,7 +204,7 @@ impl AscendClient {
         if let Some(uuid) = uuid {
             self.get_runtime(uuid)
         } else {
-            self.resolve_runtime_by_title(title, KIND_DEPLOYMENT)
+            self.resolve_runtime_by_title(title, RuntimeKind::Deployment)
         }
     }
 
@@ -217,13 +218,79 @@ impl AscendClient {
         uuid: Option<&str>,
         update: &RuntimeUpdate,
     ) -> Result<Runtime> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_DEPLOYMENT, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
         self.update_runtime(&uuid, update)
     }
 
+    pub fn pause_deployment_automations(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.update_runtime(
+            &uuid,
+            &RuntimeUpdate {
+                enable_automations: Some(false),
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn resume_deployment_automations(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> Result<Runtime> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.update_runtime(
+            &uuid,
+            &RuntimeUpdate {
+                enable_automations: Some(true),
+                ..Default::default()
+            },
+        )
+    }
+
     pub fn delete_deployment(&self, title: &str, uuid: Option<&str>) -> Result<()> {
-        let uuid = self.resolve_runtime_uuid(title, KIND_DEPLOYMENT, uuid)?;
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
         self.delete_runtime(&uuid)
+    }
+
+    // -- Cross-kind resolution --
+
+    /// Resolve a runtime UUID from workspace title, deployment title, or UUID.
+    ///
+    /// Exactly one of the three must be provided. Returns `MissingField` if none are set.
+    pub fn resolve_runtime_target(
+        &self,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+    ) -> Result<String> {
+        if let Some(uuid) = uuid {
+            return Ok(uuid.to_string());
+        }
+        if let Some(ws) = workspace {
+            return self.resolve_runtime_uuid(ws, RuntimeKind::Workspace, None);
+        }
+        if let Some(dep) = deployment {
+            return self.resolve_runtime_uuid(dep, RuntimeKind::Deployment, None);
+        }
+        Err(Error::MissingField {
+            context: "runtime target",
+            field: "workspace, deployment, or uuid",
+        })
+    }
+
+    /// Like `resolve_runtime_target` but returns `None` when no target is specified.
+    pub fn resolve_optional_runtime_target(
+        &self,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+    ) -> Result<Option<String>> {
+        if uuid.is_none() && workspace.is_none() && deployment.is_none() {
+            return Ok(None);
+        }
+        self.resolve_runtime_target(workspace, deployment, uuid)
+            .map(Some)
     }
 
     // -- Environments --
@@ -233,10 +300,9 @@ impl AscendClient {
     }
 
     pub fn get_environment(&self, title: &str) -> Result<Environment> {
-        let envs: Vec<Environment> = self.get(&format!(
-            "/api/v1/environments?title={}",
-            encode_query_value(title)
-        ))?;
+        let mut qs = QueryString::new();
+        qs.push("title", title);
+        let envs: Vec<Environment> = self.get(&format!("/api/v1/environments{}", qs.finish()))?;
         resolve_one(envs, "environment", title, |e| (&e.uuid, &e.title))
     }
 
@@ -247,10 +313,9 @@ impl AscendClient {
     }
 
     pub fn get_project(&self, title: &str) -> Result<Project> {
-        let projects: Vec<Project> = self.get(&format!(
-            "/api/v1/projects?title={}",
-            encode_query_value(title)
-        ))?;
+        let mut qs = QueryString::new();
+        qs.push("title", title);
+        let projects: Vec<Project> = self.get(&format!("/api/v1/projects{}", qs.finish()))?;
         resolve_one(projects, "project", title, |p| (&p.uuid, &p.title))
     }
 
@@ -504,7 +569,7 @@ fn extract_assistant_text(data: &Value) -> Option<String> {
 /// Errors with `NotFound` or `AmbiguousTitle` for 0 or >1 matches.
 fn resolve_one<T>(
     items: Vec<T>,
-    kind: &str,
+    kind: impl fmt::Display,
     title: &str,
     extract: impl Fn(&T) -> (&str, &str),
 ) -> Result<T> {

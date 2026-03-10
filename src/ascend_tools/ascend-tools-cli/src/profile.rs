@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
+use ascend_tools::models::RuntimeKind;
 use clap::Subcommand;
 
 use crate::common::{OutputMode, print_json, print_table};
@@ -51,10 +52,10 @@ pub(crate) fn handle_profile(
             let (runtime_uuid, project_name, branch_val) = if let Some(uuid) = uuid {
                 (Some(uuid), None, None)
             } else if let Some(ws) = workspace {
-                let rt = client.resolve_runtime_by_title(&ws, "workspace")?;
+                let rt = client.resolve_runtime_by_title(&ws, RuntimeKind::Workspace)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(dep) = deployment {
-                let rt = client.resolve_runtime_by_title(&dep, "deployment")?;
+                let rt = client.resolve_runtime_by_title(&dep, RuntimeKind::Deployment)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(proj) = project {
                 (None, Some(proj), branch)

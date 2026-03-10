@@ -3,7 +3,7 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::FlowRunFilters;
 use clap::Subcommand;
 
-use crate::common::{OutputMode, parse_spec, print_json, print_table, resolve_flow_target};
+use crate::common::{OutputMode, parse_spec, print_json, print_table, resolve_runtime_target};
 
 #[derive(Subcommand)]
 pub(crate) enum FlowCommands {
@@ -107,7 +107,7 @@ pub(crate) fn handle_flow(
             deployment,
             uuid,
         } => {
-            let runtime_uuid = resolve_flow_target(
+            let runtime_uuid = resolve_runtime_target(
                 client,
                 workspace.as_deref(),
                 deployment.as_deref(),
@@ -131,7 +131,7 @@ pub(crate) fn handle_flow(
             spec,
             resume,
         } => {
-            let runtime_uuid = resolve_flow_target(
+            let runtime_uuid = resolve_runtime_target(
                 client,
                 workspace.as_deref(),
                 deployment.as_deref(),
@@ -155,7 +155,7 @@ pub(crate) fn handle_flow(
             offset,
             limit,
         } => {
-            let runtime_uuid = resolve_flow_target(
+            let runtime_uuid = resolve_runtime_target(
                 client,
                 workspace.as_deref(),
                 deployment.as_deref(),
@@ -197,7 +197,7 @@ pub(crate) fn handle_flow(
             deployment,
             uuid,
         } => {
-            let runtime_uuid = resolve_flow_target(
+            let runtime_uuid = resolve_runtime_target(
                 client,
                 workspace.as_deref(),
                 deployment.as_deref(),

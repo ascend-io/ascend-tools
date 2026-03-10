@@ -9,7 +9,8 @@ use rmcp::{
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
-    FlowRunFilters, OttoChatRequest, OttoModel, RuntimeCreate, RuntimeFilters, RuntimeUpdate,
+    FlowRunFilters, OttoChatRequest, OttoModel, RuntimeCreate, RuntimeFilters, RuntimeKind,
+    RuntimeUpdate,
 };
 
 use crate::params::{
@@ -43,19 +44,11 @@ fn resolve_flow_target(
     deployment_title: Option<String>,
     uuid: Option<String>,
 ) -> ascend_tools::Result<String> {
-    if let Some(uuid) = uuid {
-        return Ok(uuid);
-    }
-    if let Some(ws) = workspace_title {
-        return client.resolve_runtime_uuid(&ws, "workspace", None);
-    }
-    if let Some(dep) = deployment_title {
-        return client.resolve_runtime_uuid(&dep, "deployment", None);
-    }
-    Err(ascend_tools::Error::MissingField {
-        context: "flow command",
-        field: "workspace_title, deployment_title, or uuid",
-    })
+    client.resolve_runtime_target(
+        workspace_title.as_deref(),
+        deployment_title.as_deref(),
+        uuid.as_deref(),
+    )
 }
 
 #[derive(Clone)]
@@ -160,10 +153,9 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid =
-                c.resolve_runtime_uuid(&params.current_title, "workspace", params.uuid.as_deref())?;
-            c.update_runtime(
-                &uuid,
+            c.update_workspace(
+                &params.current_title,
+                params.uuid.as_deref(),
                 &RuntimeUpdate {
                     title: params.title,
                     working_git_branch: params.working_git_branch,
@@ -278,13 +270,9 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid = c.resolve_runtime_uuid(
+            c.update_deployment(
                 &params.current_title,
-                "deployment",
                 params.uuid.as_deref(),
-            )?;
-            c.update_runtime(
-                &uuid,
                 &RuntimeUpdate {
                     title: params.title,
                     working_git_branch: params.working_git_branch,
@@ -307,15 +295,7 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid =
-                c.resolve_runtime_uuid(&params.title, "deployment", params.uuid.as_deref())?;
-            c.update_runtime(
-                &uuid,
-                &RuntimeUpdate {
-                    enable_automations: Some(false),
-                    ..Default::default()
-                },
-            )
+            c.pause_deployment_automations(&params.title, params.uuid.as_deref())
         })
         .await
     }
@@ -327,15 +307,7 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid =
-                c.resolve_runtime_uuid(&params.title, "deployment", params.uuid.as_deref())?;
-            c.update_runtime(
-                &uuid,
-                &RuntimeUpdate {
-                    enable_automations: Some(true),
-                    ..Default::default()
-                },
-            )
+            c.resume_deployment_automations(&params.title, params.uuid.as_deref())
         })
         .await
     }
@@ -387,10 +359,10 @@ impl AscendMcpServer {
             let (runtime_uuid, project, branch) = if let Some(uuid) = params.uuid {
                 (Some(uuid), None, None)
             } else if let Some(ws) = params.workspace_title {
-                let rt = c.resolve_runtime_by_title(&ws, "workspace")?;
+                let rt = c.resolve_runtime_by_title(&ws, RuntimeKind::Workspace)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(dep) = params.deployment_title {
-                let rt = c.resolve_runtime_by_title(&dep, "deployment")?;
+                let rt = c.resolve_runtime_by_title(&dep, RuntimeKind::Deployment)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(proj) = params.project {
                 (None, Some(proj), params.branch)
@@ -517,25 +489,21 @@ impl AscendMcpServer {
         let client = self.client()?;
         let client = client.clone();
         let result = tokio::task::spawn_blocking(move || {
-            let runtime_id = if let Some(uuid) = params.workspace_uuid {
-                Some(uuid)
-            } else if let Some(ws) = params.workspace_title {
-                Some(client.resolve_runtime_uuid(&ws, "workspace", None)?)
-            } else {
-                None
-            };
+            let runtime_id = client.resolve_optional_runtime_target(
+                params.workspace_title.as_deref(),
+                params.deployment_title.as_deref(),
+                params.uuid.as_deref(),
+            )?;
 
             let otto_model =
                 OttoModel::from_options(params.provider.as_deref(), params.model.as_deref());
 
-            let request = OttoChatRequest {
+            client.otto_chat(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_id,
                 thread_id: params.thread_id,
                 model: otto_model,
-            };
-
-            client.otto_chat(&request)
+            })
         })
         .await
         .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?

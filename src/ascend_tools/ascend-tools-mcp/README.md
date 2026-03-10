@@ -13,14 +13,29 @@ Built on [`ascend-tools-core`](../ascend-tools-core) and [`rmcp`](https://crates
 
 | Tool | Description |
 |------|-------------|
-| `list_runtimes` | List runtimes with optional filters |
-| `get_runtime` | Get a runtime by UUID |
-| `resume_runtime` | Resume a paused runtime |
-| `pause_runtime` | Pause a running runtime |
-| `list_flows` | List flows in a runtime |
-| `run_flow` | Trigger a flow run (supports resume, full_refresh, components, parameters, etc.) |
+| `list_workspaces` | List workspaces with optional filters |
+| `get_workspace` | Get a workspace by title |
+| `create_workspace` | Create a new workspace |
+| `update_workspace` | Update a workspace |
+| `pause_workspace` | Pause a workspace |
+| `resume_workspace` | Resume a paused workspace |
+| `delete_workspace` | Delete a workspace |
+| `list_deployments` | List deployments with optional filters |
+| `get_deployment` | Get a deployment by title |
+| `create_deployment` | Create a new deployment |
+| `update_deployment` | Update a deployment |
+| `pause_deployment_automations` | Pause automations on a deployment |
+| `resume_deployment_automations` | Resume automations on a deployment |
+| `delete_deployment` | Delete a deployment |
+| `list_environments` | List environments |
+| `list_projects` | List projects |
+| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
+| `list_flows` | List flows in a workspace or deployment |
+| `run_flow` | Trigger a flow run |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
+| `list_otto_providers` | List Otto providers and models |
+| `otto_chat` | Chat with Otto AI assistant |
 
 ## Usage
 

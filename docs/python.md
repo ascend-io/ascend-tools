@@ -92,68 +92,13 @@ client.get_deployment(title="My Deployment")
 client.delete_deployment(title="My Deployment")
 ```
 
-### List runtimes (low-level)
-
-```python
-runtimes = client.list_runtimes()
-client.list_runtimes(kind="deployment", project_uuid="...", environment_uuid="...")
-```
-
-Returns `list[dict]`.
-
-### Get a runtime (low-level)
-
-```python
-runtime = client.get_runtime(uuid="<RUNTIME_UUID>")
-```
-
-Returns `dict` with fields: `uuid`, `id`, `title`, `kind`, `project_uuid`, `environment_uuid`, `build_uuid`, `created_at`, `updated_at`, `health`, `paused`.
-
-### Resolve a runtime by title
-
-```python
-runtime = client.resolve_runtime_by_title(title="My Workspace", kind="workspace")
-runtime = client.resolve_runtime_by_title(title="My Deployment", kind="deployment")
-```
-
-### Create a runtime
-
-```python
-runtime = client.create_runtime(
-    environment_uuid="...",
-    project_uuid="...",
-    build_uuid="...",
-    title="My Workspace",
-    kind="workspace",
-)
-```
-
-### Update a runtime
-
-```python
-client.update_runtime(uuid="...", title="New Title")
-client.update_runtime(uuid="...", build_uuid="...", paused=True)
-```
-
-### Delete a runtime
-
-```python
-client.delete_runtime(uuid="...")
-```
-
-### Pause and resume
-
-```python
-client.pause_runtime(uuid="<RUNTIME_UUID>")
-client.resume_runtime(uuid="<RUNTIME_UUID>")
-```
-
 ## Manage flows
 
 ### List flows
 
 ```python
-flows = client.list_flows(runtime_uuid="<RUNTIME_UUID>")
+flows = client.list_flows(workspace="My Workspace")
+flows = client.list_flows(deployment="My Deployment")
 ```
 
 Returns `list[dict]`, each with a `name` field.
@@ -161,15 +106,15 @@ Returns `list[dict]`, each with a `name` field.
 ### Run a flow
 
 ```python
-result = client.run_flow(runtime_uuid="<RUNTIME_UUID>", flow_name="sales")
+result = client.run_flow(flow_name="sales", workspace="My Workspace")
 ```
 
-Resume a paused runtime before running:
+Resume a paused workspace before running:
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
     flow_name="sales",
+    workspace="My Workspace",
     resume=True,
 )
 ```
@@ -178,16 +123,16 @@ Pass a spec dict for advanced options:
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
     flow_name="sales",
+    workspace="My Workspace",
     spec={"full_refresh": True},
 )
 ```
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
     flow_name="sales",
+    workspace="My Workspace",
     spec={
         "components": ["transform_orders", "transform_customers"],
         "parameters": {"date": "2025-01-01"},
@@ -206,7 +151,7 @@ See [CLI guide](cli.md#flow-run-spec-options) for the full spec options referenc
 ### List flow runs
 
 ```python
-result = client.list_flow_runs(runtime_uuid="<RUNTIME_UUID>")
+result = client.list_flow_runs(workspace="My Workspace")
 runs = result["items"]       # list[dict]
 truncated = result["truncated"]  # bool
 ```
@@ -214,16 +159,16 @@ truncated = result["truncated"]  # bool
 Filter by status, flow name, time range, or paginate:
 
 ```python
-client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow_name="sales")
-client.list_flow_runs(runtime_uuid="...", since="2025-01-01T00:00:00Z")
-client.list_flow_runs(runtime_uuid="...", limit=10, offset=20)
+client.list_flow_runs(workspace="My Workspace", status="running")
+client.list_flow_runs(deployment="My Deployment", flow_name="sales")
+client.list_flow_runs(workspace="My Workspace", since="2025-01-01T00:00:00Z")
+client.list_flow_runs(workspace="My Workspace", limit=10, offset=20)
 ```
 
 ### Get a flow run
 
 ```python
-run = client.get_flow_run(runtime_uuid="<RUNTIME_UUID>", name="fr-...")
+run = client.get_flow_run(name="fr-...", workspace="My Workspace")
 ```
 
 Returns `dict` with fields: `name`, `flow`, `build_uuid`, `runtime_uuid`, `status`, `created_at`, `error`.
@@ -236,7 +181,7 @@ providers = client.list_otto_providers()
 
 # Chat
 response = client.otto_chat(prompt="What flows are running?")
-response = client.otto_chat(prompt="Describe the sales flow", runtime_uuid="...")
+response = client.otto_chat(prompt="Describe the sales flow", workspace="My Workspace")
 ```
 
 ## Return types

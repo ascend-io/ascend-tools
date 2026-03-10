@@ -184,25 +184,18 @@ client.list_deployments()
 client.get_deployment(title="My Deployment")
 client.delete_deployment(title="My Deployment")
 
-# Runtimes (low-level)
-client.list_runtimes()
-client.get_runtime(uuid="...")
-client.create_runtime(title="...", kind="workspace", environment_uuid="...", project_uuid="...", profile_name="...", working_git_branch="...")
-client.update_runtime(uuid="...", title="New Title")
-client.delete_runtime(uuid="...")
-
 # Flows
-client.list_flows(runtime_uuid="...")
-client.run_flow(runtime_uuid="...", flow_name="sales")
+client.list_flows(workspace="My Workspace")
+client.run_flow(flow_name="sales", workspace="My Workspace")
 
 # Flow runs
-client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow_name="sales", limit=10)
-client.get_flow_run(runtime_uuid="...", name="fr-...")
+client.list_flow_runs(workspace="My Workspace", status="running")
+client.list_flow_runs(deployment="My Deployment", flow_name="sales", limit=10)
+client.get_flow_run(name="fr-...", workspace="My Workspace")
 
 # Otto (AI assistant)
 client.list_otto_providers()
-client.otto_chat(prompt="What flows are running?", runtime_uuid="...")
+client.otto_chat(prompt="What flows are running?", workspace="My Workspace")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.

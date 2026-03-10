@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{RuntimeCreate, RuntimeFilters, RuntimeUpdate};
+use ascend_tools::models::{RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate};
 use clap::ValueEnum;
 
 #[derive(Clone, PartialEq, ValueEnum)]
@@ -9,28 +9,19 @@ pub(crate) enum OutputMode {
     Json,
 }
 
-/// Resolve the runtime UUID from --workspace/--deployment/--uuid flags on flow commands.
-pub(crate) fn resolve_flow_target(
+/// Resolve the runtime UUID from --workspace/--deployment/--uuid flags.
+pub(crate) fn resolve_runtime_target(
     client: &AscendClient,
     workspace: Option<&str>,
     deployment: Option<&str>,
     uuid: Option<&str>,
 ) -> Result<String> {
-    if let Some(uuid) = uuid {
-        return Ok(uuid.to_string());
-    }
-    if let Some(ws) = workspace {
-        return Ok(client.resolve_runtime_uuid(ws, "workspace", None)?);
-    }
-    if let Some(dep) = deployment {
-        return Ok(client.resolve_runtime_uuid(dep, "deployment", None)?);
-    }
-    anyhow::bail!("Either --workspace or --deployment is required");
+    Ok(client.resolve_runtime_target(workspace, deployment, uuid)?)
 }
 
 pub(crate) fn handle_runtime_list(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: Option<String>,
     project: Option<String>,
     environment: Option<String>,
@@ -38,14 +29,14 @@ pub(crate) fn handle_runtime_list(
 ) -> Result<()> {
     let mut filters = RuntimeFilters::default();
     filters.title = title;
-    filters.kind = Some(kind.into());
+    filters.kind = Some(kind);
     filters.project = project;
     filters.environment = environment;
     let runtimes = client.list_runtimes(filters)?;
     match output {
         OutputMode::Json => print_json(&runtimes)?,
         OutputMode::Text => {
-            if kind == "deployment" {
+            if kind == RuntimeKind::Deployment {
                 let rows: Vec<Vec<String>> = runtimes
                     .iter()
                     .map(|r| {
@@ -83,7 +74,7 @@ pub(crate) fn handle_runtime_list(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_runtime_create(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: String,
     environment: String,
     project: String,
@@ -109,9 +100,8 @@ pub(crate) fn handle_runtime_create(
         auto_snooze_timeout_minutes,
     };
     let r = match kind {
-        "workspace" => client.create_workspace(&create)?,
-        "deployment" => client.create_deployment(&create)?,
-        _ => anyhow::bail!("Unknown runtime kind: {kind}"),
+        RuntimeKind::Workspace => client.create_workspace(&create)?,
+        RuntimeKind::Deployment => client.create_deployment(&create)?,
     };
     match output {
         OutputMode::Json => print_json(&r)?,
@@ -122,7 +112,7 @@ pub(crate) fn handle_runtime_create(
 
 pub(crate) fn handle_runtime_update(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     current_title: &str,
     uuid: Option<&str>,
     update: RuntimeUpdate,
@@ -139,7 +129,7 @@ pub(crate) fn handle_runtime_update(
 
 pub(crate) fn handle_runtime_get(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: &str,
     uuid: Option<&str>,
     output: &OutputMode,
@@ -160,7 +150,7 @@ pub(crate) fn handle_runtime_get(
 
 pub(crate) fn handle_runtime_delete(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: &str,
     uuid: Option<&str>,
     yes: bool,
@@ -186,7 +176,7 @@ pub(crate) fn handle_runtime_delete(
 
 pub(crate) fn handle_runtime_pause(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: &str,
     uuid: Option<&str>,
     output: &OutputMode,
@@ -202,7 +192,7 @@ pub(crate) fn handle_runtime_pause(
 
 pub(crate) fn handle_runtime_resume(
     client: &AscendClient,
-    kind: &str,
+    kind: RuntimeKind,
     title: &str,
     uuid: Option<&str>,
     output: &OutputMode,

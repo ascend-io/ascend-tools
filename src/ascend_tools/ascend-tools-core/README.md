@@ -13,9 +13,9 @@ use ascend_tools::config::Config;
 let config = Config::from_env()?;
 let client = AscendClient::new(config)?;
 
-let runtimes = client.list_runtimes(Default::default())?;
-let flows = client.list_flows(&runtimes[0].uuid)?;
-client.run_flow(&runtimes[0].uuid, &flows[0].name, None, false)?;
+let workspaces = client.list_workspaces(Default::default())?;
+let flows = client.list_flows(&workspaces[0].uuid)?;
+client.run_flow(&workspaces[0].uuid, &flows[0].name, None, false)?;
 ```
 
 ## Authentication
@@ -34,13 +34,26 @@ Token exchange and caching are handled automatically.
 
 | Method | Description |
 |--------|-------------|
-| `list_runtimes` | List runtimes with optional filters |
-| `get_runtime` | Get a runtime by UUID |
-| `resume_runtime` | Resume a paused runtime |
-| `pause_runtime` | Pause a running runtime |
+| `list_workspaces` | List workspaces with optional filters |
+| `get_workspace` | Get a workspace by title |
+| `create_workspace` | Create a new workspace |
+| `update_workspace` | Update a workspace |
+| `pause_workspace` | Pause a workspace |
+| `resume_workspace` | Resume a paused workspace |
+| `delete_workspace` | Delete a workspace |
+| `list_deployments` | List deployments with optional filters |
+| `get_deployment` | Get a deployment by title |
+| `create_deployment` | Create a new deployment |
+| `update_deployment` | Update a deployment |
+| `delete_deployment` | Delete a deployment |
+| `list_environments` | List environments |
+| `list_projects` | List projects |
+| `list_profiles` | List available profiles |
 | `list_flows` | List flows in a runtime |
 | `run_flow` | Trigger a flow run (checks health, optional resume/spec) |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
+| `list_otto_providers` | List Otto providers and models |
+| `otto_chat` | Chat with Otto AI assistant |
 
 See the [top-level README](../../../README.md) for full documentation.

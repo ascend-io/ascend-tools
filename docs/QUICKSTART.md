@@ -104,9 +104,9 @@ Or from Python:
 from ascend_tools import Client
 
 client = Client()
-workspaces = client.list_runtimes(kind="workspace")
-flows = client.list_flows(runtime_uuid=workspaces[0]["uuid"])
-result = client.run_flow(runtime_uuid=workspaces[0]["uuid"], flow_name=flows[0]["name"])
+workspaces = client.list_workspaces()
+flows = client.list_flows(workspace=workspaces[0]["title"])
+result = client.run_flow(flow_name=flows[0]["name"], workspace=workspaces[0]["title"])
 ```
 
 ## Next steps
