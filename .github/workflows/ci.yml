@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [main]
   merge_group:
+  schedule:
+    - cron: '0 10 * * *'
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.event.merge_group.ref || github.ref }}"
@@ -32,7 +34,7 @@ jobs:
       - run: bin/check
 
   integration-app-dev:
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +72,7 @@ jobs:
           ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
 
   integration-app:
-    if: github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
