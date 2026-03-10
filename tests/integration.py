@@ -175,6 +175,138 @@ def main():
     )
     check(all(r["kind"] == kind for r in by_kind), "all results match kind filter")
 
+    # ---------- environments ----------
+
+    print("=== environments ===")
+
+    environments = client.list_environments()
+    check(isinstance(environments, list), "list_environments returns list")
+
+    if environments:
+        check(True, f"list_environments returned {len(environments)} environment(s)")
+        env0 = environments[0]
+        for field in ("uuid", "id", "title"):
+            check(
+                env0.get(field) is not None,
+                f"environment has field '{field}'",
+                f"value: {env0.get(field)}",
+            )
+
+        # get_environment
+        env_title = env0["title"]
+        resolved_env = client.get_environment(title=env_title)
+        check(isinstance(resolved_env, dict), "get_environment returns dict")
+        check(
+            resolved_env["uuid"] == env0["uuid"],
+            "get_environment returns correct environment",
+            f"expected {env0['uuid']}, got {resolved_env.get('uuid')}",
+        )
+    else:
+        skip("no environments found — skipping get_environment")
+
+    # ---------- projects ----------
+
+    print("=== projects ===")
+
+    projects = client.list_projects()
+    check(isinstance(projects, list), "list_projects returns list")
+
+    if projects:
+        check(True, f"list_projects returned {len(projects)} project(s)")
+        proj0 = projects[0]
+        for field in ("uuid", "id", "title", "path", "repository_uuid"):
+            check(
+                proj0.get(field) is not None,
+                f"project has field '{field}'",
+                f"value: {proj0.get(field)}",
+            )
+
+        # get_project
+        proj_title = proj0["title"]
+        resolved_proj = client.get_project(title=proj_title)
+        check(isinstance(resolved_proj, dict), "get_project returns dict")
+        check(
+            resolved_proj["uuid"] == proj0["uuid"],
+            "get_project returns correct project",
+            f"expected {proj0['uuid']}, got {resolved_proj.get('uuid')}",
+        )
+    else:
+        skip("no projects found — skipping get_project")
+
+    # ---------- resolve runtime by title ----------
+
+    print("=== resolve runtime by title ===")
+
+    runtime_title = runtime.get("title")
+    if runtime_title:
+        resolved_rt = client.resolve_runtime_by_title(title=runtime_title, kind=kind)
+        check(isinstance(resolved_rt, dict), "resolve_runtime_by_title returns dict")
+        check(
+            resolved_rt.get("uuid") == runtime_uuid,
+            "resolve_runtime_by_title returns correct runtime",
+            f"expected {runtime_uuid}, got {resolved_rt.get('uuid')}",
+        )
+    else:
+        skip("runtime has no title — skipping resolve_runtime_by_title")
+
+    # ---------- list runtimes by title ----------
+
+    print("=== list runtimes by title ===")
+
+    if runtime_title:
+        by_title = client.list_runtimes(title=runtime_title)
+        check(
+            len(by_title) >= 1,
+            f"list_runtimes(title={runtime_title!r}) returns >= 1",
+            f"got {len(by_title)}",
+        )
+        check(
+            any(r["uuid"] == runtime_uuid for r in by_title),
+            "list_runtimes(title=...) includes expected runtime",
+        )
+    else:
+        skip("runtime has no title — skipping list_runtimes(title=...)")
+
+    # ---------- otto chat ----------
+
+    print("=== otto chat ===")
+
+    try:
+        otto_resp = client.otto_chat(prompt="ping", runtime_uuid=runtime_uuid)
+        check(isinstance(otto_resp, dict), "otto_chat returns dict")
+        check("message" in otto_resp, "otto_chat response has 'message' key")
+        check("thread_id" in otto_resp, "otto_chat response has 'thread_id' key")
+    except Exception as e:  # noqa: BLE001
+        msg = str(e).lower()
+        if "not found" in msg or "not implemented" in msg or "404" in msg:
+            skip(f"otto_chat not available: {e}")
+        else:
+            check(False, "otto_chat", str(e))
+
+    # ---------- otto providers ----------
+
+    print("=== otto providers ===")
+
+    try:
+        providers = client.list_otto_providers()
+        check(isinstance(providers, list), "list_otto_providers returns list")
+        if providers:
+            check(True, f"list_otto_providers returned {len(providers)} provider(s)")
+            p = providers[0]
+            check("id" in p, "provider has field 'id'")
+            check("name" in p, "provider has field 'name'")
+            check("default_model" in p, "provider has field 'default_model'")
+            check("models" in p, "provider has field 'models'")
+            check(isinstance(p["models"], list), "provider.models is a list")
+        else:
+            skip("no otto providers configured")
+    except Exception as e:  # noqa: BLE001
+        msg = str(e).lower()
+        if "not found" in msg or "404" in msg:
+            skip(f"list_otto_providers not available: {e}")
+        else:
+            check(False, "list_otto_providers", str(e))
+
     # ---------- flows ----------
 
     print("=== flows ===")

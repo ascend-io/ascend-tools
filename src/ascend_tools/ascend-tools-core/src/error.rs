@@ -91,6 +91,19 @@ pub enum Error {
 
     #[error("Runtime has no health status. It may be initializing.")]
     RuntimeHealthMissing,
+
+    #[error("No {kind} found with title '{title}'")]
+    NotFound { kind: String, title: String },
+
+    #[error("Multiple {kind}s found with title '{title}'. Use --uuid to specify one: {}", .matches.iter().map(|(uuid, title)| format!("{uuid} ({title})")).collect::<Vec<_>>().join(", "))]
+    AmbiguousTitle {
+        kind: String,
+        title: String,
+        matches: Vec<(String, String)>,
+    },
+
+    #[error("SSE stream error: {context}")]
+    SseParseError { context: String },
 }
 
 pub(crate) trait UreqResultExt<T> {

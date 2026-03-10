@@ -23,12 +23,13 @@ src/ascend_tools/
 │       ├── client.rs        # AscendClient — typed HTTP methods for /api/v1
 │       ├── config.rs        # env var + CLI flag resolution
 │       ├── error.rs         # public typed Error enum + Result alias for SDK consumers
-│       └── models.rs        # Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       └── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
 │
 ├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 8 tools via rmcp #[tool_router]
+│       ├── server.rs        # AscendMcpServer — 23 tools via rmcp #[tool_router]
+│       ├── sse.rs           # SSE streaming support for otto_chat tool
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
@@ -101,15 +102,41 @@ export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.de
 ```
 ascend-tools [-o text|json] [-V]
 
-  runtime list [--id, --kind, --project-uuid, --environment-uuid]
-  runtime get <UUID>
-  runtime resume <UUID>
-  runtime pause <UUID>
+  workspace list [--environment <TITLE>] [--project <TITLE>]
+  workspace get <TITLE>
+  workspace list [--environment <NAME>] [--project <NAME>]
+  workspace get <TITLE>
+  workspace create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH> [--git-branch-base, --size, --storage-size, --auto-snooze-timeout-minutes]
+  workspace update <TITLE> [--title, --git-branch, --git-branch-base, --profile, --size, --storage-size, --auto-snooze-timeout-minutes]
+  workspace pause <TITLE>
+  workspace resume <TITLE>
+  workspace delete <TITLE>
 
-  flow list --runtime <UUID>
-  flow run <FLOW_NAME> --runtime <UUID> [--spec '{}'] [--resume]
-  flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name, --since, --until, --offset, --limit]
-  flow get-run <RUN_NAME> -r/--runtime <UUID>
+  deployment list [--environment <NAME>] [--project <NAME>]
+  deployment get <TITLE>
+  deployment create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH> [--git-branch-base, --size, --storage-size, --enable-automations]
+  deployment update <TITLE> [--title, --git-branch, --git-branch-base, --profile, --size, --storage-size, --enable-automations]
+  deployment pause-automations <TITLE>
+  deployment resume-automations <TITLE>
+  deployment delete <TITLE>
+
+  environment list
+  environment get <TITLE>
+
+  project list
+  project get <TITLE>
+
+  profile list --workspace <TITLE> | --deployment <TITLE> | --project <NAME> --git-branch <BRANCH>
+
+  flow list --workspace <TITLE> | --deployment <TITLE>
+  flow run <FLOW_NAME> --workspace <TITLE> | --deployment <TITLE> [--spec '{}'] [--resume]
+  flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
+  flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
+
+  otto run <PROMPT> [--workspace <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
+  otto providers list
+  otto models list [--provider <ID>]
+  otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
 
   skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
 
@@ -117,6 +144,8 @@ ascend-tools [-o text|json] [-V]
 ```
 
 Default output is table format. Use `-o json` for machine-readable output.
+
+`--environment` and `--project` accept friendly names (titles), not UUIDs. UUIDs still work for all commands via `--uuid` flag.
 
 No subcommand prints help. Auth params can be passed as `--service-account-id`, `--service-account-key`, etc. or via env vars. Secret values are hidden in `--help` output.
 
@@ -135,10 +164,32 @@ client = Client(
     instance_api_url="https://api.instance.ascend.io",
 )
 
-# Runtimes
+# Environments and projects
+client.list_environments()
+client.resolve_environment(title="Production")
+
+client.list_projects()
+client.resolve_project(title="My Project")
+
+# Workspaces
+client.list_workspaces()
+client.list_workspaces(environment="Production", project="My Project")
+client.get_workspace(title="My Workspace")
+client.pause_workspace(title="My Workspace")
+client.resume_workspace(title="My Workspace")
+client.delete_workspace(title="My Workspace")
+
+# Deployments
+client.list_deployments()
+client.get_deployment(title="My Deployment")
+client.delete_deployment(title="My Deployment")
+
+# Runtimes (low-level)
 client.list_runtimes()
-client.list_runtimes(kind="deployment")
 client.get_runtime(uuid="...")
+client.create_runtime(title="...", kind="workspace", environment_uuid="...", project_uuid="...", profile_name="...", working_git_branch="...")
+client.update_runtime(uuid="...", title="New Title")
+client.delete_runtime(uuid="...")
 
 # Flows
 client.list_flows(runtime_uuid="...")
@@ -148,6 +199,10 @@ client.run_flow(runtime_uuid="...", flow_name="sales")
 client.list_flow_runs(runtime_uuid="...", status="running")
 client.list_flow_runs(runtime_uuid="...", flow_name="sales", limit=10)
 client.get_flow_run(runtime_uuid="...", name="fr-...")
+
+# Otto (AI assistant)
+client.list_otto_providers()
+client.otto_chat(prompt="What flows are running?", runtime_uuid="...")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
@@ -165,14 +220,29 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 
 | Tool | Description |
 |------|-------------|
-| `list_runtimes` | List runtimes with optional filters (id, kind, project_uuid, environment_uuid) |
-| `get_runtime` | Get a runtime by UUID |
-| `resume_runtime` | Resume a paused runtime |
-| `pause_runtime` | Pause a running runtime |
-| `list_flows` | List flows in a runtime |
+| `list_workspaces` | List workspaces with optional filters (environment, project) |
+| `get_workspace` | Get a workspace by title |
+| `create_workspace` | Create a new workspace |
+| `update_workspace` | Update an existing workspace |
+| `pause_workspace` | Pause a running workspace |
+| `resume_workspace` | Resume a paused workspace |
+| `delete_workspace` | Delete a workspace |
+| `list_deployments` | List deployments with optional filters (environment, project) |
+| `get_deployment` | Get a deployment by title |
+| `create_deployment` | Create a new deployment |
+| `update_deployment` | Update an existing deployment |
+| `pause_deployment_automations` | Pause automations on a deployment |
+| `resume_deployment_automations` | Resume automations on a deployment |
+| `delete_deployment` | Delete a deployment |
+| `list_environments` | List environments |
+| `list_projects` | List projects |
+| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
+| `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
+| `list_otto_providers` | List available Otto providers and their enabled models |
+| `otto_chat` | Chat with Otto, the Ascend AI assistant |
 
 ### usage with Claude Code
 
@@ -265,8 +335,13 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 |----------|--------|-------------|
 | `/api/v1/auth/config` | GET | Get JWT audience domain for SA authentication |
 | `/api/v1/auth/token` | POST | Exchange SA JWT for instance token (no pre-existing token required) |
-| `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, project_uuid, environment_uuid) |
+| `/api/v1/environments` | GET | List environments (title filter) |
+| `/api/v1/projects` | GET | List projects (title filter) |
+| `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, title, project_uuid, environment_uuid) |
+| `/api/v1/runtimes` | POST | Create a runtime |
 | `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
+| `/api/v1/runtimes/{uuid}` | PATCH | Update a runtime |
+| `/api/v1/runtimes/{uuid}` | DELETE | Delete a runtime |
 | `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
 | `/api/v1/runtimes/{uuid}/flows/{name}:run` | POST | Trigger a flow run |
 | `/api/v1/flow-runs` | GET | List flow runs (requires runtime_uuid, filters: status, flow, since, until) |

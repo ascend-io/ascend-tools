@@ -1,0 +1,226 @@
+use anyhow::Result;
+use ascend_tools::client::AscendClient;
+use ascend_tools::models::RuntimeUpdate;
+use clap::Subcommand;
+
+use crate::common::{
+    OutputMode, handle_runtime_create, handle_runtime_delete, handle_runtime_get,
+    handle_runtime_list, handle_runtime_pause, handle_runtime_resume, handle_runtime_update,
+};
+
+#[derive(Subcommand)]
+pub(crate) enum WorkspaceCommands {
+    /// List workspaces
+    #[command(
+        long_about = "List workspaces, optionally filtered by title, environment, or project.\n\n\
+            The --environment and --project flags accept names (resolved to UUIDs) or UUIDs directly.\n\n\
+            Examples:\n  \
+            ascend-tools workspace list\n  \
+            ascend-tools workspace list --environment Production\n  \
+            ascend-tools workspace list --project MyProject"
+    )]
+    List {
+        /// Filter by title
+        #[arg(long)]
+        title: Option<String>,
+        /// Filter by project name (or UUID)
+        #[arg(long)]
+        project: Option<String>,
+        /// Filter by environment name (or UUID)
+        #[arg(long)]
+        environment: Option<String>,
+    },
+    /// Get a workspace by title
+    #[command(arg_required_else_help = true)]
+    Get {
+        /// Workspace title
+        title: String,
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+    },
+    /// Create a workspace
+    #[command(
+        arg_required_else_help = true,
+        long_about = "Create a new workspace.\n\n\
+            The --environment and --project flags accept names (resolved to UUIDs) or UUIDs directly.\n\n\
+            Examples:\n  \
+            ascend-tools workspace create --title my-ws --environment Production --project MyProject --profile default --git-branch main\n  \
+            ascend-tools workspace create --title my-ws --environment Production --project MyProject --profile default --git-branch feature/abc --size Medium"
+    )]
+    Create {
+        /// Workspace title
+        #[arg(long, required = true)]
+        title: String,
+        /// Environment name (or UUID)
+        #[arg(long, required = true)]
+        environment: String,
+        /// Project name (or UUID)
+        #[arg(long, required = true)]
+        project: String,
+        /// Configuration profile
+        #[arg(long = "profile", required = true)]
+        profile_name: String,
+        /// Git branch
+        #[arg(long = "git-branch", required = true)]
+        working_git_branch: String,
+        /// Base git branch
+        #[arg(long = "git-branch-base")]
+        base_git_branch: Option<String>,
+        /// Runtime size (e.g. Small, Medium, Large)
+        #[arg(long)]
+        size: Option<String>,
+        /// Storage size in GB
+        #[arg(long)]
+        storage_size: Option<u32>,
+        /// Minutes of inactivity before auto-snooze
+        #[arg(long)]
+        auto_snooze_timeout_minutes: Option<u32>,
+    },
+    /// Update a workspace
+    #[command(arg_required_else_help = true)]
+    Update {
+        /// Workspace title
+        current_title: String,
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+        /// Switch to a different git branch
+        #[arg(long = "git-branch")]
+        working_git_branch: Option<String>,
+        /// New base git branch
+        #[arg(long = "git-branch-base")]
+        base_git_branch: Option<String>,
+        /// New profile
+        #[arg(long = "profile")]
+        profile_name: Option<String>,
+        /// New runtime size
+        #[arg(long)]
+        size: Option<String>,
+        /// New storage size in GB
+        #[arg(long)]
+        storage_size: Option<u32>,
+        /// New auto-snooze timeout in minutes
+        #[arg(long)]
+        auto_snooze_timeout_minutes: Option<u32>,
+    },
+    /// Pause a workspace
+    #[command(arg_required_else_help = true)]
+    Pause {
+        /// Workspace title
+        title: String,
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+    },
+    /// Resume a paused workspace
+    #[command(arg_required_else_help = true)]
+    Resume {
+        /// Workspace title
+        title: String,
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+    },
+    /// Delete a workspace
+    #[command(arg_required_else_help = true)]
+    Delete {
+        /// Workspace title
+        title: String,
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+        /// Skip confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+pub(crate) fn handle_workspace(
+    client: &AscendClient,
+    cmd: Option<WorkspaceCommands>,
+    output: &OutputMode,
+) -> Result<()> {
+    let Some(cmd) = cmd else {
+        use clap::CommandFactory;
+        crate::cli::CliParser::command()
+            .find_subcommand_mut("workspace")
+            .expect("workspace subcommand exists")
+            .print_help()?;
+        return Ok(());
+    };
+    match cmd {
+        WorkspaceCommands::List {
+            title,
+            project,
+            environment,
+        } => handle_runtime_list(client, "workspace", title, project, environment, output),
+        WorkspaceCommands::Get { title, uuid } => {
+            handle_runtime_get(client, "workspace", &title, uuid.as_deref(), output)
+        }
+        WorkspaceCommands::Create {
+            title,
+            environment,
+            project,
+            profile_name,
+            working_git_branch,
+            base_git_branch,
+            size,
+            storage_size,
+            auto_snooze_timeout_minutes,
+        } => handle_runtime_create(
+            client,
+            "workspace",
+            title,
+            environment,
+            project,
+            profile_name,
+            working_git_branch,
+            base_git_branch,
+            size,
+            storage_size,
+            None,
+            auto_snooze_timeout_minutes,
+            output,
+        ),
+        WorkspaceCommands::Update {
+            current_title,
+            uuid,
+            title,
+            working_git_branch,
+            base_git_branch,
+            profile_name,
+            size,
+            storage_size,
+            auto_snooze_timeout_minutes,
+        } => handle_runtime_update(
+            client,
+            "workspace",
+            &current_title,
+            uuid.as_deref(),
+            RuntimeUpdate {
+                title,
+                working_git_branch,
+                base_git_branch,
+                profile_name,
+                size,
+                storage_size,
+                enable_automations: None,
+                auto_snooze_timeout_minutes,
+            },
+            output,
+        ),
+        WorkspaceCommands::Pause { title, uuid } => {
+            handle_runtime_pause(client, "workspace", &title, uuid.as_deref(), output)
+        }
+        WorkspaceCommands::Resume { title, uuid } => {
+            handle_runtime_resume(client, "workspace", &title, uuid.as_deref(), output)
+        }
+        WorkspaceCommands::Delete { title, uuid, yes } => {
+            handle_runtime_delete(client, "workspace", &title, uuid.as_deref(), yes, output)
+        }
+    }
+}

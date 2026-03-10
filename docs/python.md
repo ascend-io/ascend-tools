@@ -1,6 +1,6 @@
 # Use the Python SDK
 
-Manage Ascend runtimes, flows, and flow runs from Python.
+Manage Ascend workspaces, deployments, flows, and flow runs from Python.
 
 ## Install
 
@@ -40,31 +40,106 @@ client = Client(
 
 All parameters are keyword-only.
 
+## Environments and projects
+
+### List environments
+
+```python
+environments = client.list_environments()
+```
+
+### Resolve an environment by title
+
+```python
+env = client.resolve_environment(title="Production")
+```
+
+Returns `dict` with the matching environment. Raises an error if not found or ambiguous.
+
+### List projects
+
+```python
+projects = client.list_projects()
+```
+
+### Resolve a project by title
+
+```python
+project = client.resolve_project(title="My Project")
+```
+
+Returns `dict` with the matching project. Raises an error if not found or ambiguous.
+
 ## Manage runtimes
 
-### List runtimes
+### Workspaces
+
+```python
+client.list_workspaces()
+client.list_workspaces(environment="Production", project="My Project")
+client.get_workspace(title="My Workspace")
+client.pause_workspace(title="My Workspace")
+client.resume_workspace(title="My Workspace")
+client.delete_workspace(title="My Workspace")
+```
+
+### Deployments
+
+```python
+client.list_deployments()
+client.list_deployments(environment="Production")
+client.get_deployment(title="My Deployment")
+client.delete_deployment(title="My Deployment")
+```
+
+### List runtimes (low-level)
 
 ```python
 runtimes = client.list_runtimes()
-```
-
-Filter by ID, kind, project, or environment:
-
-```python
-client.list_runtimes(id="my-runtime")
-client.list_runtimes(kind="deployment")
-client.list_runtimes(project_uuid="...", environment_uuid="...")
+client.list_runtimes(kind="deployment", project_uuid="...", environment_uuid="...")
 ```
 
 Returns `list[dict]`.
 
-### Get a runtime
+### Get a runtime (low-level)
 
 ```python
 runtime = client.get_runtime(uuid="<RUNTIME_UUID>")
 ```
 
 Returns `dict` with fields: `uuid`, `id`, `title`, `kind`, `project_uuid`, `environment_uuid`, `build_uuid`, `created_at`, `updated_at`, `health`, `paused`.
+
+### Resolve a runtime by title
+
+```python
+runtime = client.resolve_runtime_by_title(title="My Workspace", kind="workspace")
+runtime = client.resolve_runtime_by_title(title="My Deployment", kind="deployment")
+```
+
+### Create a runtime
+
+```python
+runtime = client.create_runtime(
+    environment_uuid="...",
+    project_uuid="...",
+    build_uuid="...",
+    title="My Workspace",
+    kind="workspace",
+)
+```
+
+### Update a runtime
+
+```python
+client.update_runtime(uuid="...", title="New Title")
+client.update_runtime(uuid="...", build_uuid="...", paused=True)
+```
+
+### Delete a runtime
+
+```python
+client.delete_runtime(uuid="...")
+```
 
 ### Pause and resume
 
@@ -152,6 +227,17 @@ run = client.get_flow_run(runtime_uuid="<RUNTIME_UUID>", name="fr-...")
 ```
 
 Returns `dict` with fields: `name`, `flow`, `build_uuid`, `runtime_uuid`, `status`, `created_at`, `error`.
+
+## Otto (AI assistant)
+
+```python
+# List providers and models
+providers = client.list_otto_providers()
+
+# Chat
+response = client.otto_chat(prompt="What flows are running?")
+response = client.otto_chat(prompt="Describe the sales flow", runtime_uuid="...")
+```
 
 ## Return types
 

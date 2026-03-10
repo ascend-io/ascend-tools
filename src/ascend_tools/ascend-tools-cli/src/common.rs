@@ -1,0 +1,307 @@
+use anyhow::Result;
+use ascend_tools::client::AscendClient;
+use ascend_tools::models::{RuntimeCreate, RuntimeFilters, RuntimeUpdate};
+use clap::ValueEnum;
+
+#[derive(Clone, PartialEq, ValueEnum)]
+pub(crate) enum OutputMode {
+    Text,
+    Json,
+}
+
+/// Resolve the runtime UUID from --workspace/--deployment/--uuid flags on flow commands.
+pub(crate) fn resolve_flow_target(
+    client: &AscendClient,
+    workspace: Option<&str>,
+    deployment: Option<&str>,
+    uuid: Option<&str>,
+) -> Result<String> {
+    if let Some(uuid) = uuid {
+        return Ok(uuid.to_string());
+    }
+    if let Some(ws) = workspace {
+        return Ok(client.resolve_runtime_uuid(ws, "workspace", None)?);
+    }
+    if let Some(dep) = deployment {
+        return Ok(client.resolve_runtime_uuid(dep, "deployment", None)?);
+    }
+    anyhow::bail!("Either --workspace or --deployment is required");
+}
+
+pub(crate) fn handle_runtime_list(
+    client: &AscendClient,
+    kind: &str,
+    title: Option<String>,
+    project: Option<String>,
+    environment: Option<String>,
+    output: &OutputMode,
+) -> Result<()> {
+    let mut filters = RuntimeFilters::default();
+    filters.title = title;
+    filters.kind = Some(kind.into());
+    filters.project = project;
+    filters.environment = environment;
+    let runtimes = client.list_runtimes(filters)?;
+    match output {
+        OutputMode::Json => print_json(&runtimes)?,
+        OutputMode::Text => {
+            if kind == "deployment" {
+                let rows: Vec<Vec<String>> = runtimes
+                    .iter()
+                    .map(|r| {
+                        vec![
+                            r.title.clone(),
+                            r.uuid.clone(),
+                            display_health(r),
+                            r.enable_automations
+                                .map(|b| if b { "on" } else { "off" })
+                                .unwrap_or("-")
+                                .into(),
+                        ]
+                    })
+                    .collect();
+                print_table(&["TITLE", "UUID", "HEALTH", "AUTOMATIONS"], &rows);
+            } else {
+                let rows: Vec<Vec<String>> = runtimes
+                    .iter()
+                    .map(|r| {
+                        vec![
+                            r.title.clone(),
+                            r.uuid.clone(),
+                            display_health(r),
+                            r.profile_name.clone().unwrap_or_else(|| "-".into()),
+                        ]
+                    })
+                    .collect();
+                print_table(&["TITLE", "UUID", "HEALTH", "PROFILE"], &rows);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn handle_runtime_create(
+    client: &AscendClient,
+    kind: &str,
+    title: String,
+    environment: String,
+    project: String,
+    profile_name: String,
+    working_git_branch: String,
+    base_git_branch: Option<String>,
+    size: Option<String>,
+    storage_size: Option<u32>,
+    enable_automations: Option<bool>,
+    auto_snooze_timeout_minutes: Option<u32>,
+    output: &OutputMode,
+) -> Result<()> {
+    let create = RuntimeCreate {
+        title,
+        environment,
+        project,
+        profile_name,
+        working_git_branch,
+        base_git_branch,
+        size,
+        storage_size,
+        enable_automations,
+        auto_snooze_timeout_minutes,
+    };
+    let r = match kind {
+        "workspace" => client.create_workspace(&create)?,
+        "deployment" => client.create_deployment(&create)?,
+        _ => anyhow::bail!("Unknown runtime kind: {kind}"),
+    };
+    match output {
+        OutputMode::Json => print_json(&r)?,
+        OutputMode::Text => println!("Created {kind} '{}' ({})", r.title, r.uuid),
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_runtime_update(
+    client: &AscendClient,
+    kind: &str,
+    current_title: &str,
+    uuid: Option<&str>,
+    update: RuntimeUpdate,
+    output: &OutputMode,
+) -> Result<()> {
+    let runtime_uuid = client.resolve_runtime_uuid(current_title, kind, uuid)?;
+    let r = client.update_runtime(&runtime_uuid, &update)?;
+    match output {
+        OutputMode::Json => print_json(&r)?,
+        OutputMode::Text => println!("Updated {kind} '{}' ({})", r.title, r.uuid),
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_runtime_get(
+    client: &AscendClient,
+    kind: &str,
+    title: &str,
+    uuid: Option<&str>,
+    output: &OutputMode,
+) -> Result<()> {
+    // If UUID is provided, fetch directly. Otherwise resolve by title
+    // (which already returns the full Runtime, avoiding a redundant GET).
+    let r = if let Some(uuid) = uuid {
+        client.get_runtime(uuid)?
+    } else {
+        client.resolve_runtime_by_title(title, kind)?
+    };
+    match output {
+        OutputMode::Json => print_json(&r)?,
+        OutputMode::Text => print_runtime_detail(&r),
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_runtime_delete(
+    client: &AscendClient,
+    kind: &str,
+    title: &str,
+    uuid: Option<&str>,
+    yes: bool,
+    output: &OutputMode,
+) -> Result<()> {
+    let runtime_uuid = client.resolve_runtime_uuid(title, kind, uuid)?;
+    if !yes {
+        eprint!("Delete {kind} '{title}'? [y/N] ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            eprintln!("Cancelled.");
+            return Ok(());
+        }
+    }
+    client.delete_runtime(&runtime_uuid)?;
+    match output {
+        OutputMode::Json => print_json(&serde_json::json!({"deleted": runtime_uuid}))?,
+        OutputMode::Text => println!("Deleted {kind} '{title}'"),
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_runtime_pause(
+    client: &AscendClient,
+    kind: &str,
+    title: &str,
+    uuid: Option<&str>,
+    output: &OutputMode,
+) -> Result<()> {
+    let runtime_uuid = client.resolve_runtime_uuid(title, kind, uuid)?;
+    let r = client.pause_runtime(&runtime_uuid)?;
+    match output {
+        OutputMode::Json => print_json(&r)?,
+        OutputMode::Text => println!("Paused {kind} '{}'", r.title),
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_runtime_resume(
+    client: &AscendClient,
+    kind: &str,
+    title: &str,
+    uuid: Option<&str>,
+    output: &OutputMode,
+) -> Result<()> {
+    let runtime_uuid = client.resolve_runtime_uuid(title, kind, uuid)?;
+    let r = client.resume_runtime(&runtime_uuid)?;
+    match output {
+        OutputMode::Json => print_json(&r)?,
+        OutputMode::Text => println!("Resumed {kind} '{}'", r.title),
+    }
+    Ok(())
+}
+
+pub(crate) fn display_health(r: &ascend_tools::models::Runtime) -> String {
+    if r.paused {
+        "paused".into()
+    } else {
+        r.health.clone().unwrap_or_else(|| "-".into())
+    }
+}
+
+pub(crate) fn print_runtime_detail(r: &ascend_tools::models::Runtime) {
+    println!("Title:        {}", r.title);
+    println!("UUID:         {}", r.uuid);
+    println!("ID:           {}", r.id);
+    println!("Kind:         {}", r.kind);
+    println!("Health:       {}", display_health(r));
+    println!("Project:      {}", r.project_uuid);
+    println!("Environment:  {}", r.environment_uuid);
+    println!("Profile:      {}", r.profile_name.as_deref().unwrap_or("-"));
+    println!(
+        "Branch:       {}",
+        r.working_git_branch.as_deref().unwrap_or("-")
+    );
+    if let Some(automations) = r.enable_automations {
+        println!("Automations:  {}", if automations { "on" } else { "off" });
+    }
+    if let Some(snooze) = r.auto_snooze_timeout_minutes {
+        println!("Auto-snooze:  {} min", snooze);
+    }
+    println!("Build:        {}", r.build_uuid.as_deref().unwrap_or("-"));
+    println!("Created:      {}", r.created_at);
+    println!("Updated:      {}", r.updated_at);
+}
+
+pub(crate) fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+/// Print rows as a fixed-width table with a header.
+pub(crate) fn print_table(headers: &[&str], rows: &[Vec<String>]) {
+    if rows.is_empty() {
+        eprintln!("No results.");
+        return;
+    }
+
+    let widths: Vec<usize> = (0..headers.len())
+        .map(|i| {
+            let header_w = headers[i].len();
+            let max_row_w = rows
+                .iter()
+                .map(|r| r.get(i).map_or(0, |s| s.len()))
+                .max()
+                .unwrap_or(0);
+            header_w.max(max_row_w)
+        })
+        .collect();
+
+    let last = headers.len() - 1;
+
+    // Header
+    for (i, h) in headers.iter().enumerate() {
+        if i < last {
+            print!("{:<width$}  ", h, width = widths[i]);
+        } else {
+            println!("{h}");
+        }
+    }
+
+    // Rows
+    for row in rows {
+        for (i, val) in row.iter().enumerate() {
+            if i < last {
+                print!("{:<width$}  ", val, width = widths[i]);
+            } else {
+                println!("{val}");
+            }
+        }
+    }
+}
+
+pub(crate) fn parse_spec(spec: Option<String>) -> Result<Option<serde_json::Value>> {
+    match spec {
+        Some(s) => {
+            let v: serde_json::Value =
+                serde_json::from_str(&s).map_err(|e| anyhow::anyhow!("invalid JSON spec: {e}"))?;
+            Ok(Some(v))
+        }
+        None => Ok(None),
+    }
+}

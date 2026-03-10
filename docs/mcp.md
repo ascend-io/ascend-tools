@@ -1,6 +1,6 @@
 # Set up the MCP server
 
-Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 8 tools for managing runtimes and flows. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
+Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 19 tools for managing workspaces, deployments, flows, and Otto. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
 
 ## Remote MCP server (recommended)
 
@@ -90,48 +90,142 @@ codex mcp remove ascend-tools-dev
 
 ## Tools reference
 
-### list_runtimes
+### list_workspaces
 
-List runtimes with optional filters.
-
-| Parameter | Required | Type | Description |
-|-----------|----------|------|-------------|
-| `id` | no | string | Filter by runtime ID |
-| `kind` | no | string | Filter by runtime kind |
-| `project_uuid` | no | string | Filter by project UUID |
-| `environment_uuid` | no | string | Filter by environment UUID |
-
-### get_runtime
-
-Get a runtime by UUID.
+List workspaces with optional filters.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `uuid` | yes | string | Runtime UUID |
+| `environment` | no | string | Filter by environment title |
+| `project` | no | string | Filter by project title |
 
-### resume_runtime
+### get_workspace
 
-Resume a paused runtime.
-
-| Parameter | Required | Type | Description |
-|-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
-
-### pause_runtime
-
-Pause a running runtime.
+Get a workspace by title.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
+| `title` | yes | string | Workspace title |
+
+### create_workspace
+
+Create a new workspace.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `environment` | yes | string | Environment title |
+| `project` | yes | string | Project title |
+| `build_uuid` | yes | string | Build UUID |
+| `title` | no | string | Workspace title |
+| `paused` | no | boolean | Create in paused state |
+
+### update_workspace
+
+Update an existing workspace.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Current workspace title |
+| `new_title` | no | string | New workspace title |
+| `build_uuid` | no | string | New build UUID |
+| `paused` | no | boolean | Paused state |
+
+### pause_workspace
+
+Pause a running workspace.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Workspace title |
+
+### resume_workspace
+
+Resume a paused workspace.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Workspace title |
+
+### delete_workspace
+
+Delete a workspace.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Workspace title |
+
+### list_deployments
+
+List deployments with optional filters.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `environment` | no | string | Filter by environment title |
+| `project` | no | string | Filter by project title |
+
+### get_deployment
+
+Get a deployment by title.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Deployment title |
+
+### create_deployment
+
+Create a new deployment.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `environment` | yes | string | Environment title |
+| `project` | yes | string | Project title |
+| `build_uuid` | yes | string | Build UUID |
+| `title` | no | string | Deployment title |
+| `paused` | no | boolean | Create in paused state |
+
+### update_deployment
+
+Update an existing deployment.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Current deployment title |
+| `new_title` | no | string | New deployment title |
+| `build_uuid` | no | string | New build UUID |
+| `paused` | no | boolean | Paused state |
+
+### pause_deployment_automations
+
+Pause automations on a deployment.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Deployment title |
+
+### resume_deployment_automations
+
+Resume automations on a deployment.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Deployment title |
+
+### delete_deployment
+
+Delete a deployment.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Deployment title |
 
 ### list_flows
 
-List flows in a runtime.
+List flows in a workspace or deployment.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
+| `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 
 ### run_flow
 
@@ -139,7 +233,8 @@ Trigger a flow run. Checks runtime health first.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
+| `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `flow_name` | yes | string | Flow name |
 | `spec` | no | object | Flow run options (see below) |
 | `resume` | no | boolean | Resume the runtime if paused before running |
@@ -150,7 +245,8 @@ List flow runs with optional filters.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
+| `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `status` | no | string | Filter by status (pending, running, succeeded, failed) |
 | `flow_name` | no | string | Filter by flow name |
 | `since` | no | string | Filter by start time (ISO 8601) |
@@ -164,8 +260,26 @@ Get a flow run by name.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
-| `runtime_uuid` | yes | string | Runtime UUID |
+| `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `name` | yes | string | Flow run name |
+
+### list_otto_providers
+
+List available Otto providers and their enabled models. No parameters.
+
+### otto_chat
+
+Chat with Otto, the Ascend AI assistant.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `prompt` | yes | string | Message to send to Otto |
+| `workspace_title` | no | string | Workspace title for context |
+| `workspace_uuid` | no | string | Workspace UUID (direct override) |
+| `provider` | no | string | LLM provider ID |
+| `model` | no | string | LLM model ID |
+| `thread_id` | no | string | Thread ID to continue a conversation |
 
 ## Flow run spec
 

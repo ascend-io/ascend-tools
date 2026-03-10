@@ -1,48 +1,230 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+// -- Workspace params --
+
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListRuntimesParams {
-    /// Filter by runtime ID
-    pub id: Option<String>,
-    /// Filter by runtime kind
-    pub kind: Option<String>,
-    /// Filter by project UUID
-    pub project_uuid: Option<String>,
-    /// Filter by environment UUID
-    pub environment_uuid: Option<String>,
+pub struct ListWorkspacesParams {
+    /// Filter by workspace title
+    pub title: Option<String>,
+    /// Filter by project name (or UUID)
+    pub project: Option<String>,
+    /// Filter by environment name (or UUID)
+    pub environment: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct GetRuntimeParams {
-    /// Runtime UUID
-    pub uuid: String,
+pub struct GetWorkspaceParams {
+    /// Workspace title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateWorkspaceParams {
+    /// Workspace title
+    pub title: String,
+    /// Environment name (or UUID)
+    pub environment: String,
+    /// Project name (or UUID)
+    pub project: String,
+    /// Configuration profile name
+    pub profile_name: String,
+    /// Git branch to use
+    pub working_git_branch: String,
+    /// Base git branch (optional)
+    pub base_git_branch: Option<String>,
+    /// Runtime size (e.g. "Small", "Medium", "Large")
+    pub size: Option<String>,
+    /// Storage size in GB
+    pub storage_size: Option<u32>,
+    /// Minutes of inactivity before auto-snooze
+    pub auto_snooze_timeout_minutes: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateWorkspaceParams {
+    /// Workspace title (for lookup)
+    pub current_title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+    /// New title
+    pub title: Option<String>,
+    /// Switch to a different git branch
+    pub working_git_branch: Option<String>,
+    /// New base git branch
+    pub base_git_branch: Option<String>,
+    /// New profile name
+    pub profile_name: Option<String>,
+    /// New runtime size
+    pub size: Option<String>,
+    /// New storage size in GB
+    pub storage_size: Option<u32>,
+    /// New auto-snooze timeout in minutes
+    pub auto_snooze_timeout_minutes: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PauseWorkspaceParams {
+    /// Workspace title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResumeWorkspaceParams {
+    /// Workspace title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteWorkspaceParams {
+    /// Workspace title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+// -- Deployment params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListDeploymentsParams {
+    /// Filter by deployment title
+    pub title: Option<String>,
+    /// Filter by project name (or UUID)
+    pub project: Option<String>,
+    /// Filter by environment name (or UUID)
+    pub environment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetDeploymentParams {
+    /// Deployment title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateDeploymentParams {
+    /// Deployment title
+    pub title: String,
+    /// Environment name (or UUID)
+    pub environment: String,
+    /// Project name (or UUID)
+    pub project: String,
+    /// Configuration profile name
+    pub profile_name: String,
+    /// Git branch to use
+    pub working_git_branch: String,
+    /// Base git branch (optional)
+    pub base_git_branch: Option<String>,
+    /// Runtime size
+    pub size: Option<String>,
+    /// Storage size in GB
+    pub storage_size: Option<u32>,
+    /// Enable automations (default: true for deployments)
+    pub enable_automations: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateDeploymentParams {
+    /// Deployment title (for lookup)
+    pub current_title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+    /// New title
+    pub title: Option<String>,
+    /// Switch to a different git branch
+    pub working_git_branch: Option<String>,
+    /// New base git branch
+    pub base_git_branch: Option<String>,
+    /// New profile name
+    pub profile_name: Option<String>,
+    /// New runtime size
+    pub size: Option<String>,
+    /// New storage size in GB
+    pub storage_size: Option<u32>,
+    /// Enable or disable automations
+    pub enable_automations: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PauseDeploymentAutomationsParams {
+    /// Deployment title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResumeDeploymentAutomationsParams {
+    /// Deployment title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteDeploymentParams {
+    /// Deployment title
+    pub title: String,
+    /// Use UUID instead of title (optional override)
+    pub uuid: Option<String>,
+}
+
+// -- Environment params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListEnvironmentsParams {}
+
+// -- Project params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListProjectsParams {}
+
+// -- Profile params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListProfilesParams {
+    /// Workspace title (derives project and branch from the runtime)
+    pub workspace_title: Option<String>,
+    /// Deployment title (derives project and branch from the runtime)
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override, bypasses title lookup)
+    pub uuid: Option<String>,
+    /// Project name (or UUID) — use with branch
+    pub project: Option<String>,
+    /// Git branch (required with project)
+    pub branch: Option<String>,
+}
+
+// -- Flow params --
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFlowsParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ResumeRuntimeParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct PauseRuntimeParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
+    /// Workspace title (mutually exclusive with deployment_title/uuid)
+    pub workspace_title: Option<String>,
+    /// Deployment title (mutually exclusive with workspace_title/uuid)
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override, bypasses title lookup)
+    pub uuid: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RunFlowParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
     /// Flow name
     pub flow_name: String,
+    /// Workspace title
+    pub workspace_title: Option<String>,
+    /// Deployment title
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override)
+    pub uuid: Option<String>,
     /// Flow run options. All fields are optional — omit spec entirely to run with defaults.
     pub spec: Option<FlowRunSpec>,
     /// Resume the runtime if paused before submitting the flow run.
@@ -74,11 +256,11 @@ pub struct FlowRunSpec {
     /// Whether to disable optimizers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_optimizers: Option<bool>,
-    /// Whether to update component materialization types (e.g. between simple, view, incremental, smart).
+    /// Whether to update component materialization types.
     /// WARNING: If materialization type changes are detected, existing data will be dropped and recomputed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_materialization_type: Option<bool>,
-    /// Whether to use deep data pruning for Smart Table component data maintenance (slower but full table scan).
+    /// Whether to use deep data pruning for Smart Table component data maintenance.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deep_data_pruning: Option<bool>,
     /// Whether to backfill block statistics for existing data blocks without statistics.
@@ -90,7 +272,7 @@ pub struct FlowRunSpec {
     /// Custom parameters dictionary passed to the flow.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<serde_json::Value>,
-    /// Runner configuration overrides for this flow run (e.g. {"size": "Medium"} or {"size": {"cpu": "8", "memory": "32Gi"}}).
+    /// Runner configuration overrides for this flow run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner_overrides: Option<serde_json::Value>,
     /// Capture any additional fields for forward compatibility.
@@ -101,8 +283,12 @@ pub struct FlowRunSpec {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFlowRunsParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
+    /// Workspace title
+    pub workspace_title: Option<String>,
+    /// Deployment title
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override)
+    pub uuid: Option<String>,
     /// Filter by status
     pub status: Option<String>,
     /// Filter by flow name
@@ -119,8 +305,30 @@ pub struct ListFlowRunsParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetFlowRunParams {
-    /// Runtime UUID
-    pub runtime_uuid: String,
     /// Flow run name
     pub name: String,
+    /// Workspace title
+    pub workspace_title: Option<String>,
+    /// Deployment title
+    pub deployment_title: Option<String>,
+    /// Runtime UUID (direct override)
+    pub uuid: Option<String>,
+}
+
+// -- Otto params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct OttoChatParams {
+    /// Message to send to Otto
+    pub prompt: String,
+    /// Workspace title for context
+    pub workspace_title: Option<String>,
+    /// Workspace UUID (direct override)
+    pub workspace_uuid: Option<String>,
+    /// LLM provider (e.g. "openai")
+    pub provider: Option<String>,
+    /// LLM model (e.g. "gpt-4o")
+    pub model: Option<String>,
+    /// Thread ID to continue a conversation
+    pub thread_id: Option<String>,
 }
