@@ -8,7 +8,7 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::{OttoChatRequest, OttoModel};
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_json, print_table, resolve_runtime_target};
+use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
 // ---------------------------------------------------------------------------
 // StreamRenderer — spinner + smoothed character-by-character output
@@ -245,12 +245,7 @@ pub(crate) fn handle_otto_cmd(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("otto")
-            .expect("otto subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("otto");
     };
     match cmd {
         OttoCommands::Run {
@@ -262,24 +257,17 @@ pub(crate) fn handle_otto_cmd(
             model,
             thread,
         } => {
-            let runtime_id = if workspace.is_some() || deployment.is_some() || uuid.is_some() {
-                Some(resolve_runtime_target(
-                    client,
-                    workspace.as_deref(),
-                    deployment.as_deref(),
-                    uuid.as_deref(),
-                )?)
-            } else {
-                None
-            };
-
-            let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
+            let runtime_id = client.resolve_optional_runtime_target(
+                workspace.as_deref(),
+                deployment.as_deref(),
+                uuid.as_deref(),
+            )?;
 
             let request = OttoChatRequest {
                 prompt,
                 runtime_id,
                 thread_id: thread,
-                model: otto_model,
+                model: OttoModel::from_options(provider.as_deref(), model.as_deref()),
             };
 
             match output {
@@ -386,16 +374,11 @@ pub(crate) fn handle_otto_cmd(
             provider,
             model,
         } => {
-            let runtime_id = if workspace.is_some() || deployment.is_some() || uuid.is_some() {
-                Some(resolve_runtime_target(
-                    client,
-                    workspace.as_deref(),
-                    deployment.as_deref(),
-                    uuid.as_deref(),
-                )?)
-            } else {
-                None
-            };
+            let runtime_id = client.resolve_optional_runtime_target(
+                workspace.as_deref(),
+                deployment.as_deref(),
+                uuid.as_deref(),
+            )?;
             let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
             let mut thread_id: Option<String> = None;
 

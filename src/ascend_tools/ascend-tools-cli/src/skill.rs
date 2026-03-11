@@ -33,12 +33,7 @@ pub(crate) enum SkillCommands {
 
 pub(crate) fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("skill")
-            .expect("skill subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return crate::common::print_subcommand_help("skill");
     };
     match cmd {
         SkillCommands::Install {

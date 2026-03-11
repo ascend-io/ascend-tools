@@ -3,7 +3,7 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::RuntimeKind;
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_json, print_table};
+use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum ProfileCommands {
@@ -34,12 +34,7 @@ pub(crate) fn handle_profile(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("profile")
-            .expect("profile subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("profile");
     };
     match cmd {
         ProfileCommands::List {

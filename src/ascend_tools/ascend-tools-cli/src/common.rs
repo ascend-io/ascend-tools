@@ -9,6 +9,16 @@ pub(crate) enum OutputMode {
     Json,
 }
 
+/// Print help for a subcommand when no sub-subcommand is given.
+pub(crate) fn print_subcommand_help(name: &str) -> Result<()> {
+    use clap::CommandFactory;
+    crate::cli::CliParser::command()
+        .find_subcommand_mut(name)
+        .expect("subcommand exists")
+        .print_help()?;
+    Ok(())
+}
+
 /// Resolve the runtime UUID from --workspace/--deployment/--uuid flags.
 pub(crate) fn resolve_runtime_target(
     client: &AscendClient,
@@ -60,7 +70,7 @@ pub(crate) fn handle_runtime_list(
                             r.title.clone(),
                             r.uuid.clone(),
                             display_health(r),
-                            r.profile_name.clone().unwrap_or_else(|| "-".into()),
+                            r.profile_name.as_deref().unwrap_or("-").to_owned(),
                         ]
                     })
                     .collect();
@@ -210,7 +220,7 @@ pub(crate) fn display_health(r: &ascend_tools::models::Runtime) -> String {
     if r.paused {
         "paused".into()
     } else {
-        r.health.clone().unwrap_or_else(|| "-".into())
+        r.health.as_deref().unwrap_or("-").to_owned()
     }
 }
 
@@ -286,12 +296,6 @@ pub(crate) fn print_table(headers: &[&str], rows: &[Vec<String>]) {
 }
 
 pub(crate) fn parse_spec(spec: Option<String>) -> Result<Option<serde_json::Value>> {
-    match spec {
-        Some(s) => {
-            let v: serde_json::Value =
-                serde_json::from_str(&s).map_err(|e| anyhow::anyhow!("invalid JSON spec: {e}"))?;
-            Ok(Some(v))
-        }
-        None => Ok(None),
-    }
+    spec.map(|s| serde_json::from_str(&s).map_err(|e| anyhow::anyhow!("invalid JSON spec: {e}")))
+        .transpose()
 }

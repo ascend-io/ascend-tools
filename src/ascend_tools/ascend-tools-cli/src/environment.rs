@@ -2,7 +2,7 @@ use anyhow::Result;
 use ascend_tools::client::AscendClient;
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_json, print_table};
+use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum EnvironmentCommands {
@@ -22,12 +22,7 @@ pub(crate) fn handle_environment(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("environment")
-            .expect("environment subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("environment");
     };
     match cmd {
         EnvironmentCommands::List => {

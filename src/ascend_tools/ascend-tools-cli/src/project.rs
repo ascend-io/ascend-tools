@@ -2,7 +2,7 @@ use anyhow::Result;
 use ascend_tools::client::AscendClient;
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_json, print_table};
+use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum ProjectCommands {
@@ -22,12 +22,7 @@ pub(crate) fn handle_project(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("project")
-            .expect("project subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("project");
     };
     match cmd {
         ProjectCommands::List => {
@@ -41,7 +36,7 @@ pub(crate) fn handle_project(
                             vec![
                                 p.title.clone(),
                                 p.uuid.clone(),
-                                p.path.clone().unwrap_or_else(|| "-".into()),
+                                p.path.as_deref().unwrap_or("-").to_owned(),
                             ]
                         })
                         .collect();

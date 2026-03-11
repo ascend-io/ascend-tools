@@ -3,7 +3,9 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::FlowRunFilters;
 use clap::Subcommand;
 
-use crate::common::{OutputMode, parse_spec, print_json, print_table, resolve_runtime_target};
+use crate::common::{
+    OutputMode, parse_spec, print_json, print_subcommand_help, print_table, resolve_runtime_target,
+};
 
 #[derive(Subcommand)]
 pub(crate) enum FlowCommands {
@@ -94,12 +96,7 @@ pub(crate) fn handle_flow(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("flow")
-            .expect("flow subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("flow");
     };
     match cmd {
         FlowCommands::List {

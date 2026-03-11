@@ -487,36 +487,20 @@ impl AscendMcpServer {
         Parameters(params): Parameters<OttoChatParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        let client = client.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let runtime_id = client.resolve_optional_runtime_target(
+        blocking(client, move |c| {
+            let runtime_id = c.resolve_optional_runtime_target(
                 params.workspace_title.as_deref(),
                 params.deployment_title.as_deref(),
                 params.uuid.as_deref(),
             )?;
-
-            let otto_model =
-                OttoModel::from_options(params.provider.as_deref(), params.model.as_deref());
-
-            client.otto_chat(&OttoChatRequest {
+            c.otto_chat(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_id,
                 thread_id: params.thread_id,
-                model: otto_model,
+                model: OttoModel::from_options(params.provider.as_deref(), params.model.as_deref()),
             })
         })
         .await
-        .map_err(|e| McpError::internal_error(format!("task join error: {e}"), None))?
-        .map_err(|e| McpError::internal_error(format!("{e:#}"), None))?;
-
-        let json = serde_json::json!({
-            "message": result.message,
-            "thread_id": result.thread_id,
-        });
-        let text = serde_json::to_string_pretty(&json).map_err(|e| {
-            McpError::internal_error(format!("JSON serialization error: {e}"), None)
-        })?;
-        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 }
 

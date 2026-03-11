@@ -105,14 +105,14 @@ impl AscendClient {
     }
 
     fn create_runtime_at(&self, path: &str, create: &RuntimeCreate) -> Result<Runtime> {
-        let body = serde_json::to_value(create)
-            .with_json_serialize_context("RuntimeCreate body".to_string())?;
+        let body =
+            serde_json::to_value(create).with_json_serialize_context("RuntimeCreate body")?;
         self.post_json(path, &body)
     }
 
     pub fn update_runtime(&self, uuid: &str, update: &RuntimeUpdate) -> Result<Runtime> {
-        let body = serde_json::to_value(update)
-            .with_json_serialize_context("RuntimeUpdate body".to_string())?;
+        let body =
+            serde_json::to_value(update).with_json_serialize_context("RuntimeUpdate body")?;
         self.patch_json(&format!("/api/v1/runtimes/{}", encode_path(uuid)), &body)
     }
 
@@ -149,8 +149,7 @@ impl AscendClient {
 
     // -- Workspaces (convenience wrappers that set kind=workspace) --
 
-    pub fn list_workspaces(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
-        let mut filters = filters;
+    pub fn list_workspaces(&self, mut filters: RuntimeFilters) -> Result<Vec<Runtime>> {
         filters.kind = Some(RuntimeKind::Workspace);
         self.list_runtimes(filters)
     }
@@ -194,8 +193,7 @@ impl AscendClient {
 
     // -- Deployments (convenience wrappers that set kind=deployment) --
 
-    pub fn list_deployments(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
-        let mut filters = filters;
+    pub fn list_deployments(&self, mut filters: RuntimeFilters) -> Result<Vec<Runtime>> {
         filters.kind = Some(RuntimeKind::Deployment);
         self.list_runtimes(filters)
     }
@@ -441,8 +439,8 @@ impl AscendClient {
         request: &OttoChatRequest,
         mut on_delta: impl FnMut(&str),
     ) -> Result<OttoChatResponse> {
-        let body = serde_json::to_value(request)
-            .with_json_serialize_context("OttoChatRequest body".to_string())?;
+        let body =
+            serde_json::to_value(request).with_json_serialize_context("OttoChatRequest body")?;
         let token = self.auth.get_token()?;
 
         // Step 1: Create thread or send message to existing thread

@@ -6,6 +6,7 @@ use clap::Subcommand;
 use crate::common::{
     OutputMode, handle_runtime_create, handle_runtime_delete, handle_runtime_get,
     handle_runtime_list, handle_runtime_pause, handle_runtime_resume, handle_runtime_update,
+    print_subcommand_help,
 };
 
 #[derive(Subcommand)]
@@ -145,12 +146,7 @@ pub(crate) fn handle_workspace(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(cmd) = cmd else {
-        use clap::CommandFactory;
-        crate::cli::CliParser::command()
-            .find_subcommand_mut("workspace")
-            .expect("workspace subcommand exists")
-            .print_help()?;
-        return Ok(());
+        return print_subcommand_help("workspace");
     };
     match cmd {
         WorkspaceCommands::List {

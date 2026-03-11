@@ -210,7 +210,7 @@ impl OttoModel {
 }
 
 /// Response from Otto chat.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OttoChatResponse {
     pub message: String,
     pub thread_id: Option<String>,
