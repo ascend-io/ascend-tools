@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
@@ -71,11 +72,41 @@ pub struct Runtime {
     pub auto_snooze_timeout_minutes: Option<u32>,
 }
 
-/// Alias for [`Runtime`] when the kind is known to be a workspace.
-pub type Workspace = Runtime;
+/// A workspace runtime. Wraps [`Runtime`] with `kind == Workspace`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Workspace(pub Runtime);
 
-/// Alias for [`Runtime`] when the kind is known to be a deployment.
-pub type Deployment = Runtime;
+impl Deref for Workspace {
+    type Target = Runtime;
+    fn deref(&self) -> &Runtime {
+        &self.0
+    }
+}
+
+impl From<Runtime> for Workspace {
+    fn from(r: Runtime) -> Self {
+        Self(r)
+    }
+}
+
+/// A deployment runtime. Wraps [`Runtime`] with `kind == Deployment`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Deployment(pub Runtime);
+
+impl Deref for Deployment {
+    type Target = Runtime;
+    fn deref(&self) -> &Runtime {
+        &self.0
+    }
+}
+
+impl From<Runtime> for Deployment {
+    fn from(r: Runtime) -> Self {
+        Self(r)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {

@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ureq::Agent;
+use zeroize::Zeroizing;
 
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 
@@ -13,7 +14,7 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 /// via the Instance API's /api/v1/auth/token endpoint.
 pub struct Auth {
     service_account_id: String,
-    key_bytes: Vec<u8>,
+    key_bytes: Zeroizing<Vec<u8>>,
     instance_api_url: String,
     agent: Agent,
     cloud_api_domain: Mutex<Option<String>>,
@@ -35,10 +36,12 @@ impl Auth {
         instance_api_url: String,
         agent: Agent,
     ) -> Result<Self> {
-        let key_bytes = URL_SAFE_NO_PAD
-            .decode(key_b64.trim())
-            .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
-            .map_err(|_| Error::InvalidServiceAccountKeyEncoding)?;
+        let key_bytes = Zeroizing::new(
+            URL_SAFE_NO_PAD
+                .decode(key_b64.trim())
+                .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
+                .map_err(|_| Error::InvalidServiceAccountKeyEncoding)?,
+        );
 
         if key_bytes.len() != 32 {
             return Err(Error::InvalidServiceAccountKeyLength {
@@ -188,14 +191,13 @@ impl Auth {
             })?
             .to_string();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|source| Error::SystemClockBeforeUnixEpoch { source })?
-            .as_secs();
         let expires_at = json
             .get("expiration")
             .and_then(|v| v.as_u64())
-            .unwrap_or(now + 3600);
+            .ok_or_else(|| Error::MissingField {
+                context: "token exchange response",
+                field: "expiration",
+            })?;
 
         Ok((token, expires_at))
     }

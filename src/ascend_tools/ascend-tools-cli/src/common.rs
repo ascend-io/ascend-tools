@@ -84,8 +84,8 @@ pub(crate) fn handle_runtime_create(
     output: &OutputMode,
 ) -> Result<()> {
     let r = match kind {
-        RuntimeKind::Workspace => client.create_workspace(create)?,
-        RuntimeKind::Deployment => client.create_deployment(create)?,
+        RuntimeKind::Workspace => client.create_workspace(create)?.0,
+        RuntimeKind::Deployment => client.create_deployment(create)?.0,
     };
     match output {
         OutputMode::Json => print_json(&r)?,

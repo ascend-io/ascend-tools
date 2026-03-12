@@ -108,6 +108,31 @@ pub enum Error {
     SseParseError { context: String },
 }
 
+impl Error {
+    /// Returns the HTTP status code if this is an API error, or `None` otherwise.
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::ApiError { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if this is an HTTP 401 Unauthorized error.
+    pub fn is_unauthorized(&self) -> bool {
+        self.http_status() == Some(401)
+    }
+
+    /// Returns `true` if this is an HTTP 403 Forbidden error.
+    pub fn is_forbidden(&self) -> bool {
+        self.http_status() == Some(403)
+    }
+
+    /// Returns `true` if this is an HTTP 404 Not Found error.
+    pub fn is_not_found(&self) -> bool {
+        self.http_status() == Some(404)
+    }
+}
+
 pub(crate) trait UreqResultExt<T> {
     fn with_request_context(self, context: impl Into<String>) -> Result<T>;
     fn with_response_read_context(self, context: impl Into<String>) -> Result<T>;

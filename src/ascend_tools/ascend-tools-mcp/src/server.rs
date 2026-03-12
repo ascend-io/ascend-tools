@@ -316,7 +316,7 @@ impl AscendMcpServer {
     #[tool(description = "List environments")]
     async fn list_environments(
         &self,
-        #[allow(unused_variables)] Parameters(params): Parameters<ListEnvironmentsParams>,
+        Parameters(_params): Parameters<ListEnvironmentsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, |c| c.list_environments()).await
@@ -327,7 +327,7 @@ impl AscendMcpServer {
     #[tool(description = "List projects")]
     async fn list_projects(
         &self,
-        #[allow(unused_variables)] Parameters(params): Parameters<ListProjectsParams>,
+        Parameters(_params): Parameters<ListProjectsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, |c| c.list_projects()).await
