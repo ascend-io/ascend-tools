@@ -10,23 +10,19 @@ pub(crate) enum OutputMode {
 }
 
 /// Print help for a subcommand when no sub-subcommand is given.
-pub(crate) fn print_subcommand_help(name: &str) -> Result<()> {
+///
+/// Accepts a space-separated path for nested subcommands (e.g. "otto provider").
+pub(crate) fn print_subcommand_help(path: &str) -> Result<()> {
     use clap::CommandFactory;
-    crate::cli::CliParser::command()
-        .find_subcommand_mut(name)
-        .expect("subcommand exists")
-        .print_help()?;
+    let mut cmd = crate::cli::CliParser::command();
+    for part in path.split_whitespace() {
+        cmd = cmd
+            .find_subcommand_mut(part)
+            .expect("subcommand exists")
+            .clone();
+    }
+    cmd.print_help()?;
     Ok(())
-}
-
-/// Resolve the runtime UUID from --workspace/--deployment/--uuid flags.
-pub(crate) fn resolve_runtime_target(
-    client: &AscendClient,
-    workspace: Option<&str>,
-    deployment: Option<&str>,
-    uuid: Option<&str>,
-) -> Result<String> {
-    Ok(client.resolve_runtime_target(workspace, deployment, uuid)?)
 }
 
 pub(crate) fn handle_runtime_list(
@@ -81,37 +77,15 @@ pub(crate) fn handle_runtime_list(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_runtime_create(
     client: &AscendClient,
     kind: RuntimeKind,
-    title: String,
-    environment: String,
-    project: String,
-    profile_name: String,
-    working_git_branch: String,
-    base_git_branch: Option<String>,
-    size: Option<String>,
-    storage_size: Option<u32>,
-    enable_automations: Option<bool>,
-    auto_snooze_timeout_minutes: Option<u32>,
+    create: &RuntimeCreate,
     output: &OutputMode,
 ) -> Result<()> {
-    let create = RuntimeCreate {
-        title,
-        environment,
-        project,
-        profile_name,
-        working_git_branch,
-        base_git_branch,
-        size,
-        storage_size,
-        enable_automations,
-        auto_snooze_timeout_minutes,
-    };
     let r = match kind {
-        RuntimeKind::Workspace => client.create_workspace(&create)?,
-        RuntimeKind::Deployment => client.create_deployment(&create)?,
+        RuntimeKind::Workspace => client.create_workspace(create)?,
+        RuntimeKind::Deployment => client.create_deployment(create)?,
     };
     match output {
         OutputMode::Json => print_json(&r)?,
@@ -169,6 +143,7 @@ pub(crate) fn handle_runtime_delete(
     let runtime_uuid = client.resolve_runtime_uuid(title, kind, uuid)?;
     if !yes {
         eprint!("Delete {kind} '{title}'? [y/N] ");
+        std::io::Write::flush(&mut std::io::stderr())?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if !input.trim().eq_ignore_ascii_case("y") {

@@ -4,6 +4,7 @@
 name = "ascend-tools-py"
 version = "1.0.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 repository = "https://github.com/ascend-io/ascend-tools"

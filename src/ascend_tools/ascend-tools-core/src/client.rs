@@ -9,9 +9,9 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, OttoChatRequest,
-    OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind,
-    RuntimeUpdate,
+    Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
+    OttoChatRequest, OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate,
+    RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -123,6 +123,7 @@ impl AscendClient {
     /// Resolve a runtime by its title and kind. Returns exactly one match.
     ///
     /// Errors if zero or multiple runtimes match.
+    /// Prefer `get_workspace`/`get_deployment` for most use cases.
     pub fn resolve_runtime_by_title(&self, title: &str, kind: RuntimeKind) -> Result<Runtime> {
         let runtimes = self.list_runtimes(RuntimeFilters {
             title: Some(title.to_string()),
@@ -135,6 +136,7 @@ impl AscendClient {
     /// Resolve a runtime UUID from a title or UUID string.
     ///
     /// If `uuid_override` is `Some`, uses it directly. Otherwise resolves by title+kind.
+    /// Prefer `get_workspace`/`get_deployment` for most use cases.
     pub fn resolve_runtime_uuid(
         &self,
         title: &str,
@@ -149,12 +151,14 @@ impl AscendClient {
 
     // -- Workspaces (convenience wrappers that set kind=workspace) --
 
-    pub fn list_workspaces(&self, mut filters: RuntimeFilters) -> Result<Vec<Runtime>> {
+    pub fn list_workspaces(&self, mut filters: RuntimeFilters) -> Result<Vec<Workspace>> {
         filters.kind = Some(RuntimeKind::Workspace);
         self.list_runtimes(filters)
     }
 
-    pub fn get_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+    /// Get a workspace by title. If `uuid` is provided, it is used directly
+    /// and `title` is ignored.
+    pub fn get_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
         if let Some(uuid) = uuid {
             self.get_runtime(uuid)
         } else {
@@ -162,7 +166,7 @@ impl AscendClient {
         }
     }
 
-    pub fn create_workspace(&self, create: &RuntimeCreate) -> Result<Runtime> {
+    pub fn create_workspace(&self, create: &RuntimeCreate) -> Result<Workspace> {
         self.create_runtime_at("/api/v1/workspaces", create)
     }
 
@@ -171,17 +175,17 @@ impl AscendClient {
         title: &str,
         uuid: Option<&str>,
         update: &RuntimeUpdate,
-    ) -> Result<Runtime> {
+    ) -> Result<Workspace> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.update_runtime(&uuid, update)
     }
 
-    pub fn pause_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+    pub fn pause_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.pause_runtime(&uuid)
     }
 
-    pub fn resume_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+    pub fn resume_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
         self.resume_runtime(&uuid)
     }
@@ -193,12 +197,14 @@ impl AscendClient {
 
     // -- Deployments (convenience wrappers that set kind=deployment) --
 
-    pub fn list_deployments(&self, mut filters: RuntimeFilters) -> Result<Vec<Runtime>> {
+    pub fn list_deployments(&self, mut filters: RuntimeFilters) -> Result<Vec<Deployment>> {
         filters.kind = Some(RuntimeKind::Deployment);
         self.list_runtimes(filters)
     }
 
-    pub fn get_deployment(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+    /// Get a deployment by title. If `uuid` is provided, it is used directly
+    /// and `title` is ignored.
+    pub fn get_deployment(&self, title: &str, uuid: Option<&str>) -> Result<Deployment> {
         if let Some(uuid) = uuid {
             self.get_runtime(uuid)
         } else {
@@ -206,7 +212,7 @@ impl AscendClient {
         }
     }
 
-    pub fn create_deployment(&self, create: &RuntimeCreate) -> Result<Runtime> {
+    pub fn create_deployment(&self, create: &RuntimeCreate) -> Result<Deployment> {
         self.create_runtime_at("/api/v1/deployments", create)
     }
 
@@ -215,12 +221,16 @@ impl AscendClient {
         title: &str,
         uuid: Option<&str>,
         update: &RuntimeUpdate,
-    ) -> Result<Runtime> {
+    ) -> Result<Deployment> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
         self.update_runtime(&uuid, update)
     }
 
-    pub fn pause_deployment_automations(&self, title: &str, uuid: Option<&str>) -> Result<Runtime> {
+    pub fn pause_deployment_automations(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> Result<Deployment> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
         self.update_runtime(
             &uuid,
@@ -235,7 +245,7 @@ impl AscendClient {
         &self,
         title: &str,
         uuid: Option<&str>,
-    ) -> Result<Runtime> {
+    ) -> Result<Deployment> {
         let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
         self.update_runtime(
             &uuid,
@@ -272,7 +282,7 @@ impl AscendClient {
             return self.resolve_runtime_uuid(dep, RuntimeKind::Deployment, None);
         }
         Err(Error::MissingField {
-            context: "runtime target",
+            context: "target",
             field: "workspace, deployment, or uuid",
         })
     }
@@ -407,8 +417,6 @@ impl AscendClient {
 
     // -- Otto --
 
-    /// Send a chat message to Otto and return the assistant's response.
-    ///
     /// List available Otto providers and their enabled models.
     pub fn list_otto_providers(&self) -> Result<Vec<OttoProvider>> {
         self.get("/api/v1/otto/providers")

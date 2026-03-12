@@ -65,7 +65,12 @@ impl Client {
     }
 
     #[pyo3(signature = (*, title, uuid=None))]
-    fn pause_workspace(&self, py: Python<'_>, title: &str, uuid: Option<&str>) -> PyResult<Py<PyAny>> {
+    fn pause_workspace(
+        &self,
+        py: Python<'_>,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
         let runtime = py
             .detach(|| self.inner.pause_workspace(title, uuid))
             .map_err(to_py_err)?;
@@ -73,7 +78,12 @@ impl Client {
     }
 
     #[pyo3(signature = (*, title, uuid=None))]
-    fn resume_workspace(&self, py: Python<'_>, title: &str, uuid: Option<&str>) -> PyResult<Py<PyAny>> {
+    fn resume_workspace(
+        &self,
+        py: Python<'_>,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
         let runtime = py
             .detach(|| self.inner.resume_workspace(title, uuid))
             .map_err(to_py_err)?;
@@ -95,19 +105,15 @@ impl Client {
         storage_size: Option<u32>,
         auto_snooze_timeout_minutes: Option<u32>,
     ) -> PyResult<Py<PyAny>> {
-        let create = models::RuntimeCreate {
-            title: title.into(),
-            environment: environment.into(),
-            project: project.into(),
-            profile_name: profile.into(),
-            working_git_branch: git_branch.into(),
-            base_git_branch: git_branch_base.map(String::from),
-            size: size.map(String::from),
-            storage_size,
-            enable_automations: None,
-            auto_snooze_timeout_minutes,
-        };
-        let runtime = py.detach(|| self.inner.create_workspace(&create)).map_err(to_py_err)?;
+        let mut create =
+            models::RuntimeCreate::new(title, environment, project, profile, git_branch);
+        create.base_git_branch = git_branch_base.map(String::from);
+        create.size = size.map(String::from);
+        create.storage_size = storage_size;
+        create.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
+        let runtime = py
+            .detach(|| self.inner.create_workspace(&create))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
@@ -126,12 +132,17 @@ impl Client {
         storage_size: Option<u32>,
         auto_snooze_timeout_minutes: Option<u32>,
     ) -> PyResult<Py<PyAny>> {
-        let update = models::RuntimeUpdate {
-            title: new_title.map(String::from), working_git_branch: git_branch.map(String::from),
-            base_git_branch: git_branch_base.map(String::from), profile_name: profile.map(String::from),
-            size: size.map(String::from), storage_size, enable_automations: None, auto_snooze_timeout_minutes,
-        };
-        let runtime = py.detach(|| self.inner.update_workspace(title, uuid, &update)).map_err(to_py_err)?;
+        let mut update = models::RuntimeUpdate::default();
+        update.title = new_title.map(String::from);
+        update.working_git_branch = git_branch.map(String::from);
+        update.base_git_branch = git_branch_base.map(String::from);
+        update.profile_name = profile.map(String::from);
+        update.size = size.map(String::from);
+        update.storage_size = storage_size;
+        update.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
+        let runtime = py
+            .detach(|| self.inner.update_workspace(title, uuid, &update))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
@@ -192,19 +203,15 @@ impl Client {
         storage_size: Option<u32>,
         enable_automations: Option<bool>,
     ) -> PyResult<Py<PyAny>> {
-        let create = models::RuntimeCreate {
-            title: title.into(),
-            environment: environment.into(),
-            project: project.into(),
-            profile_name: profile.into(),
-            working_git_branch: git_branch.into(),
-            base_git_branch: git_branch_base.map(String::from),
-            size: size.map(String::from),
-            storage_size,
-            enable_automations,
-            auto_snooze_timeout_minutes: None,
-        };
-        let runtime = py.detach(|| self.inner.create_deployment(&create)).map_err(to_py_err)?;
+        let mut create =
+            models::RuntimeCreate::new(title, environment, project, profile, git_branch);
+        create.base_git_branch = git_branch_base.map(String::from);
+        create.size = size.map(String::from);
+        create.storage_size = storage_size;
+        create.enable_automations = enable_automations;
+        let runtime = py
+            .detach(|| self.inner.create_deployment(&create))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
@@ -223,24 +230,43 @@ impl Client {
         storage_size: Option<u32>,
         enable_automations: Option<bool>,
     ) -> PyResult<Py<PyAny>> {
-        let update = models::RuntimeUpdate {
-            title: new_title.map(String::from), working_git_branch: git_branch.map(String::from),
-            base_git_branch: git_branch_base.map(String::from), profile_name: profile.map(String::from),
-            size: size.map(String::from), storage_size, enable_automations, auto_snooze_timeout_minutes: None,
-        };
-        let runtime = py.detach(|| self.inner.update_deployment(title, uuid, &update)).map_err(to_py_err)?;
+        let mut update = models::RuntimeUpdate::default();
+        update.title = new_title.map(String::from);
+        update.working_git_branch = git_branch.map(String::from);
+        update.base_git_branch = git_branch_base.map(String::from);
+        update.profile_name = profile.map(String::from);
+        update.size = size.map(String::from);
+        update.storage_size = storage_size;
+        update.enable_automations = enable_automations;
+        let runtime = py
+            .detach(|| self.inner.update_deployment(title, uuid, &update))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
     #[pyo3(signature = (*, title, uuid=None))]
-    fn pause_deployment_automations(&self, py: Python<'_>, title: &str, uuid: Option<&str>) -> PyResult<Py<PyAny>> {
-        let runtime = py.detach(|| self.inner.pause_deployment_automations(title, uuid)).map_err(to_py_err)?;
+    fn pause_deployment_automations(
+        &self,
+        py: Python<'_>,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let runtime = py
+            .detach(|| self.inner.pause_deployment_automations(title, uuid))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
     #[pyo3(signature = (*, title, uuid=None))]
-    fn resume_deployment_automations(&self, py: Python<'_>, title: &str, uuid: Option<&str>) -> PyResult<Py<PyAny>> {
-        let runtime = py.detach(|| self.inner.resume_deployment_automations(title, uuid)).map_err(to_py_err)?;
+    fn resume_deployment_automations(
+        &self,
+        py: Python<'_>,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let runtime = py
+            .detach(|| self.inner.resume_deployment_automations(title, uuid))
+            .map_err(to_py_err)?;
         to_python(py, &runtime)
     }
 
@@ -315,8 +341,9 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let flows = py
             .detach(|| {
-                let runtime_uuid =
-                    self.inner.resolve_runtime_target(workspace, deployment, uuid)?;
+                let runtime_uuid = self
+                    .inner
+                    .resolve_runtime_target(workspace, deployment, uuid)?;
                 self.inner.list_flows(&runtime_uuid)
             })
             .map_err(to_py_err)?;
@@ -324,6 +351,7 @@ impl Client {
     }
 
     #[pyo3(signature = (*, flow_name, workspace=None, deployment=None, uuid=None, spec=None, resume=false))]
+    #[allow(clippy::too_many_arguments)]
     fn run_flow(
         &self,
         py: Python<'_>,
@@ -340,8 +368,9 @@ impl Client {
         };
         let trigger = py
             .detach(|| {
-                let runtime_uuid =
-                    self.inner.resolve_runtime_target(workspace, deployment, uuid)?;
+                let runtime_uuid = self
+                    .inner
+                    .resolve_runtime_target(workspace, deployment, uuid)?;
                 self.inner
                     .run_flow(&runtime_uuid, flow_name, spec_value, resume)
             })
@@ -366,8 +395,9 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let result = py
             .detach(|| {
-                let runtime_uuid =
-                    self.inner.resolve_runtime_target(workspace, deployment, uuid)?;
+                let runtime_uuid = self
+                    .inner
+                    .resolve_runtime_target(workspace, deployment, uuid)?;
                 let mut filters = models::FlowRunFilters::default();
                 filters.status = status.map(String::from);
                 filters.flow = flow_name.map(String::from);
@@ -392,8 +422,9 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let run = py
             .detach(|| {
-                let runtime_uuid =
-                    self.inner.resolve_runtime_target(workspace, deployment, uuid)?;
+                let runtime_uuid = self
+                    .inner
+                    .resolve_runtime_target(workspace, deployment, uuid)?;
                 self.inner.get_flow_run(&runtime_uuid, name)
             })
             .map_err(to_py_err)?;
@@ -409,6 +440,7 @@ impl Client {
     }
 
     #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, model=None, provider=None))]
+    #[allow(clippy::too_many_arguments)]
     fn otto_chat(
         &self,
         py: Python<'_>,

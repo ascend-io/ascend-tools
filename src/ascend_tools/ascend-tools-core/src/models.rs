@@ -43,6 +43,8 @@ pub struct Project {
     pub repository_uuid: String,
 }
 
+/// A workspace or deployment. Use the [`Workspace`] or [`Deployment`] type aliases
+/// for clarity when the kind is known.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Runtime {
     pub uuid: String,
@@ -68,6 +70,12 @@ pub struct Runtime {
     #[serde(default)]
     pub auto_snooze_timeout_minutes: Option<u32>,
 }
+
+/// Alias for [`Runtime`] when the kind is known to be a workspace.
+pub type Workspace = Runtime;
+
+/// Alias for [`Runtime`] when the kind is known to be a deployment.
+pub type Deployment = Runtime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
@@ -129,6 +137,7 @@ pub struct FlowRunFilters {
 /// The `environment` and `project` fields accept either a title or UUID — the backend resolves them.
 /// Kind is determined by the endpoint (`POST /workspaces` vs `POST /deployments`).
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeCreate {
     pub title: String,
     pub environment: String,
@@ -147,8 +156,33 @@ pub struct RuntimeCreate {
     pub auto_snooze_timeout_minutes: Option<u32>,
 }
 
-/// Request body for updating a runtime (PATCH semantics — only set fields are sent).
+impl RuntimeCreate {
+    /// Create a new request with the required fields. Optional fields default to `None`.
+    pub fn new(
+        title: impl Into<String>,
+        environment: impl Into<String>,
+        project: impl Into<String>,
+        profile_name: impl Into<String>,
+        working_git_branch: impl Into<String>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            environment: environment.into(),
+            project: project.into(),
+            profile_name: profile_name.into(),
+            working_git_branch: working_git_branch.into(),
+            base_git_branch: None,
+            size: None,
+            storage_size: None,
+            enable_automations: None,
+            auto_snooze_timeout_minutes: None,
+        }
+    }
+}
+
+/// Request body for updating a workspace or deployment (PATCH semantics — only set fields are sent).
 #[derive(Debug, Clone, Default, Serialize)]
+#[non_exhaustive]
 pub struct RuntimeUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

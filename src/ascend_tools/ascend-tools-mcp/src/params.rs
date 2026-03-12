@@ -35,7 +35,7 @@ pub struct CreateWorkspaceParams {
     pub working_git_branch: String,
     /// Base git branch (optional)
     pub base_git_branch: Option<String>,
-    /// Runtime size (e.g. "Small", "Medium", "Large")
+    /// Size (e.g. "Small", "Medium", "Large")
     pub size: Option<String>,
     /// Storage size in GB
     pub storage_size: Option<u32>,
@@ -57,7 +57,7 @@ pub struct UpdateWorkspaceParams {
     pub base_git_branch: Option<String>,
     /// New profile name
     pub profile_name: Option<String>,
-    /// New runtime size
+    /// New size
     pub size: Option<String>,
     /// New storage size in GB
     pub storage_size: Option<u32>,
@@ -123,7 +123,7 @@ pub struct CreateDeploymentParams {
     pub working_git_branch: String,
     /// Base git branch (optional)
     pub base_git_branch: Option<String>,
-    /// Runtime size
+    /// Size (e.g. "Small", "Medium", "Large")
     pub size: Option<String>,
     /// Storage size in GB
     pub storage_size: Option<u32>,
@@ -145,7 +145,7 @@ pub struct UpdateDeploymentParams {
     pub base_git_branch: Option<String>,
     /// New profile name
     pub profile_name: Option<String>,
-    /// New runtime size
+    /// New size
     pub size: Option<String>,
     /// New storage size in GB
     pub storage_size: Option<u32>,
@@ -191,11 +191,11 @@ pub struct ListProjectsParams {}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListProfilesParams {
-    /// Workspace title (derives project and branch from the runtime)
+    /// Workspace title (mutually exclusive with deployment_title/uuid)
     pub workspace_title: Option<String>,
-    /// Deployment title (derives project and branch from the runtime)
+    /// Deployment title (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override, bypasses title lookup)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
     /// Project name (or UUID) — use with branch
     pub project: Option<String>,
@@ -211,7 +211,7 @@ pub struct ListFlowsParams {
     pub workspace_title: Option<String>,
     /// Deployment title (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override, bypasses title lookup)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
 }
 
@@ -219,15 +219,15 @@ pub struct ListFlowsParams {
 pub struct RunFlowParams {
     /// Flow name
     pub flow_name: String,
-    /// Workspace title
+    /// Workspace title (mutually exclusive with deployment_title/uuid)
     pub workspace_title: Option<String>,
-    /// Deployment title
+    /// Deployment title (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
     /// Flow run options. All fields are optional — omit spec entirely to run with defaults.
     pub spec: Option<FlowRunSpec>,
-    /// Resume the runtime if paused before submitting the flow run.
+    /// Resume the workspace/deployment if paused before submitting the flow run
     pub resume: Option<bool>,
 }
 
@@ -283,13 +283,13 @@ pub struct FlowRunSpec {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFlowRunsParams {
-    /// Workspace title
+    /// Workspace title (mutually exclusive with deployment_title/uuid)
     pub workspace_title: Option<String>,
-    /// Deployment title
+    /// Deployment title (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
-    /// Filter by status
+    /// Filter by status (e.g. "running", "succeeded", "failed")
     pub status: Option<String>,
     /// Filter by flow name
     pub flow_name: Option<String>,
@@ -307,11 +307,11 @@ pub struct ListFlowRunsParams {
 pub struct GetFlowRunParams {
     /// Flow run name
     pub name: String,
-    /// Workspace title
+    /// Workspace title (mutually exclusive with deployment_title/uuid)
     pub workspace_title: Option<String>,
-    /// Deployment title
+    /// Deployment title (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
 }
 
@@ -321,11 +321,11 @@ pub struct GetFlowRunParams {
 pub struct OttoChatParams {
     /// Message to send to Otto
     pub prompt: String,
-    /// Workspace title for context (provide one of workspace_title, deployment_title, or uuid)
+    /// Workspace title for context (mutually exclusive with deployment_title/uuid)
     pub workspace_title: Option<String>,
-    /// Deployment title for context (provide one of workspace_title, deployment_title, or uuid)
+    /// Deployment title for context (mutually exclusive with workspace_title/uuid)
     pub deployment_title: Option<String>,
-    /// Runtime UUID (direct override)
+    /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
     /// LLM provider (e.g. "openai")
     pub provider: Option<String>,

@@ -7,7 +7,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("{field} is required. Set {env_var} or pass --{flag}")]
+    #[error("{field} is required, set {env_var} or pass --{flag}")]
     MissingConfig {
         field: String,
         env_var: String,
@@ -30,7 +30,7 @@ pub enum Error {
     },
 
     #[error(
-        "internal synchronization error: {name} mutex poisoned; client state may be inconsistent, recreate AscendClient"
+        "internal synchronization error: {name} mutex poisoned, client state may be inconsistent — recreate client"
     )]
     MutexPoisoned { name: &'static str },
 
@@ -77,25 +77,27 @@ pub enum Error {
     #[error("API error (HTTP {status}): {message}")]
     ApiError { status: u16, message: String },
 
-    #[error("Runtime is paused. Use --resume (CLI) or resume=True (SDK) to resume before running.")]
+    #[error(
+        "workspace/deployment is paused, use --resume (CLI) or resume=True (SDK) to resume before running"
+    )]
     RuntimePaused,
 
-    #[error("Runtime is starting, not yet ready to accept flow runs.")]
+    #[error("workspace/deployment is starting, not yet ready to accept flow runs")]
     RuntimeStarting,
 
-    #[error("Runtime is in error state and cannot run flows.")]
+    #[error("workspace/deployment is in error state and cannot run flows")]
     RuntimeInErrorState,
 
-    #[error("Runtime health is '{health}', expected 'running'.")]
+    #[error("workspace/deployment health is '{health}', expected 'running'")]
     RuntimeUnexpectedHealth { health: String },
 
-    #[error("Runtime has no health status. It may be initializing.")]
+    #[error("workspace/deployment has no health status, it may be initializing")]
     RuntimeHealthMissing,
 
-    #[error("No {kind} found with title '{title}'")]
+    #[error("no {kind} found with title '{title}'")]
     NotFound { kind: String, title: String },
 
-    #[error("Multiple {kind}s found with title '{title}'. Use --uuid to specify one: {}", .matches.iter().map(|(uuid, title)| format!("{uuid} ({title})")).collect::<Vec<_>>().join(", "))]
+    #[error("multiple {kind}s found with title '{title}', use --uuid to specify one: {}", .matches.iter().map(|(uuid, title)| format!("{uuid} ({title})")).collect::<Vec<_>>().join(", "))]
     AmbiguousTitle {
         kind: String,
         title: String,

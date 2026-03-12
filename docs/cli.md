@@ -234,9 +234,9 @@ ascend-tools otto run "Describe the sales flow" --workspace "My Workspace"
 ascend-tools otto run "Help me debug this pipeline" --provider openai --model gpt-4o
 
 # List providers and models
-ascend-tools otto providers list
-ascend-tools otto models list
-ascend-tools otto models list --provider openai
+ascend-tools otto provider list
+ascend-tools otto model list
+ascend-tools otto model list --provider openai
 
 # Interactive chat (Ctrl+C to exit)
 ascend-tools otto tui --workspace "My Workspace"

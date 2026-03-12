@@ -180,7 +180,7 @@ List flows in a workspace or deployment.
 
 ### run_flow
 
-Trigger a flow run. Checks runtime health first; use `resume: true` to resume a paused runtime before running.
+Trigger a flow run. Checks health first; use `resume: true` to resume a paused workspace/deployment before running.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -188,7 +188,7 @@ Trigger a flow run. Checks runtime health first; use `resume: true` to resume a 
 | `deployment` | no | Deployment title (provide one of workspace or deployment) |
 | `flow_name` | yes | Flow name |
 | `spec` | no | Flow run options (see below) |
-| `resume` | no | Resume the runtime if paused before submitting |
+| `resume` | no | Resume the workspace/deployment if paused before submitting |
 
 ### list_flow_runs
 

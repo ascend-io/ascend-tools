@@ -90,7 +90,8 @@ enum Commands {
             ascend-tools otto \"Describe the sales flow\" --workspace my-ws\n  \
             ascend-tools otto \"Hello\" --model gpt-4o\n  \
             ascend-tools otto \"Hello\" --provider openai --model gpt-4o\n  \
-            ascend-tools otto providers")]
+            ascend-tools otto provider list\n  \
+            ascend-tools otto model list")]
     Otto {
         #[command(subcommand)]
         command: Option<OttoCommands>,
@@ -98,7 +99,8 @@ enum Commands {
     /// Manage environments
     #[command(long_about = "Manage Ascend environments.\n\n\
             Examples:\n  \
-            ascend-tools environment list")]
+            ascend-tools environment list\n  \
+            ascend-tools environment get Production")]
     Environment {
         #[command(subcommand)]
         command: Option<EnvironmentCommands>,
@@ -106,7 +108,8 @@ enum Commands {
     /// Manage projects
     #[command(long_about = "Manage Ascend projects.\n\n\
             Examples:\n  \
-            ascend-tools project list")]
+            ascend-tools project list\n  \
+            ascend-tools project get \"My Project\"")]
     Project {
         #[command(subcommand)]
         command: Option<ProjectCommands>,
@@ -506,24 +509,24 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parses_otto_providers() {
-        let cli = CliParser::parse_from(["ascend-tools", "otto", "providers", "list"]);
+    fn test_cli_parses_otto_provider() {
+        let cli = CliParser::parse_from(["ascend-tools", "otto", "provider", "list"]);
         assert!(matches!(
             cli.command,
             Some(Commands::Otto {
-                command: Some(OttoCommands::Providers {
-                    command: Some(otto::ProvidersCommands::List)
+                command: Some(OttoCommands::Provider {
+                    command: Some(otto::ProviderCommands::List)
                 })
             })
         ));
     }
 
     #[test]
-    fn test_cli_parses_otto_models() {
+    fn test_cli_parses_otto_model() {
         let cli = CliParser::parse_from([
             "ascend-tools",
             "otto",
-            "models",
+            "model",
             "list",
             "--provider",
             "openai",
@@ -531,13 +534,13 @@ mod tests {
         match cli.command {
             Some(Commands::Otto {
                 command:
-                    Some(OttoCommands::Models {
-                        command: Some(otto::ModelsCommands::List { provider }),
+                    Some(OttoCommands::Model {
+                        command: Some(otto::ModelCommands::List { provider }),
                     }),
             }) => {
                 assert_eq!(provider.as_deref(), Some("openai"));
             }
-            _ => panic!("expected Otto Models List command"),
+            _ => panic!("expected Otto Model List command"),
         }
     }
 

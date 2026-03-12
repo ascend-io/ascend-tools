@@ -134,8 +134,8 @@ ascend-tools [-o text|json] [-V]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
   otto run <PROMPT> [--workspace <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
-  otto providers list
-  otto models list [--provider <ID>]
+  otto provider list
+  otto model list [--provider <ID>]
   otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
 
   skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
@@ -166,10 +166,10 @@ client = Client(
 
 # Environments and projects
 client.list_environments()
-client.resolve_environment(title="Production")
+client.get_environment(title="Production")
 
 client.list_projects()
-client.resolve_project(title="My Project")
+client.get_project(title="My Project")
 
 # Workspaces
 client.list_workspaces()
@@ -234,7 +234,7 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
-| `list_otto_providers` | List available Otto providers and their enabled models |
+| `list_otto_providers` | List Otto providers and their enabled models |
 | `otto_chat` | Chat with Otto, the Ascend AI assistant |
 
 ### usage with Claude Code

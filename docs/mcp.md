@@ -119,7 +119,7 @@ Create a new workspace.
 | `profile_name` | yes | string | Configuration profile name |
 | `working_git_branch` | yes | string | Git branch |
 | `base_git_branch` | no | string | Base git branch |
-| `size` | no | string | Runtime size (e.g. Small, Medium, Large) |
+| `size` | no | string | Size (e.g. Small, Medium, Large) |
 | `storage_size` | no | integer | Storage size in GB |
 | `auto_snooze_timeout_minutes` | no | integer | Minutes of inactivity before auto-snooze |
 
@@ -135,7 +135,7 @@ Update an existing workspace. Only provided fields are changed.
 | `working_git_branch` | no | string | New git branch |
 | `base_git_branch` | no | string | New base git branch |
 | `profile_name` | no | string | New profile name |
-| `size` | no | string | New runtime size |
+| `size` | no | string | New size |
 | `storage_size` | no | integer | New storage size in GB |
 | `auto_snooze_timeout_minutes` | no | integer | New auto-snooze timeout in minutes |
 
@@ -192,7 +192,7 @@ Create a new deployment.
 | `profile_name` | yes | string | Configuration profile name |
 | `working_git_branch` | yes | string | Git branch |
 | `base_git_branch` | no | string | Base git branch |
-| `size` | no | string | Runtime size (e.g. Small, Medium, Large) |
+| `size` | no | string | Size (e.g. Small, Medium, Large) |
 | `storage_size` | no | integer | Storage size in GB |
 | `enable_automations` | no | boolean | Enable automations |
 
@@ -208,7 +208,7 @@ Update an existing deployment. Only provided fields are changed.
 | `working_git_branch` | no | string | New git branch |
 | `base_git_branch` | no | string | New base git branch |
 | `profile_name` | no | string | New profile name |
-| `size` | no | string | New runtime size |
+| `size` | no | string | New size |
 | `storage_size` | no | integer | New storage size in GB |
 | `enable_automations` | no | boolean | Enable or disable automations |
 
@@ -247,7 +247,7 @@ List flows in a workspace or deployment.
 
 ### run_flow
 
-Trigger a flow run. Checks runtime health first.
+Trigger a flow run. Checks health first.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
@@ -255,7 +255,7 @@ Trigger a flow run. Checks runtime health first.
 | `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `flow_name` | yes | string | Flow name |
 | `spec` | no | object | Flow run options (see below) |
-| `resume` | no | boolean | Resume the runtime if paused before running |
+| `resume` | no | boolean | Resume the workspace/deployment if paused before running |
 
 ### list_flow_runs
 
@@ -295,7 +295,7 @@ Chat with Otto, the Ascend AI assistant.
 | `prompt` | yes | string | Message to send to Otto |
 | `workspace_title` | no | string | Workspace title for context |
 | `deployment_title` | no | string | Deployment title for context |
-| `uuid` | no | string | Runtime UUID (direct override) |
+| `uuid` | no | string | UUID (direct override) |
 | `provider` | no | string | LLM provider ID |
 | `model` | no | string | LLM model ID |
 | `thread_id` | no | string | Thread ID to continue a conversation |

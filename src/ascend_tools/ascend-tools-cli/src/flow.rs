@@ -3,9 +3,7 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::models::FlowRunFilters;
 use clap::Subcommand;
 
-use crate::common::{
-    OutputMode, parse_spec, print_json, print_subcommand_help, print_table, resolve_runtime_target,
-};
+use crate::common::{OutputMode, parse_spec, print_json, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum FlowCommands {
@@ -39,7 +37,7 @@ pub(crate) enum FlowCommands {
         /// Optional spec as JSON
         #[arg(long)]
         spec: Option<String>,
-        /// Resume the runtime if paused before submitting
+        /// Resume the workspace/deployment if paused before running
         #[arg(long)]
         resume: bool,
     },
@@ -55,6 +53,7 @@ pub(crate) enum FlowCommands {
         /// Use UUID instead of title
         #[arg(long)]
         uuid: Option<String>,
+        /// Filter by status (e.g. running, succeeded, failed)
         #[arg(long)]
         status: Option<String>,
         /// Filter by flow name
@@ -104,8 +103,7 @@ pub(crate) fn handle_flow(
             deployment,
             uuid,
         } => {
-            let runtime_uuid = resolve_runtime_target(
-                client,
+            let runtime_uuid = client.resolve_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -128,8 +126,7 @@ pub(crate) fn handle_flow(
             spec,
             resume,
         } => {
-            let runtime_uuid = resolve_runtime_target(
-                client,
+            let runtime_uuid = client.resolve_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -152,8 +149,7 @@ pub(crate) fn handle_flow(
             offset,
             limit,
         } => {
-            let runtime_uuid = resolve_runtime_target(
-                client,
+            let runtime_uuid = client.resolve_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -167,7 +163,7 @@ pub(crate) fn handle_flow(
             filters.limit = limit;
             let result = client.list_flow_runs(&runtime_uuid, filters)?;
             if result.truncated {
-                eprintln!("Warning: results may be incomplete (server-side limit reached)");
+                eprintln!("warning: results may be incomplete (server-side limit reached)");
             }
             let runs = &result.items;
             match output {
@@ -194,8 +190,7 @@ pub(crate) fn handle_flow(
             deployment,
             uuid,
         } => {
-            let runtime_uuid = resolve_runtime_target(
-                client,
+            let runtime_uuid = client.resolve_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -207,7 +202,7 @@ pub(crate) fn handle_flow(
                     println!("Name:     {}", r.name);
                     println!("Flow:     {}", r.flow);
                     println!("Status:   {}", r.status);
-                    println!("Runtime:  {}", r.runtime_uuid);
+                    println!("Target:   {}", r.runtime_uuid);
                     println!("Build:    {}", r.build_uuid);
                     println!("Created:  {}", r.created_at);
                     if let Some(error) = &r.error {

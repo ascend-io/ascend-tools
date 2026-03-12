@@ -13,7 +13,7 @@ pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
 
-# Run `flow run` with retries for transient runtime readiness states.
+# Run `flow run` with retries for transient readiness states.
 run_flow_retry() {
   local flow_name="$1"
   local runtime_uuid="$2"

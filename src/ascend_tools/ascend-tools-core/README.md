@@ -49,7 +49,7 @@ Token exchange and caching are handled automatically.
 | `list_environments` | List environments |
 | `list_projects` | List projects |
 | `list_profiles` | List available profiles |
-| `list_flows` | List flows in a runtime |
+| `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run (checks health, optional resume/spec) |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |

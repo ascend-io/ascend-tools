@@ -22,7 +22,7 @@ pub(crate) enum ProfileCommands {
         /// Git branch (required with --project)
         #[arg(long = "git-branch")]
         branch: Option<String>,
-        /// Runtime UUID (direct override)
+        /// UUID (direct override)
         #[arg(long)]
         uuid: Option<String>,
     },
@@ -55,7 +55,7 @@ pub(crate) fn handle_profile(
             } else if let Some(proj) = project {
                 (None, Some(proj), branch)
             } else {
-                anyhow::bail!("Provide --workspace, --deployment, or --project with --git-branch");
+                anyhow::bail!("provide --workspace, --deployment, or --project with --git-branch");
             };
             let profiles = client.list_profiles(
                 runtime_uuid.as_deref(),

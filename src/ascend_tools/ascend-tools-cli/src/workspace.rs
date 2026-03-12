@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{RuntimeKind, RuntimeUpdate};
+use ascend_tools::models::{RuntimeCreate, RuntimeKind, RuntimeUpdate};
 use clap::Subcommand;
 
 use crate::common::{
@@ -68,7 +68,7 @@ pub(crate) enum WorkspaceCommands {
         /// Base git branch
         #[arg(long = "git-branch-base")]
         base_git_branch: Option<String>,
-        /// Runtime size (e.g. Small, Medium, Large)
+        /// Size (e.g. Small, Medium, Large)
         #[arg(long)]
         size: Option<String>,
         /// Storage size in GB
@@ -98,7 +98,7 @@ pub(crate) enum WorkspaceCommands {
         /// New profile
         #[arg(long = "profile")]
         profile_name: Option<String>,
-        /// New runtime size
+        /// New size
         #[arg(long)]
         size: Option<String>,
         /// New storage size in GB
@@ -178,21 +178,20 @@ pub(crate) fn handle_workspace(
             size,
             storage_size,
             auto_snooze_timeout_minutes,
-        } => handle_runtime_create(
-            client,
-            RuntimeKind::Workspace,
-            title,
-            environment,
-            project,
-            profile_name,
-            working_git_branch,
-            base_git_branch,
-            size,
-            storage_size,
-            None,
-            auto_snooze_timeout_minutes,
-            output,
-        ),
+        } => {
+            let mut create = RuntimeCreate::new(
+                title,
+                environment,
+                project,
+                profile_name,
+                working_git_branch,
+            );
+            create.base_git_branch = base_git_branch;
+            create.size = size;
+            create.storage_size = storage_size;
+            create.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
+            handle_runtime_create(client, RuntimeKind::Workspace, &create, output)
+        }
         WorkspaceCommands::Update {
             current_title,
             uuid,
@@ -203,23 +202,24 @@ pub(crate) fn handle_workspace(
             size,
             storage_size,
             auto_snooze_timeout_minutes,
-        } => handle_runtime_update(
-            client,
-            RuntimeKind::Workspace,
-            &current_title,
-            uuid.as_deref(),
-            RuntimeUpdate {
-                title,
-                working_git_branch,
-                base_git_branch,
-                profile_name,
-                size,
-                storage_size,
-                enable_automations: None,
-                auto_snooze_timeout_minutes,
-            },
-            output,
-        ),
+        } => {
+            let mut update = RuntimeUpdate::default();
+            update.title = title;
+            update.working_git_branch = working_git_branch;
+            update.base_git_branch = base_git_branch;
+            update.profile_name = profile_name;
+            update.size = size;
+            update.storage_size = storage_size;
+            update.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
+            handle_runtime_update(
+                client,
+                RuntimeKind::Workspace,
+                &current_title,
+                uuid.as_deref(),
+                update,
+                output,
+            )
+        }
         WorkspaceCommands::Pause { title, uuid } => handle_runtime_pause(
             client,
             RuntimeKind::Workspace,

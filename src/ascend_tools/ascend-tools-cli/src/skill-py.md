@@ -57,14 +57,14 @@ client = Client()
 # List environments
 client.list_environments()
 
-# Resolve by title
-client.resolve_environment(title="Production")
+# Get by title
+client.get_environment(title="Production")
 
 # List projects
 client.list_projects()
 
-# Resolve by title
-client.resolve_project(title="My Project")
+# Get by title
+client.get_project(title="My Project")
 ```
 
 ### Workspaces

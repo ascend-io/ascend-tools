@@ -37,7 +37,7 @@ async fn blocking<T: serde::Serialize + Send + 'static>(
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
-/// Resolve runtime UUID from workspace_title/deployment_title/uuid on flow params.
+/// Resolve target UUID from workspace_title/deployment_title/uuid params.
 fn resolve_flow_target(
     client: &AscendClient,
     workspace_title: Option<String>,
@@ -93,9 +93,7 @@ impl AscendMcpServer {
 
     // -- Workspace tools --
 
-    #[tool(
-        description = "List Ascend workspaces, optionally filtered by title, project, or environment"
-    )]
+    #[tool(description = "List workspaces, optionally filtered by title, project, or environment")]
     async fn list_workspaces(
         &self,
         Parameters(params): Parameters<ListWorkspacesParams>,
@@ -123,50 +121,45 @@ impl AscendMcpServer {
         .await
     }
 
-    #[tool(description = "Create a new Ascend workspace")]
+    #[tool(description = "Create a workspace")]
     async fn create_workspace(
         &self,
         Parameters(params): Parameters<CreateWorkspaceParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.create_workspace(&RuntimeCreate {
-                title: params.title,
-                environment: params.environment,
-                project: params.project,
-                profile_name: params.profile_name,
-                working_git_branch: params.working_git_branch,
-                base_git_branch: params.base_git_branch,
-                size: params.size,
-                storage_size: params.storage_size,
-                enable_automations: None,
-                auto_snooze_timeout_minutes: params.auto_snooze_timeout_minutes,
-            })
+            let mut create = RuntimeCreate::new(
+                params.title,
+                params.environment,
+                params.project,
+                params.profile_name,
+                params.working_git_branch,
+            );
+            create.base_git_branch = params.base_git_branch;
+            create.size = params.size;
+            create.storage_size = params.storage_size;
+            create.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
+            c.create_workspace(&create)
         })
         .await
     }
 
-    #[tool(description = "Update a workspace. Only provided fields are changed.")]
+    #[tool(description = "Update a workspace (only provided fields are changed)")]
     async fn update_workspace(
         &self,
         Parameters(params): Parameters<UpdateWorkspaceParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.update_workspace(
-                &params.current_title,
-                params.uuid.as_deref(),
-                &RuntimeUpdate {
-                    title: params.title,
-                    working_git_branch: params.working_git_branch,
-                    base_git_branch: params.base_git_branch,
-                    profile_name: params.profile_name,
-                    size: params.size,
-                    storage_size: params.storage_size,
-                    enable_automations: None,
-                    auto_snooze_timeout_minutes: params.auto_snooze_timeout_minutes,
-                },
-            )
+            let mut update = RuntimeUpdate::default();
+            update.title = params.title;
+            update.working_git_branch = params.working_git_branch;
+            update.base_git_branch = params.base_git_branch;
+            update.profile_name = params.profile_name;
+            update.size = params.size;
+            update.storage_size = params.storage_size;
+            update.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
+            c.update_workspace(&params.current_title, params.uuid.as_deref(), &update)
         })
         .await
     }
@@ -210,9 +203,7 @@ impl AscendMcpServer {
 
     // -- Deployment tools --
 
-    #[tool(
-        description = "List Ascend deployments, optionally filtered by title, project, or environment"
-    )]
+    #[tool(description = "List deployments, optionally filtered by title, project, or environment")]
     async fn list_deployments(
         &self,
         Parameters(params): Parameters<ListDeploymentsParams>,
@@ -240,50 +231,45 @@ impl AscendMcpServer {
         .await
     }
 
-    #[tool(description = "Create a new Ascend deployment")]
+    #[tool(description = "Create a deployment")]
     async fn create_deployment(
         &self,
         Parameters(params): Parameters<CreateDeploymentParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.create_deployment(&RuntimeCreate {
-                title: params.title,
-                environment: params.environment,
-                project: params.project,
-                profile_name: params.profile_name,
-                working_git_branch: params.working_git_branch,
-                base_git_branch: params.base_git_branch,
-                size: params.size,
-                storage_size: params.storage_size,
-                enable_automations: params.enable_automations,
-                auto_snooze_timeout_minutes: None,
-            })
+            let mut create = RuntimeCreate::new(
+                params.title,
+                params.environment,
+                params.project,
+                params.profile_name,
+                params.working_git_branch,
+            );
+            create.base_git_branch = params.base_git_branch;
+            create.size = params.size;
+            create.storage_size = params.storage_size;
+            create.enable_automations = params.enable_automations;
+            c.create_deployment(&create)
         })
         .await
     }
 
-    #[tool(description = "Update a deployment. Only provided fields are changed.")]
+    #[tool(description = "Update a deployment (only provided fields are changed)")]
     async fn update_deployment(
         &self,
         Parameters(params): Parameters<UpdateDeploymentParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.update_deployment(
-                &params.current_title,
-                params.uuid.as_deref(),
-                &RuntimeUpdate {
-                    title: params.title,
-                    working_git_branch: params.working_git_branch,
-                    base_git_branch: params.base_git_branch,
-                    profile_name: params.profile_name,
-                    size: params.size,
-                    storage_size: params.storage_size,
-                    enable_automations: params.enable_automations,
-                    auto_snooze_timeout_minutes: None,
-                },
-            )
+            let mut update = RuntimeUpdate::default();
+            update.title = params.title;
+            update.working_git_branch = params.working_git_branch;
+            update.base_git_branch = params.base_git_branch;
+            update.profile_name = params.profile_name;
+            update.size = params.size;
+            update.storage_size = params.storage_size;
+            update.enable_automations = params.enable_automations;
+            c.update_deployment(&params.current_title, params.uuid.as_deref(), &update)
         })
         .await
     }
@@ -327,7 +313,7 @@ impl AscendMcpServer {
 
     // -- Environment tools --
 
-    #[tool(description = "List Ascend environments")]
+    #[tool(description = "List environments")]
     async fn list_environments(
         &self,
         #[allow(unused_variables)] Parameters(params): Parameters<ListEnvironmentsParams>,
@@ -338,7 +324,7 @@ impl AscendMcpServer {
 
     // -- Project tools --
 
-    #[tool(description = "List Ascend projects")]
+    #[tool(description = "List projects")]
     async fn list_projects(
         &self,
         #[allow(unused_variables)] Parameters(params): Parameters<ListProjectsParams>,
@@ -402,7 +388,7 @@ impl AscendMcpServer {
     }
 
     #[tool(
-        description = "Trigger a flow run. Checks runtime health first; use resume=true to resume a paused runtime before running."
+        description = "Trigger a flow run (checks health first; use resume=true to resume a paused workspace/deployment)"
     )]
     async fn run_flow(
         &self,
@@ -475,13 +461,13 @@ impl AscendMcpServer {
 
     // -- Otto --
 
-    #[tool(description = "List available Otto providers and their enabled models")]
+    #[tool(description = "List Otto providers and their enabled models")]
     async fn list_otto_providers(&self) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, |c| c.list_otto_providers()).await
     }
 
-    #[tool(description = "Chat with Otto AI assistant. Returns the assistant's response.")]
+    #[tool(description = "Chat with Otto, the Ascend AI assistant")]
     async fn otto_chat(
         &self,
         Parameters(params): Parameters<OttoChatParams>,

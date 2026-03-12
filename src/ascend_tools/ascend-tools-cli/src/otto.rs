@@ -190,14 +190,14 @@ pub(crate) enum OttoCommands {
         thread: Option<String>,
     },
     /// Manage Otto providers
-    Providers {
+    Provider {
         #[command(subcommand)]
-        command: Option<ProvidersCommands>,
+        command: Option<ProviderCommands>,
     },
     /// Manage Otto models
-    Models {
+    Model {
         #[command(subcommand)]
-        command: Option<ModelsCommands>,
+        command: Option<ModelCommands>,
     },
     /// Interactive multi-turn conversation with Otto (Ctrl+C to exit)
     Tui {
@@ -224,14 +224,14 @@ pub(crate) enum OttoCommands {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ProvidersCommands {
+pub(crate) enum ProviderCommands {
     /// List available providers
     List,
 }
 
 #[derive(Subcommand)]
-pub(crate) enum ModelsCommands {
-    /// List available models (optionally for a specific provider)
+pub(crate) enum ModelCommands {
+    /// List available models
     List {
         /// Filter by provider ID (e.g. ascend_managed_bedrock, openai)
         #[arg(long)]
@@ -292,10 +292,12 @@ pub(crate) fn handle_otto_cmd(
             }
             Ok(())
         }
-        OttoCommands::Providers { command } => {
-            let command = command.unwrap_or(ProvidersCommands::List);
+        OttoCommands::Provider { command } => {
+            let Some(command) = command else {
+                return print_subcommand_help("otto provider");
+            };
             match command {
-                ProvidersCommands::List => {
+                ProviderCommands::List => {
                     let providers = client.list_otto_providers()?;
                     match output {
                         OutputMode::Json => print_json(&providers)?,
@@ -311,17 +313,19 @@ pub(crate) fn handle_otto_cmd(
                                     ]
                                 })
                                 .collect();
-                            print_table(&["NAME", "PROVIDER ID", "DEFAULT MODEL", "MODELS"], &rows);
+                            print_table(&["NAME", "ID", "DEFAULT MODEL", "MODELS"], &rows);
                         }
                     }
                 }
             }
             Ok(())
         }
-        OttoCommands::Models { command } => {
-            let command = command.unwrap_or(ModelsCommands::List { provider: None });
+        OttoCommands::Model { command } => {
+            let Some(command) = command else {
+                return print_subcommand_help("otto model");
+            };
             match command {
-                ModelsCommands::List { provider: filter } => {
+                ModelCommands::List { provider: filter } => {
                     let providers = client.list_otto_providers()?;
                     let filtered: Vec<_> = if let Some(ref id) = filter {
                         providers.into_iter().filter(|p| p.id == *id).collect()
@@ -330,9 +334,9 @@ pub(crate) fn handle_otto_cmd(
                     };
                     if filtered.is_empty() {
                         if let Some(id) = filter {
-                            anyhow::bail!("No provider found with id '{id}'");
+                            anyhow::bail!("no provider found with id '{id}'");
                         }
-                        eprintln!("No providers configured.");
+                        eprintln!("No results.");
                         return Ok(());
                     }
                     match output {
@@ -360,7 +364,7 @@ pub(crate) fn handle_otto_cmd(
                                     })
                                 })
                                 .collect();
-                            print_table(&["MODEL ID", "PROVIDER", "NAME"], &rows);
+                            print_table(&["ID", "PROVIDER", "NAME"], &rows);
                         }
                     }
                 }

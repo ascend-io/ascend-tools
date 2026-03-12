@@ -21,18 +21,34 @@ uv tool install ascend-tools
 ```
 ascend-tools [-o text|json] [-V]
 
-  runtime list [--id, --kind, --project-uuid, --environment-uuid]
-  runtime get <UUID>
-  runtime resume <UUID>
-  runtime pause <UUID>
+  workspace list [--environment <NAME>] [--project <NAME>]
+  workspace get <TITLE>
+  workspace create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH>
+  workspace update <TITLE> [--title, --git-branch, --profile, --size, --storage-size]
+  workspace pause <TITLE>
+  workspace resume <TITLE>
+  workspace delete <TITLE>
 
-  flow list --runtime <UUID>
-  flow run <FLOW_NAME> --runtime <UUID> [--spec '{}'] [--resume]
-  flow list-runs --runtime <UUID> [--status, --flow-name, --since, --until, --offset, --limit]
-  flow get-run <RUN_NAME> --runtime <UUID>
+  deployment list [--environment <NAME>] [--project <NAME>]
+  deployment get <TITLE>
+  deployment create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH>
+  deployment update <TITLE> [--title, --git-branch, --profile, --size, --storage-size]
+  deployment pause-automations <TITLE>
+  deployment resume-automations <TITLE>
+  deployment delete <TITLE>
+
+  flow list --workspace <TITLE> | --deployment <TITLE>
+  flow run <FLOW_NAME> --workspace <TITLE> | --deployment <TITLE> [--spec '{}'] [--resume]
+  flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, --flow, --since, --until, --offset, --limit]
+  flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
+
+  otto run <PROMPT> [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
+  otto provider list
+  otto model list [--provider <ID>]
+  otto tui [--workspace <TITLE>]
 
   mcp [--http] [--bind <ADDR>]
-  skill install --target <PATH>
+  skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
 ```
 
 ## Authentication

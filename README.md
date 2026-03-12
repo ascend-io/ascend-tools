@@ -73,7 +73,7 @@ from ascend_tools import Client
 
 client = Client()  # reads from env vars
 client.list_workspaces()
-client.run_flow(runtime_uuid="...", flow_name="sales")
+client.run_flow(flow_name="sales", workspace="My Workspace")
 ```
 
 ## MCP server

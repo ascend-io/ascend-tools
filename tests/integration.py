@@ -59,7 +59,7 @@ def run_flow_with_retry(
     spec: dict | None = None,
     resume: bool = False,
 ) -> dict:
-    """Run a flow with retries for transient runtime readiness states."""
+    """Run a flow with retries for transient readiness states."""
     last_error: Exception | None = None
     for delay in (0, 5, 10, 15, 15, 15):
         if delay:
@@ -241,9 +241,9 @@ def main():
         else:
             check(False, "otto_chat", str(e))
 
-    # ---------- otto providers ----------
+    # ---------- otto provider ----------
 
-    print("=== otto providers ===")
+    print("=== otto provider ===")
 
     try:
         providers = client.list_otto_providers()
@@ -348,7 +348,7 @@ def main():
 
     print("=== trigger flow run ===")
 
-    # Runtime may already be paused from previous sessions; use resume=True for baseline trigger.
+    # Workspace may already be paused from previous sessions; use resume=True for baseline trigger.
     trigger = run_flow_with_retry(
         client, workspace=ws_title, flow_name=flow_name, resume=True
     )

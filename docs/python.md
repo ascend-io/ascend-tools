@@ -48,10 +48,10 @@ All parameters are keyword-only.
 environments = client.list_environments()
 ```
 
-### Resolve an environment by title
+### Get an environment by title
 
 ```python
-env = client.resolve_environment(title="Production")
+env = client.get_environment(title="Production")
 ```
 
 Returns `dict` with the matching environment. Raises an error if not found or ambiguous.
@@ -62,15 +62,15 @@ Returns `dict` with the matching environment. Raises an error if not found or am
 projects = client.list_projects()
 ```
 
-### Resolve a project by title
+### Get a project by title
 
 ```python
-project = client.resolve_project(title="My Project")
+project = client.get_project(title="My Project")
 ```
 
 Returns `dict` with the matching project. Raises an error if not found or ambiguous.
 
-## Manage runtimes
+## Manage workspaces and deployments
 
 ### Workspaces
 
@@ -198,11 +198,11 @@ The SDK raises exceptions for:
 - Missing configuration (environment variables not set)
 - Authentication failures (invalid or expired key)
 - HTTP errors (API returns non-2xx status)
-- Runtime state errors (paused, starting, error state)
+- State errors (paused, starting, error state)
 
 ```python
 try:
-    client.run_flow(runtime_uuid="...", flow_name="sales")
+    client.run_flow(flow_name="sales", workspace="My Workspace")
 except Exception as e:
     print(f"Error: {e}")
 ```
