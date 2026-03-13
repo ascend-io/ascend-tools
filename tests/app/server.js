@@ -47,8 +47,8 @@ app.get('/api/workspaces', async (req, res) => {
       <tr data-clickable hx-get="/api/workspace/${encodeURIComponent(ws.title)}" hx-target="#detail" hx-swap="innerHTML">
         <td>${escapeHtml(ws.title)}</td>
         <td>${statusBadge(ws.health)}</td>
-        <td>${escapeHtml(ws.environment_uuid)}</td>
-        <td>${escapeHtml(ws.profile_name)}</td>
+        <td>${escapeHtml(ws.environmentUuid)}</td>
+        <td>${escapeHtml(ws.profileName)}</td>
       </tr>`).join('')
     res.send(`
       <table role="grid">
@@ -80,8 +80,8 @@ app.get('/api/deployments', async (req, res) => {
       <tr data-clickable hx-get="/api/deployment/${encodeURIComponent(d.title)}" hx-target="#detail" hx-swap="innerHTML">
         <td>${escapeHtml(d.title)}</td>
         <td>${statusBadge(d.health)}</td>
-        <td>${escapeHtml(d.environment_uuid)}</td>
-        <td>${escapeHtml(d.profile_name)}</td>
+        <td>${escapeHtml(d.environmentUuid)}</td>
+        <td>${escapeHtml(d.profileName)}</td>
       </tr>`).join('')
     res.send(`
       <table role="grid">
@@ -170,7 +170,7 @@ app.post('/api/flow/:name/run', async (req, res) => {
     const result = await client.runFlow(req.params.name, workspace || null, deployment || null)
     const targetParam = workspace ? `workspace=${encodeURIComponent(workspace)}` : `deployment=${encodeURIComponent(deployment)}`
     res.send(`
-      <p>Flow triggered: ${escapeHtml(result.event_uuid)}</p>
+      <p>Flow triggered: ${escapeHtml(result.eventUuid)}</p>
       <div hx-get="/api/flow-runs?${targetParam}&flow_name=${encodeURIComponent(req.params.name)}&limit=1"
            hx-trigger="load delay:2s, every 5s" hx-swap="innerHTML"></div>`)
   } catch (e) {
@@ -193,7 +193,7 @@ app.get('/api/flow-runs', async (req, res) => {
         <td>${escapeHtml(r.name)}</td>
         <td>${escapeHtml(r.flow)}</td>
         <td>${statusBadge(r.status)}</td>
-        <td>${escapeHtml(r.created_at)}</td>
+        <td>${escapeHtml(r.createdAt)}</td>
       </tr>`).join('')
     res.send(`
       <table role="grid">
@@ -267,7 +267,7 @@ app.post('/api/otto/chat', async (req, res) => {
       model || null,       // model
       provider || null,    // provider
     )
-    res.write(`event: done\ndata: ${JSON.stringify({ thread_id: result.thread_id })}\n\n`)
+    res.write(`event: done\ndata: ${JSON.stringify({ thread_id: result.threadId })}\n\n`)
     res.end()
   } catch (e) {
     res.write(`event: error\ndata: ${JSON.stringify(e.message)}\n\n`)
