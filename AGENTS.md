@@ -1,6 +1,6 @@
 # ascend-tools
 
-SDK, CLI, and MCP server for the Ascend REST API. Rust core with PyO3 Python bindings.
+SDK, CLI, and MCP server for the Ascend REST API. Rust core with PyO3 Python bindings and napi-rs JavaScript bindings.
 
 Repo: `ascend-io/ascend-tools`. Internal.
 
@@ -8,7 +8,7 @@ Repo: `ascend-io/ascend-tools`. Internal.
 
 ## architecture
 
-Four Rust crates, one PyO3 bridge. The core/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
+Five Rust crates, two language bridges (PyO3 + napi-rs). The core/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
 
 ```
 src/ascend_tools/
@@ -39,21 +39,25 @@ src/ascend_tools/
 │       ├── cli.rs           # clap commands, table/json output, print_table helper
 │       └── skill-cli.md     # SKILL.md template (embedded via include_str!, installed by `skill install`)
 │
-└── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
+├── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
+│   └── src/
+│       └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
+│
+└── ascend-tools-js/           # napi-rs binding crate (cdylib, built by @napi-rs/cli)
     └── src/
-        └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
+        └── lib.rs           # exposes Client class to Node.js via napi-rs (async methods via spawn_blocking)
 ```
 
-The `-py` crate is **not** in the Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop` and has its own Cargo.lock. The `-mcp` crate uses `rmcp` for the MCP protocol implementation.
-Integration tests live under `ascend-tools-core/tests/` and `ascend-tools-cli/tests/`.
+The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation.
+Integration tests live under `ascend-tools-core/tests/` and `ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
 
 PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
 
 ## development
 
 ```bash
-bin/build       # build Rust + Python (bin/build-rs, bin/build-py)
-bin/check       # lint + test (bin/check-version, bin/check-rs, bin/check-py)
+bin/build       # build Rust + Python + JS (bin/build-rs, bin/build-py, bin/build-js)
+bin/check       # lint + test (bin/check-version, bin/check-rs, bin/check-py, bin/check-js)
 bin/format      # auto-format (bin/format-rs, bin/format-py)
 bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)

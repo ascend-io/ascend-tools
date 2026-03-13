@@ -44,7 +44,10 @@ TOML_FILES=(
   src/ascend_tools/ascend-tools-mcp/Cargo.toml
   src/ascend_tools/ascend-tools-cli/Cargo.toml
   src/ascend_tools/ascend-tools-py/Cargo.toml
+  src/ascend_tools/ascend-tools-js/Cargo.toml
 )
+
+JS_PACKAGE_JSON="src/ascend_tools/ascend-tools-js/package.json"
 
 # ---------- read current version ----------
 
@@ -83,6 +86,11 @@ for f in "${TOML_FILES[@]}"; do
   echo "  updated $f"
 done
 
+# ---------- update package.json ----------
+
+sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW\"/" "$JS_PACKAGE_JSON"
+echo "  updated $JS_PACKAGE_JSON"
+
 # ---------- regenerate lock files ----------
 
 echo "Regenerating lock files..."
@@ -90,6 +98,8 @@ cargo generate-lockfile --quiet
 echo "  updated Cargo.lock"
 (cd src/ascend_tools/ascend-tools-py && cargo generate-lockfile --quiet)
 echo "  updated src/ascend_tools/ascend-tools-py/Cargo.lock"
+(cd src/ascend_tools/ascend-tools-js && cargo generate-lockfile --quiet)
+echo "  updated src/ascend_tools/ascend-tools-js/Cargo.lock"
 uv lock --quiet
 echo "  updated uv.lock"
 
