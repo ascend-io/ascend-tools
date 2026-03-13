@@ -15,7 +15,7 @@ readme = "README.md"
 crate-type = ["cdylib"]
 
 [dependencies]
-ascend-tools-core = { path = "../ascend-tools-core" }
+ascend-tools-core = { path = "../ascend-tools-core", features = ["jsts"] }
 napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
 napi-derive = { version = "3", features = ["type-def"] }
 serde = "1"
