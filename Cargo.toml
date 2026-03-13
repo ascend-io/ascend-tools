@@ -5,3 +5,8 @@ members = [
   "src/ascend_tools/ascend-tools-cli",
 ]
 resolver = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
