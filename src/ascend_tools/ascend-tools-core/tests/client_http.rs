@@ -82,8 +82,8 @@ fn api_error_uses_raw_body_for_non_json_errors() {
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer token-b")
-        .with_status(502)
-        .with_body("upstream failure")
+        .with_status(400)
+        .with_body("bad request body")
         .expect(1)
         .create();
 
@@ -92,11 +92,52 @@ fn api_error_uses_raw_body_for_non_json_errors() {
     runtimes.assert();
     match err {
         Error::ApiError { status, message } => {
-            assert_eq!(status, 502);
-            assert_eq!(message, "upstream failure");
+            assert_eq!(status, 400);
+            assert_eq!(message, "bad request body");
         }
         _ => panic!("unexpected error variant: {err:?}"),
     }
+}
+
+#[test]
+fn retries_on_transient_errors() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-r", now + 3600, 4);
+
+    // First two calls return 502, third succeeds
+    let fail1 = server
+        .mock("GET", "/api/v1/environments")
+        .match_header("authorization", "Bearer token-r")
+        .with_status(502)
+        .with_body("bad gateway")
+        .expect(1)
+        .create();
+    let fail2 = server
+        .mock("GET", "/api/v1/environments")
+        .match_header("authorization", "Bearer token-r")
+        .with_status(503)
+        .with_body("unavailable")
+        .expect(1)
+        .create();
+    let success = server
+        .mock("GET", "/api/v1/environments")
+        .match_header("authorization", "Bearer token-r")
+        .with_status(200)
+        .with_body(r#"[{"uuid":"e1","id":"env1","title":"Prod"}]"#)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let envs = client.list_environments().unwrap();
+    fail1.assert();
+    fail2.assert();
+    success.assert();
+    assert_eq!(envs.len(), 1);
+    assert_eq!(envs[0].title, "Prod");
 }
 
 #[test]

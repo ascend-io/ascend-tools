@@ -562,16 +562,18 @@ impl AscendClient {
     }
 
     fn delete_empty(&self, path: &str) -> Result<()> {
-        let token = self.auth.get_token()?;
-        let url = format!("{}{path}", self.instance_api_url);
-        let context = format!("DELETE {path}");
-        let resp = self
-            .agent
-            .delete(&url)
-            .header("Authorization", &format!("Bearer {token}"))
-            .call()
-            .with_request_context(context.clone())?;
-        check_error_status(resp, &context)
+        with_retry(|| {
+            let token = self.auth.get_token()?;
+            let url = format!("{}{path}", self.instance_api_url);
+            let context = format!("DELETE {path}");
+            let resp = self
+                .agent
+                .delete(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .call()
+                .with_request_context(context.clone())?;
+            check_error_status(resp, &context)
+        })
     }
 
     /// Unified request helper for GET, POST, and PATCH.
@@ -581,41 +583,67 @@ impl AscendClient {
         path: &str,
         body: Option<&Value>,
     ) -> Result<T> {
-        let token = self.auth.get_token()?;
-        let url = format!("{}{path}", self.instance_api_url);
-        let context = format!("{method} {path}");
+        with_retry(|| {
+            let token = self.auth.get_token()?;
+            let url = format!("{}{path}", self.instance_api_url);
+            let context = format!("{method} {path}");
 
-        let resp = match (method, body) {
-            ("GET", _) => self
-                .agent
-                .get(&url)
-                .header("Authorization", &format!("Bearer {token}"))
-                .call()
-                .with_request_context(context.clone())?,
-            (method, Some(body)) => {
-                let json_body = serde_json::to_string(body)
-                    .with_json_serialize_context(format!("{context} request body"))?;
-                let req = match method {
-                    "POST" => self.agent.post(&url),
-                    "PATCH" => self.agent.patch(&url),
-                    _ => unreachable!("unsupported method with body: {method}"),
-                };
-                req.header("Authorization", &format!("Bearer {token}"))
-                    .header("Content-Type", "application/json")
-                    .send(json_body.as_bytes())
-                    .with_request_context(context.clone())?
-            }
-            ("POST", None) => self
-                .agent
-                .post(&url)
-                .header("Authorization", &format!("Bearer {token}"))
-                .send_empty()
-                .with_request_context(context.clone())?,
-            _ => unreachable!("unsupported method without body: {method}"),
-        };
+            let resp = match (method, body) {
+                ("GET", _) => self
+                    .agent
+                    .get(&url)
+                    .header("Authorization", &format!("Bearer {token}"))
+                    .call()
+                    .with_request_context(context.clone())?,
+                (m, Some(body)) => {
+                    let json_body = serde_json::to_string(body)
+                        .with_json_serialize_context(format!("{context} request body"))?;
+                    let req = match m {
+                        "POST" => self.agent.post(&url),
+                        "PATCH" => self.agent.patch(&url),
+                        _ => unreachable!("unsupported method with body: {m}"),
+                    };
+                    req.header("Authorization", &format!("Bearer {token}"))
+                        .header("Content-Type", "application/json")
+                        .send(json_body.as_bytes())
+                        .with_request_context(context.clone())?
+                }
+                ("POST", None) => self
+                    .agent
+                    .post(&url)
+                    .header("Authorization", &format!("Bearer {token}"))
+                    .send_empty()
+                    .with_request_context(context.clone())?,
+                _ => unreachable!("unsupported method without body: {method}"),
+            };
 
-        handle_response(resp, &context)
+            handle_response(resp, &context)
+        })
     }
+}
+
+/// Retry a request on transient errors (429, 502, 503, 504, or network failures).
+/// Uses exponential backoff: 500ms, 1s, 2s. Max 3 retries.
+fn with_retry<T>(mut f: impl FnMut() -> Result<T>) -> Result<T> {
+    let delays = [
+        std::time::Duration::from_millis(500),
+        std::time::Duration::from_secs(1),
+        std::time::Duration::from_secs(2),
+    ];
+    let mut last_err = None;
+    for attempt in 0..=delays.len() {
+        match f() {
+            Ok(val) => return Ok(val),
+            Err(e) if e.is_retryable() => {
+                if attempt < delays.len() {
+                    std::thread::sleep(delays[attempt]);
+                }
+                last_err = Some(e);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.expect("at least one attempt"))
 }
 
 /// Resolve exactly one item from a list, returning its UUID.
