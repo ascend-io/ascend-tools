@@ -139,7 +139,7 @@ enum Commands {
     },
 }
 
-pub fn run<I, T>(args: I) -> Result<()>
+pub fn run_cli<I, T>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,

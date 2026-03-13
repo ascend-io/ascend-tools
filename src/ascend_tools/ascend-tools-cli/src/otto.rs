@@ -384,54 +384,11 @@ pub(crate) fn handle_otto_cmd(
                 uuid.as_deref(),
             )?;
             let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
-            let mut thread_id: Option<String> = None;
-
-            // Reset SIGINT to default (SIG_DFL) so Ctrl+C terminates immediately
-            // instead of being caught by Python's signal handler (which can't run
-            // while we're blocked in Rust code).
-            #[cfg(unix)]
-            #[allow(unsafe_code)]
-            unsafe {
-                libc::signal(libc::SIGINT, libc::SIG_DFL);
-            }
-
-            eprintln!("Otto chat (Ctrl+C to exit)\n");
-
-            loop {
-                eprint!("you> ");
-                let mut input = String::new();
-                match std::io::stdin().read_line(&mut input) {
-                    Ok(0) => break,                                                 // EOF
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => break, // Ctrl+C
-                    Err(e) => return Err(e.into()),
-                    Ok(_) => {}
-                }
-                let prompt = input.trim();
-                if prompt.is_empty() {
-                    continue;
-                }
-
-                eprintln!();
-                let mut renderer = StreamRenderer::start("otto> ");
-                let response = client.otto_chat_streaming(
-                    &OttoChatRequest {
-                        prompt: prompt.to_string(),
-                        runtime_id: runtime_id.clone(),
-                        thread_id: thread_id.clone(),
-                        model: otto_model.clone(),
-                    },
-                    |delta| {
-                        renderer.send_delta(delta.to_string());
-                    },
-                )?;
-                renderer.finish();
-                println!("\n");
-
-                if let Some(tid) = &response.thread_id {
-                    thread_id = Some(tid.clone());
-                }
-            }
-            Ok(())
+            let context_label = workspace
+                .as_deref()
+                .map(|w| format!("workspace:{w}"))
+                .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
+            ascend_tools_tui::run_tui(client, runtime_id, otto_model, context_label)
         }
     }
 }

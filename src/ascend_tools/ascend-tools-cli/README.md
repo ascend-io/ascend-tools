@@ -2,7 +2,7 @@
 
 CLI for the [Ascend](https://www.ascend.io) REST API. Installs as the `ascend-tools` binary.
 
-Built on [`ascend-tools-core`](../ascend-tools-core). Also embeds [`ascend-tools-mcp`](../ascend-tools-mcp) for the `mcp` subcommand.
+Built on [`ascend-tools-core`](../ascend-tools-core). Also embeds [`ascend-tools-mcp`](../ascend-tools-mcp) for the `mcp` subcommand and [`ascend-tools-tui`](../ascend-tools-tui) for the `otto tui` interactive chat.
 
 ## Install
 

@@ -1,6 +1,6 @@
 # ascend-tools
 
-CLI, SDK, and MCP server for the Ascend REST API.
+CLI, SDK, TUI, and MCP server for the Ascend REST API.
 
 > Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
 
@@ -65,6 +65,17 @@ JSON output:
 ```bash
 ascend-tools -o json workspace list
 ```
+
+## Interactive TUI
+
+Chat with Otto in a full-screen terminal interface:
+
+```bash
+ascend-tools otto tui
+ascend-tools otto tui --workspace "My Workspace"
+```
+
+Vi keybindings by default. Type `/help` for commands, `/emacs` to switch modes. Alt+Enter for multi-line input. Up/Down for input history.
 
 ## Python SDK
 

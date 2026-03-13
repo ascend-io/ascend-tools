@@ -478,7 +478,7 @@ impl Client {
 #[pyfunction]
 fn run(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
     py.detach(|| {
-        ascend_tools_cli::run(argv.iter().map(|s| s.as_str()))
+        ascend_tools_cli::run_cli(argv.iter().map(|s| s.as_str()))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     })
 }

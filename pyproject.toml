@@ -36,6 +36,7 @@ cache-keys = [
   { file = "src/ascend_tools/ascend-tools-mcp/**/*.rs" },
   { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
   { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
+  { file = "src/ascend_tools/ascend-tools-js/**/*.rs" },
 ]
 
 [tool.ty.src]

@@ -11,4 +11,4 @@ mod project;
 mod skill;
 mod workspace;
 
-pub use cli::run;
+pub use cli::run_cli;
