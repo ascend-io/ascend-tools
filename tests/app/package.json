@@ -1,0 +1,13 @@
+{
+  "name": "ascend-tools-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@ascend-io/ascend-tools": "file:../../src/ascend_tools/ascend-tools-js",
+    "express": "^5"
+  }
+}

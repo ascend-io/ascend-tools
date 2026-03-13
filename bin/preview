@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../tests/app"
+
+npm install --silent
+node server.js &
+SERVER_PID=$!
+
+trap "kill $SERVER_PID 2>/dev/null" EXIT
+
+# wait for server to be ready
+for i in {1..20}; do
+  curl -sf http://localhost:3000 >/dev/null 2>&1 && break
+  sleep 0.25
+done
+
+open http://localhost:3000
+echo "Demo app running at http://localhost:3000 (pid $SERVER_PID)"
+echo "Press Ctrl-C to stop."
+wait $SERVER_PID
