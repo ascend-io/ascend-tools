@@ -474,14 +474,14 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let runtime_id = c.resolve_optional_runtime_target(
+            let runtime_uuid = c.resolve_optional_runtime_target(
                 params.workspace_title.as_deref(),
                 params.deployment_title.as_deref(),
                 params.uuid.as_deref(),
             )?;
             c.otto_chat(&OttoChatRequest {
                 prompt: params.prompt,
-                runtime_id,
+                runtime_uuid,
                 thread_id: params.thread_id,
                 model: OttoModel::from_options(params.provider.as_deref(), params.model.as_deref()),
             })

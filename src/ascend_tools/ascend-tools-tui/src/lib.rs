@@ -14,22 +14,24 @@
 //! - Clipboard copy (`/copy`)
 //! - Vi yank/paste registers
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
 use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers, MouseEventKind,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
 };
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, OttoModel};
+use ascend_tools::models::{OttoChatRequest, OttoModel, StreamEvent};
+use std::ops::ControlFlow;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -92,8 +94,24 @@ const MAX_INPUT_LINES: u16 = 8;
 // ---------------------------------------------------------------------------
 
 enum StreamMsg {
+    ProviderInfo {
+        provider_label: Option<String>,
+        model_label: String,
+    },
+    /// Stream messages tagged with a generation to discard stale messages
+    /// from cancelled requests.
+    Stream {
+        generation: u64,
+        kind: StreamMsgKind,
+    },
+}
+
+enum StreamMsgKind {
+    ThreadId(String),
     Delta(String),
-    Done { thread_id: Option<String> },
+    ToolCallStart { name: String },
+    ToolCallOutput { name: String, output: String },
+    Done,
     Error(String),
 }
 
@@ -175,7 +193,11 @@ impl History {
         }
     }
 
-    fn prev(&mut self, current_input: &[char]) -> Option<&str> {
+    fn decode(entry: &str) -> Vec<char> {
+        entry.replace("\\n", "\n").chars().collect()
+    }
+
+    fn prev(&mut self, current_input: &[char]) -> Option<Vec<char>> {
         if self.entries.is_empty() {
             return None;
         }
@@ -188,7 +210,7 @@ impl History {
             Some(p) => p - 1,
         };
         self.position = Some(new_pos);
-        Some(&self.entries[new_pos])
+        Some(Self::decode(&self.entries[new_pos]))
     }
 
     fn next(&mut self) -> Option<Vec<char>> {
@@ -198,7 +220,7 @@ impl History {
             Some(self.saved_input.clone())
         } else {
             self.position = Some(pos + 1);
-            Some(self.entries[pos + 1].chars().collect())
+            Some(Self::decode(&self.entries[pos + 1]))
         }
     }
 
@@ -228,8 +250,10 @@ struct App {
     last_stream_tick: Instant,
     stream_start: Option<Instant>,
     thread_id: Option<String>,
-    runtime_id: Option<String>,
+    runtime_uuid: Option<String>,
     otto_model: Option<OttoModel>,
+    provider_label: Option<String>,
+    model_label: String,
     context_label: Option<String>,
     pending_request: Option<OttoChatRequest>,
     should_quit: bool,
@@ -240,12 +264,16 @@ struct App {
     completion_index: Option<usize>,
     history: History,
     show_timestamps: bool,
+    active_tool_call: Option<String>,
+    stream_generation: u64,
 }
 
 impl App {
     fn new(
-        runtime_id: Option<String>,
+        runtime_uuid: Option<String>,
         otto_model: Option<OttoModel>,
+        provider_label: Option<String>,
+        model_label: String,
         context_label: Option<String>,
     ) -> Self {
         Self {
@@ -261,8 +289,10 @@ impl App {
             last_stream_tick: Instant::now(),
             stream_start: None,
             thread_id: None,
-            runtime_id,
+            runtime_uuid,
             otto_model,
+            provider_label,
+            model_label,
             context_label,
             pending_request: None,
             should_quit: false,
@@ -273,6 +303,8 @@ impl App {
             completion_index: None,
             history: History::load(),
             show_timestamps: false,
+            active_tool_call: None,
+            stream_generation: 0,
         }
     }
 
@@ -283,28 +315,27 @@ impl App {
         (count as u16).min(MAX_INPUT_LINES)
     }
 
+    fn handle_paste(&mut self, text: &str) {
+        if self.input_mode == InputMode::ViNormal {
+            self.input_mode = InputMode::ViInsert;
+        }
+        for (i, ch) in text.chars().enumerate() {
+            self.input.insert(self.cursor + i, ch);
+        }
+        self.cursor += text.chars().count();
+        self.completion_index = None;
+    }
+
     // -- Key handling -------------------------------------------------------
 
-    fn handle_key(&mut self, key: KeyEvent) {
+    fn handle_key(&mut self, key: KeyEvent, cancel: &AtomicBool) {
         // Ctrl+C: cancel stream or quit
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.streaming {
-                self.streaming = false;
-                let remaining: String = self.stream_pending.drain(..).collect();
-                self.stream_buffer.push_str(&remaining);
-                let buf = std::mem::take(&mut self.stream_buffer);
-                if !buf.is_empty() {
-                    self.messages.push(Message {
-                        role: Role::Otto,
-                        content: buf,
-                        timestamp: SystemTime::now(),
-                    });
-                }
-                self.messages.push(Message {
-                    role: Role::System,
-                    content: "Cancelled".into(),
-                    timestamp: SystemTime::now(),
-                });
+                cancel.store(true, Ordering::Relaxed);
+                self.finish_stream();
+                self.push_system("Cancelled");
+                self.stream_start = None;
             } else {
                 self.should_quit = true;
             }
@@ -390,15 +421,17 @@ impl App {
 
             // History
             (KeyModifiers::NONE, KeyCode::Up) => {
-                if let Some(entry) = self.history.prev(&self.input) {
-                    self.input = entry.chars().collect();
+                if let Some(chars) = self.history.prev(&self.input) {
+                    self.input = chars;
                     self.cursor = self.input.len();
+                    self.completion_index = None;
                 }
             }
             (KeyModifiers::NONE, KeyCode::Down) => {
                 if let Some(chars) = self.history.next() {
                     self.input = chars;
                     self.cursor = self.input.len();
+                    self.completion_index = None;
                 }
             }
 
@@ -513,15 +546,17 @@ impl App {
 
             // History
             (KeyModifiers::NONE, KeyCode::Char('k') | KeyCode::Up) if self.input.is_empty() => {
-                if let Some(entry) = self.history.prev(&self.input) {
-                    self.input = entry.chars().collect();
+                if let Some(chars) = self.history.prev(&self.input) {
+                    self.input = chars;
                     self.cursor = self.input.len().saturating_sub(1);
+                    self.completion_index = None;
                 }
             }
             (KeyModifiers::NONE, KeyCode::Char('j') | KeyCode::Down) if self.input.is_empty() => {
                 if let Some(chars) = self.history.next() {
                     self.input = chars;
                     self.cursor = self.input.len().saturating_sub(1);
+                    self.completion_index = None;
                 }
             }
 
@@ -601,14 +636,18 @@ impl App {
     }
 
     fn word_end(&self) -> usize {
+        if self.input.is_empty() {
+            return 0;
+        }
+        let last = self.input.len() - 1;
         let mut i = self.cursor;
-        if i + 1 < self.input.len() {
+        if i < last {
             i += 1;
         }
-        while i < self.input.len() && self.input[i].is_whitespace() {
+        while i < last && self.input[i].is_whitespace() {
             i += 1;
         }
-        while i + 1 < self.input.len() && !self.input[i + 1].is_whitespace() {
+        while i < last && !self.input[i + 1].is_whitespace() {
             i += 1;
         }
         i
@@ -632,6 +671,7 @@ impl App {
 
     fn submit(&mut self) {
         if self.streaming {
+            self.push_system("Waiting for response...");
             return;
         }
         let text: String = self.input.drain(..).collect();
@@ -656,7 +696,7 @@ impl App {
 
         self.pending_request = Some(OttoChatRequest {
             prompt: text,
-            runtime_id: self.runtime_id.clone(),
+            runtime_uuid: self.runtime_uuid.clone(),
             thread_id: self.thread_id.clone(),
             model: self.otto_model.clone(),
         });
@@ -696,6 +736,7 @@ impl App {
                 self.messages.clear();
                 self.scroll = 0;
                 self.thread_id = None;
+                self.push_system("Thread cleared");
             }
             "/copy" => {
                 let last_otto = self
@@ -753,26 +794,42 @@ impl App {
 
     fn handle_stream_msg(&mut self, msg: StreamMsg) {
         match msg {
-            StreamMsg::Delta(text) => {
+            StreamMsg::ProviderInfo {
+                provider_label: provider,
+                model_label: model,
+            } => {
+                self.provider_label = provider;
+                self.model_label = model;
+            }
+            StreamMsg::Stream { generation, kind } => {
+                // Discard stale messages from cancelled requests
+                if generation != self.stream_generation {
+                    return;
+                }
+                self.handle_stream_kind(kind);
+            }
+        }
+    }
+
+    fn handle_stream_kind(&mut self, kind: StreamMsgKind) {
+        match kind {
+            StreamMsgKind::ThreadId(tid) => {
+                self.thread_id = Some(tid);
+            }
+            StreamMsgKind::Delta(text) => {
                 self.stream_pending.extend(text.chars());
             }
-            StreamMsg::Done { thread_id } => {
-                let remaining: String = self.stream_pending.drain(..).collect();
-                self.stream_buffer.push_str(&remaining);
-
-                self.streaming = false;
-                if let Some(tid) = thread_id {
-                    self.thread_id = Some(tid);
-                }
-                let content = std::mem::take(&mut self.stream_buffer);
-                if !content.is_empty() {
-                    self.messages.push(Message {
-                        role: Role::Otto,
-                        content,
-                        timestamp: SystemTime::now(),
-                    });
-                }
-
+            StreamMsgKind::ToolCallStart { name, .. } => {
+                self.flush_stream_text();
+                self.active_tool_call = Some(name);
+            }
+            StreamMsgKind::ToolCallOutput { name, output } => {
+                self.active_tool_call = None;
+                let output_summary = truncate(&output, 80);
+                self.push_system(format!("\u{2699} {name} \u{2192} {output_summary}"));
+            }
+            StreamMsgKind::Done => {
+                self.finish_stream();
                 // Bell if response took >3s
                 if self
                     .stream_start
@@ -782,23 +839,31 @@ impl App {
                 }
                 self.stream_start = None;
             }
-            StreamMsg::Error(err) => {
-                let remaining: String = self.stream_pending.drain(..).collect();
-                self.stream_buffer.push_str(&remaining);
-
-                self.streaming = false;
-                let buf = std::mem::take(&mut self.stream_buffer);
-                if !buf.is_empty() {
-                    self.messages.push(Message {
-                        role: Role::Otto,
-                        content: buf,
-                        timestamp: SystemTime::now(),
-                    });
-                }
+            StreamMsgKind::Error(err) => {
+                self.finish_stream();
                 self.push_system(format!("Error: {err}"));
                 self.stream_start = None;
             }
         }
+    }
+
+    fn flush_stream_text(&mut self) {
+        let remaining: String = self.stream_pending.drain(..).collect();
+        self.stream_buffer.push_str(&remaining);
+        let content = std::mem::take(&mut self.stream_buffer);
+        if !content.is_empty() {
+            self.messages.push(Message {
+                role: Role::Otto,
+                content,
+                timestamp: SystemTime::now(),
+            });
+        }
+    }
+
+    fn finish_stream(&mut self) {
+        self.flush_stream_text();
+        self.streaming = false;
+        self.active_tool_call = None;
     }
 
     fn tick_stream(&mut self) {
@@ -924,8 +989,19 @@ impl App {
             )));
 
             if self.stream_buffer.is_empty() && self.stream_pending.is_empty() {
+                let label = if let Some(tool) = &self.active_tool_call {
+                    format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame])
+                } else {
+                    format!("  {} Ascending...", SPINNER[self.spinner_frame])
+                };
                 lines.push(Line::from(Span::styled(
-                    format!("  {} Ascending...", SPINNER[self.spinner_frame]),
+                    label,
+                    Style::default().fg(DIM_OTTO_COLOR),
+                )));
+            } else if let Some(tool) = &self.active_tool_call {
+                lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
+                lines.push(Line::from(Span::styled(
+                    format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame]),
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
             } else {
@@ -1107,8 +1183,21 @@ impl App {
             parts.push(Span::styled(format!(" {label} "), pill_style));
         }
 
+        if let Some(provider) = &self.provider_label {
+            parts.push(Span::raw(" "));
+            parts.push(Span::styled(format!(" provider:{provider} "), pill_style));
+        }
+
+        if !self.model_label.is_empty() {
+            parts.push(Span::raw(" "));
+            parts.push(Span::styled(
+                format!(" model:{} ", self.model_label),
+                pill_style,
+            ));
+        }
+
         if let Some(tid) = &self.thread_id {
-            let short = &tid[..tid.len().min(12)];
+            let short: String = tid.chars().take(12).collect();
             parts.push(Span::raw(" "));
             parts.push(Span::styled(format!(" thread:{short} "), pill_style));
         }
@@ -1123,13 +1212,38 @@ impl App {
             parts.push(Span::styled(format!(" {msg_count} messages "), pill_style));
         }
 
-        frame.render_widget(Paragraph::new(Line::from(parts)), area);
+        // Truncate pills to fit terminal width
+        let total_width: usize = parts.iter().map(|s| s.width()).sum();
+        if total_width > area.width as usize {
+            let mut width = 0;
+            let mut truncated = Vec::new();
+            for span in parts {
+                width += span.width();
+                if width > area.width as usize {
+                    break;
+                }
+                truncated.push(span);
+            }
+            frame.render_widget(Paragraph::new(Line::from(truncated)), area);
+        } else {
+            frame.render_widget(Paragraph::new(Line::from(parts)), area);
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Truncate a string for display, adding "..." if it exceeds `max_len`.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.chars().count() <= max_len {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_len).collect();
+        format!("{truncated}...")
+    }
+}
 
 fn format_time(time: SystemTime) -> String {
     // Elapsed since message was created — avoids UTC vs local time issues
@@ -1251,19 +1365,77 @@ fn parse_inline(text: &str, indent: &str, role: Role) -> Line<'static> {
 }
 
 // ---------------------------------------------------------------------------
+// Provider resolution
+// ---------------------------------------------------------------------------
+
+/// Resolve provider/model labels from the API, mapping IDs to friendly names.
+fn resolve_provider_labels(
+    client: &AscendClient,
+    otto_model: &Option<OttoModel>,
+) -> (Option<String>, String) {
+    let providers = client.list_otto_providers().ok().unwrap_or_default();
+    match otto_model {
+        Some(OttoModel::Name(name)) => {
+            let friendly = providers
+                .iter()
+                .flat_map(|p| {
+                    p.models
+                        .iter()
+                        .filter(|m| m.id == *name)
+                        .map(|m| m.name.clone())
+                })
+                .next()
+                .unwrap_or_else(|| name.clone());
+            (None, friendly)
+        }
+        Some(OttoModel::ProviderModel {
+            provider_id,
+            model_id,
+        }) => {
+            let p = providers.iter().find(|p| p.id == *provider_id);
+            let provider_name = p
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| provider_id.clone());
+            let model_name = p
+                .and_then(|p| p.models.iter().find(|m| m.id == *model_id))
+                .map(|m| m.name.clone())
+                .unwrap_or_else(|| model_id.clone());
+            (Some(provider_name), model_name)
+        }
+        None => providers
+            .first()
+            .map(|p| {
+                let model_name = p
+                    .models
+                    .iter()
+                    .find(|m| m.id == p.default_model)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_else(|| p.default_model.clone());
+                (Some(p.name.clone()), model_name)
+            })
+            .unwrap_or_default(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
 pub fn run_tui(
     client: &AscendClient,
-    runtime_id: Option<String>,
+    runtime_uuid: Option<String>,
     otto_model: Option<OttoModel>,
     context_label: Option<String>,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
     let mut stderr = std::io::stderr();
-    crossterm::execute!(stderr, EnterAlternateScreen, EnableMouseCapture)?;
+    crossterm::execute!(
+        stderr,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let backend = CrosstermBackend::new(stderr);
     let mut terminal = Terminal::new(backend)?;
 
@@ -1275,15 +1447,29 @@ pub fn run_tui(
             std::io::stderr(),
             LeaveAlternateScreen,
             DisableMouseCapture,
+            DisableBracketedPaste,
             SetCursorStyle::DefaultUserShape
         );
         original_hook(info);
     }));
 
     let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
+    let cancel = AtomicBool::new(false);
+    let gen_counter = AtomicU64::new(0);
 
     let result = std::thread::scope(|scope| {
-        let mut app = App::new(runtime_id, otto_model, context_label);
+        // Resolve provider/model labels in the background so the TUI loads instantly
+        let bg_tx = stream_tx.clone();
+        let bg_model = otto_model.clone();
+        scope.spawn(move || {
+            let (provider_label, model_label) = resolve_provider_labels(client, &bg_model);
+            let _ = bg_tx.send(StreamMsg::ProviderInfo {
+                provider_label,
+                model_label,
+            });
+        });
+
+        let mut app = App::new(runtime_uuid, otto_model, None, String::new(), context_label);
 
         loop {
             app.tick_spinner();
@@ -1293,7 +1479,10 @@ pub fn run_tui(
             if event::poll(POLL_DURATION)? {
                 match event::read()? {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        app.handle_key(key);
+                        app.handle_key(key, &cancel);
+                    }
+                    Event::Paste(text) => {
+                        app.handle_paste(&text);
                     }
                     Event::Mouse(mouse) => match mouse.kind {
                         MouseEventKind::ScrollUp => app.scroll_up(3),
@@ -1317,25 +1506,72 @@ pub fn run_tui(
 
             // Launch streaming request if pending
             if let Some(request) = app.take_pending_request() {
+                let generation = gen_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                app.stream_generation = generation;
+                cancel.store(false, Ordering::Relaxed);
                 let tx = stream_tx.clone();
+                let cancel_ref = &cancel;
                 scope.spawn(move || {
-                    let result = client.otto_chat_streaming(&request, |delta| {
-                        let _ = tx.send(StreamMsg::Delta(delta.to_string()));
-                    });
-                    match result {
-                        Ok(resp) => {
-                            let _ = tx.send(StreamMsg::Done {
-                                thread_id: resp.thread_id,
+                    let tx2 = tx.clone();
+                    let mut tool_names: HashMap<String, String> = HashMap::new();
+                    let send = |kind: StreamMsgKind| {
+                        let _ = tx.send(StreamMsg::Stream { generation, kind });
+                    };
+                    let result = client.otto_chat_streaming(
+                        &request,
+                        |event| {
+                            if cancel_ref.load(Ordering::Relaxed) {
+                                return ControlFlow::Break(());
+                            }
+                            match event {
+                                StreamEvent::TextDelta(delta) => {
+                                    send(StreamMsgKind::Delta(delta));
+                                }
+                                StreamEvent::ToolCallStart { call_id, name, .. } => {
+                                    tool_names.insert(call_id, name.clone());
+                                    send(StreamMsgKind::ToolCallStart { name });
+                                }
+                                StreamEvent::ToolCallOutput { call_id, output } => {
+                                    let name =
+                                        tool_names.get(&call_id).cloned().unwrap_or_default();
+                                    send(StreamMsgKind::ToolCallOutput { name, output });
+                                }
+                            }
+                            ControlFlow::Continue(())
+                        },
+                        |tid| {
+                            let _ = tx2.send(StreamMsg::Stream {
+                                generation,
+                                kind: StreamMsgKind::ThreadId(tid.to_string()),
                             });
-                        }
-                        Err(e) => {
-                            let _ = tx.send(StreamMsg::Error(format!("{e}")));
-                        }
+                        },
+                    );
+                    match result {
+                        Ok(_) => send(StreamMsgKind::Done),
+                        Err(e) => send(StreamMsgKind::Error(format!("{e}"))),
                     }
                 });
             }
 
             if app.should_quit {
+                // Restore terminal before exiting the scope, since scope.join
+                // may block if a background SSE read is stuck.
+                terminal::disable_raw_mode()?;
+                crossterm::execute!(
+                    std::io::stderr(),
+                    LeaveAlternateScreen,
+                    DisableMouseCapture,
+                    DisableBracketedPaste,
+                    SetCursorStyle::DefaultUserShape
+                )?;
+                terminal.show_cursor()?;
+                let _ = std::panic::take_hook();
+
+                // If a streaming thread is stuck on a network read, exit
+                // the process cleanly rather than waiting indefinitely.
+                if cancel.load(Ordering::Relaxed) {
+                    std::process::exit(0);
+                }
                 break;
             }
         }
@@ -1343,16 +1579,16 @@ pub fn run_tui(
         Ok::<(), anyhow::Error>(())
     });
 
-    // Restore terminal
-    terminal::disable_raw_mode()?;
-    crossterm::execute!(
+    // Restore terminal (reached when scope completes normally)
+    let _ = terminal::disable_raw_mode();
+    let _ = crossterm::execute!(
         std::io::stderr(),
         LeaveAlternateScreen,
         DisableMouseCapture,
+        DisableBracketedPaste,
         SetCursorStyle::DefaultUserShape
-    )?;
-    terminal.show_cursor()?;
-
+    );
+    let _ = terminal.show_cursor();
     let _ = std::panic::take_hook();
 
     result

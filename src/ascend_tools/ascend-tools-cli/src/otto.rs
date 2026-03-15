@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, OttoModel};
+use ascend_tools::models::{OttoChatRequest, OttoModel, StreamEvent};
 use clap::Subcommand;
 
 use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
@@ -257,7 +257,7 @@ pub(crate) fn handle_otto_cmd(
             model,
             thread,
         } => {
-            let runtime_id = client.resolve_optional_runtime_target(
+            let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -265,7 +265,7 @@ pub(crate) fn handle_otto_cmd(
 
             let request = OttoChatRequest {
                 prompt,
-                runtime_id,
+                runtime_uuid,
                 thread_id: thread,
                 model: OttoModel::from_options(provider.as_deref(), model.as_deref()),
             };
@@ -280,12 +280,22 @@ pub(crate) fn handle_otto_cmd(
                 }
                 OutputMode::Text => {
                     let mut renderer = StreamRenderer::start("");
-                    let response = client.otto_chat_streaming(&request, |delta| {
-                        renderer.send_delta(delta.to_string());
-                    })?;
+                    let mut thread_id = None;
+                    client.otto_chat_streaming(
+                        &request,
+                        |event| {
+                            if let StreamEvent::TextDelta(delta) = event {
+                                renderer.send_delta(delta);
+                            }
+                            std::ops::ControlFlow::Continue(())
+                        },
+                        |tid| {
+                            thread_id = Some(tid.to_string());
+                        },
+                    )?;
                     renderer.finish();
                     println!();
-                    if let Some(tid) = &response.thread_id {
+                    if let Some(tid) = &thread_id {
                         eprintln!("thread: {tid}");
                     }
                 }
@@ -378,7 +388,7 @@ pub(crate) fn handle_otto_cmd(
             provider,
             model,
         } => {
-            let runtime_id = client.resolve_optional_runtime_target(
+            let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
                 uuid.as_deref(),
@@ -388,7 +398,7 @@ pub(crate) fn handle_otto_cmd(
                 .as_deref()
                 .map(|w| format!("workspace:{w}"))
                 .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
-            ascend_tools_tui::run_tui(client, runtime_id, otto_model, context_label)
+            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label)
         }
     }
 }

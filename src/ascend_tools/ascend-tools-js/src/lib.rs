@@ -315,9 +315,9 @@ impl Client {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
-            let runtime_id = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_id, thread_id, model: otto_model };
-            client.otto_chat_streaming(&request, |delta| { on_delta.call(Ok(delta.to_string()), ThreadsafeFunctionCallMode::NonBlocking); }).map_err(to_napi_err)
+            let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            client.otto_chat_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))
     }
 
@@ -327,8 +327,8 @@ impl Client {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
-            let runtime_id = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_id, thread_id, model: otto_model };
+            let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
             client.otto_chat(&request).map_err(to_napi_err)
         }))
     }

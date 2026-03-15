@@ -246,8 +246,8 @@ pub struct RuntimeUpdate {
 pub struct OttoChatRequest {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub runtime_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_uuid: Option<String>,
+    #[serde(skip)]
     pub thread_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<OttoModel>,
@@ -288,6 +288,21 @@ impl OttoModel {
 pub struct OttoChatResponse {
     pub message: String,
     pub thread_id: Option<String>,
+}
+
+/// A streaming event from Otto.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// A text delta from Otto's response.
+    TextDelta(String),
+    /// A tool call has started.
+    ToolCallStart {
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    /// A tool call has completed with output.
+    ToolCallOutput { call_id: String, output: String },
 }
 
 /// An Otto provider with its enabled models.

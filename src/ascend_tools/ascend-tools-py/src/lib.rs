@@ -455,12 +455,12 @@ impl Client {
         let otto_model = models::OttoModel::from_options(provider, model);
         let response = py
             .detach(|| {
-                let runtime_id = self
+                let runtime_uuid = self
                     .inner
                     .resolve_optional_runtime_target(workspace, deployment, uuid)?;
                 let request = models::OttoChatRequest {
                     prompt: prompt.to_string(),
-                    runtime_id,
+                    runtime_uuid,
                     thread_id: thread_id.map(String::from),
                     model: otto_model,
                 };

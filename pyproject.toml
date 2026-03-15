@@ -1,12 +1,16 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
 [project]
 name = "ascend-tools"
 version = "1.0.0"
 description = "Ascend CLI, SDK, MCP."
 requires-python = ">=3.11"
+readme = "README.md"
 license = "MIT"
 authors = [{ name = "Cody", email = "cody.peterson@ascend.io" }]
 dependencies = []
-readme = "README.md"
 
 [project.urls]
 Repository = "https://github.com/ascend-io/ascend-tools"
@@ -24,10 +28,6 @@ python-packages = ["ascend_tools"]
 python-source = "src"
 manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
 include = [{ path = "LICENSE", format = "sdist" }]
-
-[build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
 
 [tool.uv]
 cache-keys = [

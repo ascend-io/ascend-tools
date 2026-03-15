@@ -1,5 +1,6 @@
 use std::fmt;
 use std::io::BufReader;
+use std::ops::ControlFlow;
 
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
@@ -11,7 +12,7 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
     Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
     OttoChatRequest, OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate,
-    RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
+    RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -439,24 +440,35 @@ impl AscendClient {
     /// use [`otto_chat_streaming`] instead.
     pub fn otto_chat(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
         let mut full_message = String::new();
-        let response = self.otto_chat_streaming(request, |delta| {
-            full_message.push_str(delta);
-        })?;
+        let response = self.otto_chat_streaming(
+            request,
+            |event| {
+                if let StreamEvent::TextDelta(delta) = event {
+                    full_message.push_str(&delta);
+                }
+                ControlFlow::Continue(())
+            },
+            |_| {},
+        )?;
         Ok(OttoChatResponse {
             message: full_message,
             thread_id: response.thread_id,
         })
     }
 
-    /// Send a chat message to Otto, streaming text deltas to `on_delta` as they arrive.
+    /// Send a chat message to Otto, streaming events to `on_event` as they arrive.
     ///
-    /// The callback receives each text chunk as it's produced. The returned
-    /// `OttoChatResponse` has an empty `message` — the caller is expected to
-    /// have accumulated the text via the callback.
+    /// `on_thread_id` is called with the thread ID as soon as the thread is
+    /// created (before any events arrive). `on_event` receives each stream
+    /// event (text deltas, tool calls) and returns `ControlFlow::Continue(())`
+    /// to keep streaming or `ControlFlow::Break(())` to cancel early. The
+    /// returned `OttoChatResponse` has an empty `message` — the caller is
+    /// expected to have accumulated the text via the callback.
     pub fn otto_chat_streaming(
         &self,
         request: &OttoChatRequest,
-        mut on_delta: impl FnMut(&str),
+        mut on_event: impl FnMut(StreamEvent) -> ControlFlow<()>,
+        on_thread_id: impl FnOnce(&str),
     ) -> Result<OttoChatResponse> {
         let body =
             serde_json::to_value(request).with_json_serialize_context("OttoChatRequest body")?;
@@ -498,6 +510,8 @@ impl AscendClient {
             })?
             .to_string();
 
+        on_thread_id(&thread_id);
+
         // Step 2: Stream SSE events from the thread updates endpoint (no global timeout)
         let updates_path = format!("/api/v1/otto/threads/{thread_id}/updates");
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
@@ -517,23 +531,73 @@ impl AscendClient {
             });
         }
 
-        // Parse SSE stream, calling on_delta for each text chunk
+        // Parse SSE stream, dispatching events to the caller
         let reader = BufReader::new(updates_resp.into_body().into_reader());
 
         for event_result in SseReader::new(reader) {
             let event = event_result?;
+            let event_type = event.event_type.as_deref();
 
-            if event.event_type.as_deref() == Some("thread.done")
-                || event.event_type.as_deref() == Some("thread.stopped")
-            {
+            if event_type == Some("thread.done") || event_type == Some("thread.stopped") {
                 break;
             }
 
-            if event.event_type.as_deref() == Some("response.output_text.delta")
-                && let Ok(data) = serde_json::from_str::<Value>(&event.data)
-                && let Some(delta) = data.get("delta").and_then(|v| v.as_str())
+            let Ok(data) = serde_json::from_str::<Value>(&event.data) else {
+                continue;
+            };
+
+            let stream_event = match event_type {
+                Some("response.output_text.delta") => data
+                    .get("delta")
+                    .and_then(|v| v.as_str())
+                    .map(|d| StreamEvent::TextDelta(d.to_string())),
+                Some("response.output_item.added") => {
+                    let Some(item) = data.get("item") else {
+                        continue;
+                    };
+                    if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                        Some(StreamEvent::ToolCallStart {
+                            call_id: item
+                                .get("call_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            name: item
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            arguments: item
+                                .get("arguments")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("{}")
+                                .to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                Some("response.run_item_stream_event.tool_call_output_item") => {
+                    Some(StreamEvent::ToolCallOutput {
+                        call_id: data
+                            .get("call_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        output: data
+                            .get("output")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some(se) = stream_event
+                && on_event(se).is_break()
             {
-                on_delta(delta);
+                break;
             }
         }
 
