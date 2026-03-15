@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 
+use ascend_tools::Error;
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::models;
 use pyo3::prelude::*;
 
-#[pyclass]
+#[pyclass(module = "ascend_tools.core")]
 struct Client {
     inner: AscendClient,
 }
@@ -21,12 +22,19 @@ impl Client {
     ) -> PyResult<Self> {
         let config =
             Config::with_overrides(service_account_id, service_account_key, instance_api_url)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+                .map_err(to_py_err)?;
 
-        let inner = AscendClient::new(config)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let inner = AscendClient::new(config).map_err(to_py_err)?;
 
         Ok(Self { inner })
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Client(instance_api_url='{}', service_account_id='{}')",
+            self.inner.instance_api_url(),
+            self.inner.service_account_id(),
+        )
     }
 
     // -- Workspace methods --
@@ -505,8 +513,11 @@ fn run_mcp_http(
     })
 }
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[pymodule]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", VERSION)?;
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(run_cli, m)?)?;
     m.add_function(wrap_pyfunction!(run_mcp_http, m)?)?;
@@ -519,6 +530,54 @@ fn to_python(py: Python<'_>, value: &impl serde::Serialize) -> PyResult<Py<PyAny
         .map_err(to_py_err)
 }
 
-fn to_py_err(e: impl std::fmt::Display) -> PyErr {
-    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+fn to_py_err(e: impl std::fmt::Display + AsAscendError) -> PyErr {
+    e.to_py_err()
 }
+
+/// Maps `ascend_tools::Error` variants to appropriate Python exception types.
+trait AsAscendError: std::fmt::Display {
+    fn to_py_err(&self) -> PyErr {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(self.to_string())
+    }
+}
+
+impl AsAscendError for Error {
+    fn to_py_err(&self) -> PyErr {
+        let msg = self.to_string();
+        match self {
+            // Config / validation errors → ValueError
+            Error::MissingConfig { .. }
+            | Error::InvalidServiceAccountKeyEncoding
+            | Error::InvalidServiceAccountKeyLength { .. }
+            | Error::InvalidEd25519SeedLength { .. }
+            | Error::AmbiguousTitle { .. } => {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(msg)
+            }
+
+            // Not found → LookupError
+            Error::NotFound { .. } => PyErr::new::<pyo3::exceptions::PyLookupError, _>(msg),
+
+            // Auth errors → PermissionError
+            Error::ApiError { status, .. } if *status == 401 || *status == 403 => {
+                PyErr::new::<pyo3::exceptions::PyPermissionError, _>(msg)
+            }
+
+            // HTTP 404 → LookupError
+            Error::ApiError { status, .. } if *status == 404 => {
+                PyErr::new::<pyo3::exceptions::PyLookupError, _>(msg)
+            }
+
+            // Network / request failures → ConnectionError
+            Error::RequestFailed { .. } | Error::ResponseReadFailed { .. } => {
+                PyErr::new::<pyo3::exceptions::PyConnectionError, _>(msg)
+            }
+
+            // Everything else → RuntimeError
+            _ => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(msg),
+        }
+    }
+}
+
+// Fallback for non-Error types (pythonize, serde, etc.)
+impl AsAscendError for pythonize::PythonizeError {}
+impl AsAscendError for serde_json::Error {}

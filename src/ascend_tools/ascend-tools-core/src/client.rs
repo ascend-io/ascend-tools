@@ -67,6 +67,16 @@ pub struct AscendClient {
 }
 
 impl AscendClient {
+    /// Returns the Instance API URL.
+    pub fn instance_api_url(&self) -> &str {
+        &self.instance_api_url
+    }
+
+    /// Returns the service account ID.
+    pub fn service_account_id(&self) -> &str {
+        self.auth.service_account_id()
+    }
+
     pub fn new(config: Config) -> Result<Self> {
         let agent = crate::new_agent();
         let streaming_agent = crate::new_streaming_agent();

@@ -1,5 +1,7 @@
 from typing import Any
 
+__version__: str
+
 class Client:
     """Client for the Ascend Instance API.
 
@@ -15,6 +17,7 @@ class Client:
         service_account_key: str | None = None,
         instance_api_url: str | None = None,
     ) -> None: ...
+    def __repr__(self) -> str: ...
     # -- Workspaces --
     def list_workspaces(
         self,

@@ -203,6 +203,13 @@ impl Auth {
     }
 }
 
+impl Auth {
+    /// Returns the service account ID.
+    pub fn service_account_id(&self) -> &str {
+        &self.service_account_id
+    }
+}
+
 impl std::fmt::Debug for Auth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Auth")
