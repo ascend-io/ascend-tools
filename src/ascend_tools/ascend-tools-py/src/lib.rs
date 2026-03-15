@@ -107,7 +107,7 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let mut create =
             models::RuntimeCreate::new(title, environment, project, profile, git_branch);
-        create.base_git_branch = git_branch_base.map(String::from);
+        create.git_branch_base = git_branch_base.map(String::from);
         create.size = size.map(String::from);
         create.storage_size = storage_size;
         create.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
@@ -134,9 +134,9 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let mut update = models::RuntimeUpdate::default();
         update.title = new_title.map(String::from);
-        update.working_git_branch = git_branch.map(String::from);
-        update.base_git_branch = git_branch_base.map(String::from);
-        update.profile_name = profile.map(String::from);
+        update.git_branch = git_branch.map(String::from);
+        update.git_branch_base = git_branch_base.map(String::from);
+        update.profile = profile.map(String::from);
         update.size = size.map(String::from);
         update.storage_size = storage_size;
         update.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
@@ -205,7 +205,7 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let mut create =
             models::RuntimeCreate::new(title, environment, project, profile, git_branch);
-        create.base_git_branch = git_branch_base.map(String::from);
+        create.git_branch_base = git_branch_base.map(String::from);
         create.size = size.map(String::from);
         create.storage_size = storage_size;
         create.enable_automations = enable_automations;
@@ -232,9 +232,9 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let mut update = models::RuntimeUpdate::default();
         update.title = new_title.map(String::from);
-        update.working_git_branch = git_branch.map(String::from);
-        update.base_git_branch = git_branch_base.map(String::from);
-        update.profile_name = profile.map(String::from);
+        update.git_branch = git_branch.map(String::from);
+        update.git_branch_base = git_branch_base.map(String::from);
+        update.profile = profile.map(String::from);
         update.size = size.map(String::from);
         update.storage_size = storage_size;
         update.enable_automations = enable_automations;
@@ -350,12 +350,12 @@ impl Client {
         to_python(py, &flows)
     }
 
-    #[pyo3(signature = (*, flow_name, workspace=None, deployment=None, uuid=None, spec=None, resume=false))]
+    #[pyo3(signature = (*, flow, workspace=None, deployment=None, uuid=None, spec=None, resume=false))]
     #[allow(clippy::too_many_arguments)]
     fn run_flow(
         &self,
         py: Python<'_>,
-        flow_name: &str,
+        flow: &str,
         workspace: Option<&str>,
         deployment: Option<&str>,
         uuid: Option<&str>,
@@ -372,13 +372,13 @@ impl Client {
                     .inner
                     .resolve_runtime_target(workspace, deployment, uuid)?;
                 self.inner
-                    .run_flow(&runtime_uuid, flow_name, spec_value, resume)
+                    .run_flow(&runtime_uuid, flow, spec_value, resume)
             })
             .map_err(to_py_err)?;
         to_python(py, &trigger)
     }
 
-    #[pyo3(signature = (*, workspace=None, deployment=None, uuid=None, status=None, flow_name=None, since=None, until=None, offset=None, limit=None))]
+    #[pyo3(signature = (*, workspace=None, deployment=None, uuid=None, status=None, flow=None, since=None, until=None, offset=None, limit=None))]
     #[allow(clippy::too_many_arguments)]
     fn list_flow_runs(
         &self,
@@ -387,7 +387,7 @@ impl Client {
         deployment: Option<&str>,
         uuid: Option<&str>,
         status: Option<&str>,
-        flow_name: Option<&str>,
+        flow: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
         offset: Option<u64>,
@@ -400,7 +400,7 @@ impl Client {
                     .resolve_runtime_target(workspace, deployment, uuid)?;
                 let mut filters = models::FlowRunFilters::default();
                 filters.status = status.map(String::from);
-                filters.flow = flow_name.map(String::from);
+                filters.flow = flow.map(String::from);
                 filters.since = since.map(String::from);
                 filters.until = until.map(String::from);
                 filters.offset = offset;
@@ -441,7 +441,7 @@ impl Client {
 
     #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, model=None, provider=None))]
     #[allow(clippy::too_many_arguments)]
-    fn otto_chat(
+    fn otto(
         &self,
         py: Python<'_>,
         prompt: &str,
@@ -464,7 +464,7 @@ impl Client {
                     thread_id: thread_id.map(String::from),
                     model: otto_model,
                 };
-                self.inner.otto_chat(&request)
+                self.inner.otto(&request)
             })
             .map_err(to_py_err)?;
         let result = serde_json::json!({
@@ -476,7 +476,7 @@ impl Client {
 }
 
 #[pyfunction]
-fn run(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
+fn run_cli(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
     py.detach(|| {
         ascend_tools_cli::run_cli(argv.iter().map(|s| s.as_str()))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -508,7 +508,7 @@ fn run_mcp_http(
 #[pymodule]
 fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
-    m.add_function(wrap_pyfunction!(run, m)?)?;
+    m.add_function(wrap_pyfunction!(run_cli, m)?)?;
     m.add_function(wrap_pyfunction!(run_mcp_http, m)?)?;
     Ok(())
 }

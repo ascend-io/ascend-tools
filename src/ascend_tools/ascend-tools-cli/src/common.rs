@@ -66,7 +66,7 @@ pub(crate) fn handle_runtime_list(
                             r.title.clone(),
                             r.uuid.clone(),
                             display_health(r),
-                            r.profile_name.as_deref().unwrap_or("-").to_owned(),
+                            r.profile.as_deref().unwrap_or("-").to_owned(),
                         ]
                     })
                     .collect();
@@ -207,11 +207,8 @@ pub(crate) fn print_runtime_detail(r: &ascend_tools::models::Runtime) {
     println!("Health:       {}", display_health(r));
     println!("Project:      {}", r.project_uuid);
     println!("Environment:  {}", r.environment_uuid);
-    println!("Profile:      {}", r.profile_name.as_deref().unwrap_or("-"));
-    println!(
-        "Branch:       {}",
-        r.working_git_branch.as_deref().unwrap_or("-")
-    );
+    println!("Profile:      {}", r.profile.as_deref().unwrap_or("-"));
+    println!("Branch:       {}", r.git_branch.as_deref().unwrap_or("-"));
     if let Some(automations) = r.enable_automations {
         println!("Automations:  {}", if automations { "on" } else { "off" });
     }

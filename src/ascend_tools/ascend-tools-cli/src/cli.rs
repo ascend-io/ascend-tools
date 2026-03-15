@@ -328,7 +328,7 @@ mod tests {
                         environment,
                         project,
                         size,
-                        profile_name,
+                        profile,
                         ..
                     }),
             }) => {
@@ -336,7 +336,7 @@ mod tests {
                 assert_eq!(environment, "Production");
                 assert_eq!(project, "MyProject");
                 assert_eq!(size.as_deref(), Some("Medium"));
-                assert_eq!(profile_name, "default");
+                assert_eq!(profile, "default");
             }
             _ => panic!("expected Workspace Create command"),
         }
@@ -466,12 +466,10 @@ mod tests {
             Some(Commands::Flow {
                 command:
                     Some(FlowCommands::Run {
-                        flow_name,
-                        deployment,
-                        ..
+                        flow, deployment, ..
                     }),
             }) => {
-                assert_eq!(flow_name, "sales");
+                assert_eq!(flow, "sales");
                 assert_eq!(deployment.as_deref(), Some("prod"));
             }
             _ => panic!("expected Flow Run command"),

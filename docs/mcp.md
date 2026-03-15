@@ -253,7 +253,7 @@ Trigger a flow run. Checks health first.
 |-----------|----------|------|-------------|
 | `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
 | `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
-| `flow_name` | yes | string | Flow name |
+| `flow` | yes | string | Flow name |
 | `spec` | no | object | Flow run options (see below) |
 | `resume` | no | boolean | Resume the workspace/deployment if paused before running |
 
@@ -266,7 +266,7 @@ List flow runs with optional filters.
 | `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
 | `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `status` | no | string | Filter by status (pending, running, succeeded, failed) |
-| `flow_name` | no | string | Filter by flow name |
+| `flow` | no | string | Filter by flow name |
 | `since` | no | string | Filter by start time (ISO 8601) |
 | `until` | no | string | Filter by end time (ISO 8601) |
 | `offset` | no | integer | Pagination offset |
@@ -286,15 +286,15 @@ Get a flow run by name.
 
 List available Otto providers and their enabled models. No parameters.
 
-### otto_chat
+### otto
 
 Chat with Otto, the Ascend AI assistant.
 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
 | `prompt` | yes | string | Message to send to Otto |
-| `workspace_title` | no | string | Workspace title for context |
-| `deployment_title` | no | string | Deployment title for context |
+| `workspace` | no | string | Workspace title for context |
+| `deployment` | no | string | Deployment title for context |
 | `uuid` | no | string | UUID (direct override) |
 | `provider` | no | string | LLM provider ID |
 | `model` | no | string | LLM model ID |

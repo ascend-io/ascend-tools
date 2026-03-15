@@ -171,7 +171,7 @@ app.post('/api/flow/:name/run', async (req, res) => {
     const targetParam = workspace ? `workspace=${encodeURIComponent(workspace)}` : `deployment=${encodeURIComponent(deployment)}`
     res.send(`
       <p>Flow triggered: ${escapeHtml(result.eventUuid)}</p>
-      <div hx-get="/api/flow-runs?${targetParam}&flow_name=${encodeURIComponent(req.params.name)}&limit=1"
+      <div hx-get="/api/flow-runs?${targetParam}&flow=${encodeURIComponent(req.params.name)}&limit=1"
            hx-trigger="load delay:2s, every 5s" hx-swap="innerHTML"></div>`)
   } catch (e) {
     res.send(`<p class="error">Error: ${escapeHtml(e.message)}</p>`)
@@ -180,10 +180,10 @@ app.post('/api/flow/:name/run', async (req, res) => {
 
 app.get('/api/flow-runs', async (req, res) => {
   try {
-    const { workspace, deployment, flow_name, status, limit } = req.query
+    const { workspace, deployment, flow, status, limit } = req.query
     const result = await client.listFlowRuns(
       workspace || null, deployment || null, null,
-      status || null, flow_name || null, null, null, null,
+      status || null, flow || null, null, null, null,
       limit ? parseInt(limit) : null,
     )
     const runs = result.items || []
@@ -251,7 +251,7 @@ app.post('/api/otto/chat', async (req, res) => {
   })
 
   try {
-    const result = await client.ottoChatStreaming(
+    const result = await client.ottoStreaming(
       prompt,
       (err, delta) => {
         if (err) {

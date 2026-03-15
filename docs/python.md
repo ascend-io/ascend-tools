@@ -106,14 +106,14 @@ Returns `list[dict]`, each with a `name` field.
 ### Run a flow
 
 ```python
-result = client.run_flow(flow_name="sales", workspace="My Workspace")
+result = client.run_flow(flow="sales", workspace="My Workspace")
 ```
 
 Resume a paused workspace before running:
 
 ```python
 result = client.run_flow(
-    flow_name="sales",
+    flow="sales",
     workspace="My Workspace",
     resume=True,
 )
@@ -123,7 +123,7 @@ Pass a spec dict for advanced options:
 
 ```python
 result = client.run_flow(
-    flow_name="sales",
+    flow="sales",
     workspace="My Workspace",
     spec={"full_refresh": True},
 )
@@ -131,7 +131,7 @@ result = client.run_flow(
 
 ```python
 result = client.run_flow(
-    flow_name="sales",
+    flow="sales",
     workspace="My Workspace",
     spec={
         "components": ["transform_orders", "transform_customers"],
@@ -160,7 +160,7 @@ Filter by status, flow name, time range, or paginate:
 
 ```python
 client.list_flow_runs(workspace="My Workspace", status="running")
-client.list_flow_runs(deployment="My Deployment", flow_name="sales")
+client.list_flow_runs(deployment="My Deployment", flow="sales")
 client.list_flow_runs(workspace="My Workspace", since="2025-01-01T00:00:00Z")
 client.list_flow_runs(workspace="My Workspace", limit=10, offset=20)
 ```
@@ -180,8 +180,8 @@ Returns `dict` with fields: `name`, `flow`, `build_uuid`, `runtime_uuid`, `statu
 providers = client.list_otto_providers()
 
 # Chat
-response = client.otto_chat(prompt="What flows are running?")
-response = client.otto_chat(prompt="Describe the sales flow", workspace="My Workspace")
+response = client.otto(prompt="What flows are running?")
+response = client.otto(prompt="Describe the sales flow", workspace="My Workspace")
 ```
 
 ## Return types
@@ -202,7 +202,7 @@ The SDK raises exceptions for:
 
 ```python
 try:
-    client.run_flow(flow_name="sales", workspace="My Workspace")
+    client.run_flow(flow="sales", workspace="My Workspace")
 except Exception as e:
     print(f"Error: {e}")
 ```

@@ -434,13 +434,13 @@ impl AscendClient {
         self.get("/api/v1/otto/providers")
     }
 
-    /// Send a chat message to Otto via the threads API.
+    /// Send a message to Otto via the threads API.
     ///
     /// Collects the full response before returning. For real-time streaming,
-    /// use [`otto_chat_streaming`] instead.
-    pub fn otto_chat(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
+    /// use [`otto_streaming`] instead.
+    pub fn otto(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
         let mut full_message = String::new();
-        let response = self.otto_chat_streaming(
+        let response = self.otto_streaming(
             request,
             |event| {
                 if let StreamEvent::TextDelta(delta) = event {
@@ -456,7 +456,7 @@ impl AscendClient {
         })
     }
 
-    /// Send a chat message to Otto, streaming events to `on_event` as they arrive.
+    /// Send a message to Otto, streaming events to `on_event` as they arrive.
     ///
     /// `on_thread_id` is called with the thread ID as soon as the thread is
     /// created (before any events arrive). `on_event` receives each stream
@@ -464,7 +464,7 @@ impl AscendClient {
     /// to keep streaming or `ControlFlow::Break(())` to cancel early. The
     /// returned `OttoChatResponse` has an empty `message` — the caller is
     /// expected to have accumulated the text via the callback.
-    pub fn otto_chat_streaming(
+    pub fn otto_streaming(
         &self,
         request: &OttoChatRequest,
         mut on_event: impl FnMut(StreamEvent) -> ControlFlow<()>,

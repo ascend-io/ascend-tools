@@ -17,7 +17,7 @@ use crate::params::{
     CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
     GetDeploymentParams, GetFlowRunParams, GetWorkspaceParams, ListDeploymentsParams,
     ListEnvironmentsParams, ListFlowRunsParams, ListFlowsParams, ListProfilesParams,
-    ListProjectsParams, ListWorkspacesParams, OttoChatParams, PauseDeploymentAutomationsParams,
+    ListProjectsParams, ListWorkspacesParams, OttoParams, PauseDeploymentAutomationsParams,
     PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
     UpdateDeploymentParams, UpdateWorkspaceParams,
 };
@@ -40,15 +40,11 @@ async fn blocking<T: serde::Serialize + Send + 'static>(
 /// Resolve target UUID from workspace_title/deployment_title/uuid params.
 fn resolve_flow_target(
     client: &AscendClient,
-    workspace_title: Option<String>,
-    deployment_title: Option<String>,
+    workspace: Option<String>,
+    deployment: Option<String>,
     uuid: Option<String>,
 ) -> ascend_tools::Result<String> {
-    client.resolve_runtime_target(
-        workspace_title.as_deref(),
-        deployment_title.as_deref(),
-        uuid.as_deref(),
-    )
+    client.resolve_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref())
 }
 
 #[derive(Clone)]
@@ -132,10 +128,10 @@ impl AscendMcpServer {
                 params.title,
                 params.environment,
                 params.project,
-                params.profile_name,
-                params.working_git_branch,
+                params.profile,
+                params.git_branch,
             );
-            create.base_git_branch = params.base_git_branch;
+            create.git_branch_base = params.git_branch_base;
             create.size = params.size;
             create.storage_size = params.storage_size;
             create.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
@@ -153,9 +149,9 @@ impl AscendMcpServer {
         blocking(client, move |c| {
             let mut update = RuntimeUpdate::default();
             update.title = params.title;
-            update.working_git_branch = params.working_git_branch;
-            update.base_git_branch = params.base_git_branch;
-            update.profile_name = params.profile_name;
+            update.git_branch = params.git_branch;
+            update.git_branch_base = params.git_branch_base;
+            update.profile = params.profile;
             update.size = params.size;
             update.storage_size = params.storage_size;
             update.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
@@ -242,10 +238,10 @@ impl AscendMcpServer {
                 params.title,
                 params.environment,
                 params.project,
-                params.profile_name,
-                params.working_git_branch,
+                params.profile,
+                params.git_branch,
             );
-            create.base_git_branch = params.base_git_branch;
+            create.git_branch_base = params.git_branch_base;
             create.size = params.size;
             create.storage_size = params.storage_size;
             create.enable_automations = params.enable_automations;
@@ -263,9 +259,9 @@ impl AscendMcpServer {
         blocking(client, move |c| {
             let mut update = RuntimeUpdate::default();
             update.title = params.title;
-            update.working_git_branch = params.working_git_branch;
-            update.base_git_branch = params.base_git_branch;
-            update.profile_name = params.profile_name;
+            update.git_branch = params.git_branch;
+            update.git_branch_base = params.git_branch_base;
+            update.profile = params.profile;
             update.size = params.size;
             update.storage_size = params.storage_size;
             update.enable_automations = params.enable_automations;
@@ -344,10 +340,10 @@ impl AscendMcpServer {
         blocking(client, move |c| {
             let (runtime_uuid, project, branch) = if let Some(uuid) = params.uuid {
                 (Some(uuid), None, None)
-            } else if let Some(ws) = params.workspace_title {
+            } else if let Some(ws) = params.workspace {
                 let rt = c.resolve_runtime_by_title(&ws, RuntimeKind::Workspace)?;
                 (Some(rt.uuid), None, None)
-            } else if let Some(dep) = params.deployment_title {
+            } else if let Some(dep) = params.deployment {
                 let rt = c.resolve_runtime_by_title(&dep, RuntimeKind::Deployment)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(proj) = params.project {
@@ -355,7 +351,7 @@ impl AscendMcpServer {
             } else {
                 return Err(ascend_tools::Error::MissingField {
                     context: "list_profiles",
-                    field: "workspace_title, deployment_title, project, or uuid",
+                    field: "workspace, deployment, project, or uuid",
                 });
             };
             c.list_profiles(
@@ -376,12 +372,7 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid = resolve_flow_target(
-                c,
-                params.workspace_title,
-                params.deployment_title,
-                params.uuid,
-            )?;
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
             c.list_flows(&uuid)
         })
         .await
@@ -401,15 +392,10 @@ impl AscendMcpServer {
             .transpose()
             .map_err(|e| McpError::internal_error(format!("invalid spec: {e}"), None))?;
         let resume = params.resume.unwrap_or(false);
-        let flow_name = params.flow_name;
+        let flow = params.flow;
         blocking(client, move |c| {
-            let uuid = resolve_flow_target(
-                c,
-                params.workspace_title,
-                params.deployment_title,
-                params.uuid,
-            )?;
-            c.run_flow(&uuid, &flow_name, spec, resume)
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
+            c.run_flow(&uuid, &flow, spec, resume)
         })
         .await
     }
@@ -423,15 +409,10 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid = resolve_flow_target(
-                c,
-                params.workspace_title,
-                params.deployment_title,
-                params.uuid,
-            )?;
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
             let mut filters = FlowRunFilters::default();
             filters.status = params.status;
-            filters.flow = params.flow_name;
+            filters.flow = params.flow;
             filters.since = params.since;
             filters.until = params.until;
             filters.offset = params.offset;
@@ -448,12 +429,7 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            let uuid = resolve_flow_target(
-                c,
-                params.workspace_title,
-                params.deployment_title,
-                params.uuid,
-            )?;
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
             c.get_flow_run(&uuid, &params.name)
         })
         .await
@@ -468,18 +444,18 @@ impl AscendMcpServer {
     }
 
     #[tool(description = "Chat with Otto, the Ascend AI assistant")]
-    async fn otto_chat(
+    async fn otto(
         &self,
-        Parameters(params): Parameters<OttoChatParams>,
+        Parameters(params): Parameters<OttoParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
             let runtime_uuid = c.resolve_optional_runtime_target(
-                params.workspace_title.as_deref(),
-                params.deployment_title.as_deref(),
+                params.workspace.as_deref(),
+                params.deployment.as_deref(),
                 params.uuid.as_deref(),
             )?;
-            c.otto_chat(&OttoChatRequest {
+            c.otto(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_uuid,
                 thread_id: params.thread_id,

@@ -64,12 +64,12 @@ pub struct Runtime {
     pub health: Option<String>,
     #[serde(default)]
     pub paused: bool,
-    #[serde(default)]
-    pub profile_name: Option<String>,
-    #[serde(default)]
-    pub base_git_branch: Option<String>,
-    #[serde(default)]
-    pub working_git_branch: Option<String>,
+    #[serde(default, alias = "profile_name")]
+    pub profile: Option<String>,
+    #[serde(default, alias = "base_git_branch")]
+    pub git_branch_base: Option<String>,
+    #[serde(default, alias = "working_git_branch")]
+    pub git_branch: Option<String>,
     #[serde(default)]
     pub enable_automations: Option<bool>,
     #[serde(default)]
@@ -181,10 +181,12 @@ pub struct RuntimeCreate {
     pub title: String,
     pub environment: String,
     pub project: String,
-    pub profile_name: String,
-    pub working_git_branch: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_git_branch: Option<String>,
+    #[serde(rename = "profile_name")]
+    pub profile: String,
+    #[serde(rename = "working_git_branch")]
+    pub git_branch: String,
+    #[serde(rename = "base_git_branch", skip_serializing_if = "Option::is_none")]
+    pub git_branch_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -201,16 +203,16 @@ impl RuntimeCreate {
         title: impl Into<String>,
         environment: impl Into<String>,
         project: impl Into<String>,
-        profile_name: impl Into<String>,
-        working_git_branch: impl Into<String>,
+        profile: impl Into<String>,
+        git_branch: impl Into<String>,
     ) -> Self {
         Self {
             title: title.into(),
             environment: environment.into(),
             project: project.into(),
-            profile_name: profile_name.into(),
-            working_git_branch: working_git_branch.into(),
-            base_git_branch: None,
+            profile: profile.into(),
+            git_branch: git_branch.into(),
+            git_branch_base: None,
             size: None,
             storage_size: None,
             enable_automations: None,
@@ -225,12 +227,12 @@ impl RuntimeCreate {
 pub struct RuntimeUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub working_git_branch: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_git_branch: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile_name: Option<String>,
+    #[serde(rename = "working_git_branch", skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(rename = "base_git_branch", skip_serializing_if = "Option::is_none")]
+    pub git_branch_base: Option<String>,
+    #[serde(rename = "profile_name", skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

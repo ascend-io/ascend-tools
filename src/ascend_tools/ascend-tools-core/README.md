@@ -54,6 +54,6 @@ Token exchange and caching are handled automatically.
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
 | `list_otto_providers` | List Otto providers and models |
-| `otto_chat` | Chat with Otto AI assistant |
+| `otto` | Chat with Otto AI assistant |
 
 See the [top-level README](../../../README.md) for full documentation.

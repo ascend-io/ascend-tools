@@ -190,7 +190,8 @@ echo "  using flow: $FLOW_NAME"
 
 echo "=== flow runs (before trigger) ==="
 
-RUNS_BEFORE=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+RUNS_BEFORE_RESULT=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+RUNS_BEFORE=$(echo "$RUNS_BEFORE_RESULT" | jq '.items')
 RUNS_BEFORE_COUNT=$(echo "$RUNS_BEFORE" | jq 'length')
 pass "flow list-runs returned $RUNS_BEFORE_COUNT run(s) before trigger"
 
@@ -254,7 +255,8 @@ echo "=== flow runs (after trigger) ==="
 RUNS_AFTER_COUNT="$RUNS_BEFORE_COUNT"
 for delay in 2 3 5 5; do
   sleep "$delay"
-  RUNS_AFTER=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+  RUNS_AFTER_RESULT=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+  RUNS_AFTER=$(echo "$RUNS_AFTER_RESULT" | jq '.items')
   RUNS_AFTER_COUNT=$(echo "$RUNS_AFTER" | jq 'length')
   if [ "$RUNS_AFTER_COUNT" -gt "$RUNS_BEFORE_COUNT" ]; then
     break

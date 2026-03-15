@@ -29,7 +29,7 @@ src/ascend_tools/
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
 │       ├── server.rs        # AscendMcpServer — 23 tools via rmcp #[tool_router]
-│       ├── sse.rs           # SSE streaming support for otto_chat tool
+│       ├── sse.rs           # SSE streaming support for otto tool
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-tui/          # Interactive TUI crate (depends on ascend-tools-core)
@@ -110,8 +110,6 @@ export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.de
 ```
 ascend-tools [-o text|json] [-V]
 
-  workspace list [--environment <TITLE>] [--project <TITLE>]
-  workspace get <TITLE>
   workspace list [--environment <NAME>] [--project <NAME>]
   workspace get <TITLE>
   workspace create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH> [--git-branch-base, --size, --storage-size, --auto-snooze-timeout-minutes]
@@ -225,16 +223,16 @@ client.delete_deployment(title="My Deployment")
 
 # Flows
 client.list_flows(workspace="My Workspace")
-client.run_flow(flow_name="sales", workspace="My Workspace")
+client.run_flow(flow="sales", workspace="My Workspace")
 
 # Flow runs
 client.list_flow_runs(workspace="My Workspace", status="running")
-client.list_flow_runs(deployment="My Deployment", flow_name="sales", limit=10)
+client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
 client.get_flow_run(name="fr-...", workspace="My Workspace")
 
 # Otto (AI assistant)
 client.list_otto_providers()
-client.otto_chat(prompt="What flows are running?", workspace="My Workspace")
+client.otto(prompt="What flows are running?", workspace="My Workspace")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
@@ -271,10 +269,10 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 | `list_profiles` | List profiles for a workspace, deployment, or project+branch |
 | `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
-| `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
+| `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
 | `list_otto_providers` | List Otto providers and their enabled models |
-| `otto_chat` | Chat with Otto, the Ascend AI assistant |
+| `otto` | Chat with Otto, the Ascend AI assistant |
 
 ### usage with Claude Code
 

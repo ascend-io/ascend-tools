@@ -94,14 +94,14 @@ client.list_flows(workspace="My Workspace")
 client.list_flows(deployment="My Deployment")
 
 # Trigger a flow run
-client.run_flow(flow_name="sales", workspace="My Workspace")
+client.run_flow(flow="sales", workspace="My Workspace")
 
 # Resume a paused workspace before running
-client.run_flow(flow_name="sales", workspace="My Workspace", resume=True)
+client.run_flow(flow="sales", workspace="My Workspace", resume=True)
 
 # Pass a spec to control behavior
 client.run_flow(
-    flow_name="sales",
+    flow="sales",
     workspace="My Workspace",
     spec={"components": ["component_a", "component_b"]},
 )
@@ -115,7 +115,7 @@ client.list_flow_runs(workspace="My Workspace")
 
 # Filter by status, flow name, or time range
 client.list_flow_runs(workspace="My Workspace", status="running")
-client.list_flow_runs(deployment="My Deployment", flow_name="sales", limit=10)
+client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
 client.list_flow_runs(workspace="My Workspace", since="2025-01-01T00:00:00Z", until="2025-12-31T23:59:59Z")
 
 # Paginate
@@ -129,8 +129,8 @@ client.get_flow_run(name="fr-...", workspace="My Workspace")
 
 ```python
 client.list_otto_providers()
-client.otto_chat(prompt="What flows are running?")
-client.otto_chat(prompt="Describe the sales flow", workspace="My Workspace")
+client.otto(prompt="What flows are running?")
+client.otto(prompt="Describe the sales flow", workspace="My Workspace")
 ```
 
 ### Flow run spec
@@ -138,9 +138,9 @@ client.otto_chat(prompt="Describe the sales flow", workspace="My Workspace")
 Pass `spec` as a dict to `run_flow` to control flow run behavior:
 
 ```python
-client.run_flow(flow_name="sales", workspace="My Workspace", spec={"full_refresh": True})
-client.run_flow(flow_name="sales", workspace="My Workspace", spec={"run_tests": False})
-client.run_flow(flow_name="sales", workspace="My Workspace", spec={"parameters": {"key": "value"}})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"full_refresh": True})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"run_tests": False})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"parameters": {"key": "value"}})
 ```
 
 Available spec fields: `full_refresh`, `components`, `component_categories`, `parameters`, `run_tests`, `store_test_results`, `halt_flow_on_error`, `disable_optimizers`, `update_materialization_type`, `deep_data_pruning`, `backfill_missing_statistics`, `disable_incremental_metadata_collection`, `runner_overrides`.

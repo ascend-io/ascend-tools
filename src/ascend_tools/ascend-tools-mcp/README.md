@@ -35,7 +35,7 @@ Built on [`ascend-tools-core`](../ascend-tools-core) and [`rmcp`](https://crates
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
 | `list_otto_providers` | List Otto providers and models |
-| `otto_chat` | Chat with Otto AI assistant |
+| `otto` | Chat with Otto AI assistant |
 
 ## Usage
 

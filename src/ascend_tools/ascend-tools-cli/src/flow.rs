@@ -24,7 +24,7 @@ pub(crate) enum FlowCommands {
     #[command(arg_required_else_help = true)]
     Run {
         /// Flow name
-        flow_name: String,
+        flow: String,
         /// Workspace title
         #[arg(long, group = "target")]
         workspace: Option<String>,
@@ -122,7 +122,7 @@ pub(crate) fn handle_flow(
             workspace,
             deployment,
             uuid,
-            flow_name,
+            flow,
             spec,
             resume,
         } => {
@@ -132,10 +132,10 @@ pub(crate) fn handle_flow(
                 uuid.as_deref(),
             )?;
             let spec_value = parse_spec(spec)?;
-            let trigger = client.run_flow(&runtime_uuid, &flow_name, spec_value, resume)?;
+            let trigger = client.run_flow(&runtime_uuid, &flow, spec_value, resume)?;
             match output {
                 OutputMode::Json => print_json(&trigger)?,
-                OutputMode::Text => println!("{}", trigger.event_uuid),
+                OutputMode::Text => println!("Triggered flow '{}' ({})", flow, trigger.event_uuid),
             }
         }
         FlowCommands::ListRuns {
@@ -167,7 +167,7 @@ pub(crate) fn handle_flow(
             }
             let runs = &result.items;
             match output {
-                OutputMode::Json => print_json(&runs)?,
+                OutputMode::Json => print_json(&result)?,
                 OutputMode::Text => {
                     let rows: Vec<Vec<String>> = runs
                         .iter()

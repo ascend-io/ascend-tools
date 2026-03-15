@@ -30,7 +30,7 @@ test('Client has all expected methods', (t) => {
     'listProjects', 'getProject',
     'listProfiles', 'listFlows', 'runFlow',
     'listFlowRuns', 'getFlowRun',
-    'listOttoProviders', 'ottoChat', 'ottoChatStreaming',
+    'listOttoProviders', 'otto', 'ottoStreaming',
   ]
   for (const method of methods) {
     t.is(typeof Client.prototype[method], 'function', `Client.prototype.${method} should be a function`)

@@ -235,8 +235,6 @@ class AscendClient:
 
     def list_flow_runs(self, runtime_uuid: str, **filters) -> dict:
         params: dict = {"runtime_uuid": runtime_uuid}
-        if "flow_name" in filters:
-            filters["flow"] = filters.pop("flow_name")
         params.update({k: v for k, v in filters.items() if v is not None})
         return self._get("/api/v1/flow-runs", params=params)
 
@@ -461,7 +459,7 @@ def main():
 
     print("=== flow runs (before trigger) ===")
 
-    runs_before_result = client.list_flow_runs(runtime_uuid, flow_name=flow_name)
+    runs_before_result = client.list_flow_runs(runtime_uuid, flow=flow_name)
     check(isinstance(runs_before_result, dict), "list_flow_runs returns dict")
     check("items" in runs_before_result, "list_flow_runs has 'items' key")
     check("truncated" in runs_before_result, "list_flow_runs has 'truncated' key")
@@ -494,7 +492,7 @@ def main():
         )
 
     # test pagination
-    limited = client.list_flow_runs(runtime_uuid, flow_name=flow_name, limit=1)["items"]
+    limited = client.list_flow_runs(runtime_uuid, flow=flow_name, limit=1)["items"]
     check(
         len(limited) <= 1,
         "list_flow_runs(limit=1) returns at most 1",
@@ -503,7 +501,7 @@ def main():
 
     if runs_before_count > 1:
         offset_runs = client.list_flow_runs(
-            runtime_uuid, flow_name=flow_name, offset=1, limit=1
+            runtime_uuid, flow=flow_name, offset=1, limit=1
         )["items"]
         check(
             len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1"
@@ -537,7 +535,7 @@ def main():
     runs_after_count = runs_before_count
     for delay in (2, 3, 5, 5):
         time.sleep(delay)
-        runs_after = client.list_flow_runs(runtime_uuid, flow_name=flow_name)["items"]
+        runs_after = client.list_flow_runs(runtime_uuid, flow=flow_name)["items"]
         runs_after_count = len(runs_after)
         if runs_after_count > runs_before_count:
             break

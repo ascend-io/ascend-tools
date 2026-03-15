@@ -163,7 +163,7 @@ class Client:
     def run_flow(
         self,
         *,
-        flow_name: str,
+        flow: str,
         workspace: str | None = None,
         deployment: str | None = None,
         uuid: str | None = None,
@@ -179,7 +179,7 @@ class Client:
         deployment: str | None = None,
         uuid: str | None = None,
         status: str | None = None,
-        flow_name: str | None = None,
+        flow: str | None = None,
         since: str | None = None,
         until: str | None = None,
         offset: int | None = None,
@@ -204,7 +204,7 @@ class Client:
     def list_otto_providers(self) -> list[dict[str, Any]]:
         """List available Otto providers and their enabled models."""
         ...
-    def otto_chat(
+    def otto(
         self,
         *,
         prompt: str,
@@ -218,7 +218,7 @@ class Client:
         """Chat with Otto AI assistant. Returns {"message": str, "thread_id": str | None}."""
         ...
 
-def run(argv: list[str]) -> None:
+def run_cli(argv: list[str]) -> None:
     """Run the CLI with the given arguments."""
     ...
 

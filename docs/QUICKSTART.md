@@ -106,7 +106,7 @@ from ascend_tools import Client
 client = Client()
 workspaces = client.list_workspaces()
 flows = client.list_flows(workspace=workspaces[0]["title"])
-result = client.run_flow(flow_name=flows[0]["name"], workspace=workspaces[0]["title"])
+result = client.run_flow(flow=flows[0]["name"], workspace=workspaces[0]["title"])
 ```
 
 ## Next steps

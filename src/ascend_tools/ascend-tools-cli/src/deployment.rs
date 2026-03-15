@@ -59,14 +59,14 @@ pub(crate) enum DeploymentCommands {
         #[arg(long, required = true)]
         project: String,
         /// Configuration profile
-        #[arg(long = "profile", required = true)]
-        profile_name: String,
+        #[arg(long, required = true)]
+        profile: String,
         /// Git branch
-        #[arg(long = "git-branch", required = true)]
-        working_git_branch: String,
+        #[arg(long, required = true)]
+        git_branch: String,
         /// Base git branch
-        #[arg(long = "git-branch-base")]
-        base_git_branch: Option<String>,
+        #[arg(long)]
+        git_branch_base: Option<String>,
         /// Size (e.g. Small, Medium, Large)
         #[arg(long)]
         size: Option<String>,
@@ -89,14 +89,14 @@ pub(crate) enum DeploymentCommands {
         #[arg(long)]
         title: Option<String>,
         /// Switch to a different git branch
-        #[arg(long = "git-branch")]
-        working_git_branch: Option<String>,
+        #[arg(long)]
+        git_branch: Option<String>,
         /// New base git branch
-        #[arg(long = "git-branch-base")]
-        base_git_branch: Option<String>,
+        #[arg(long)]
+        git_branch_base: Option<String>,
         /// New profile
-        #[arg(long = "profile")]
-        profile_name: Option<String>,
+        #[arg(long)]
+        profile: Option<String>,
         /// New size
         #[arg(long)]
         size: Option<String>,
@@ -171,21 +171,15 @@ pub(crate) fn handle_deployment(
             title,
             environment,
             project,
-            profile_name,
-            working_git_branch,
-            base_git_branch,
+            profile,
+            git_branch,
+            git_branch_base,
             size,
             storage_size,
             enable_automations,
         } => {
-            let mut create = RuntimeCreate::new(
-                title,
-                environment,
-                project,
-                profile_name,
-                working_git_branch,
-            );
-            create.base_git_branch = base_git_branch;
+            let mut create = RuntimeCreate::new(title, environment, project, profile, git_branch);
+            create.git_branch_base = git_branch_base;
             create.size = size;
             create.storage_size = storage_size;
             create.enable_automations = enable_automations;
@@ -195,18 +189,18 @@ pub(crate) fn handle_deployment(
             current_title,
             uuid,
             title,
-            working_git_branch,
-            base_git_branch,
-            profile_name,
+            git_branch,
+            git_branch_base,
+            profile,
             size,
             storage_size,
             enable_automations,
         } => {
             let mut update = RuntimeUpdate::default();
             update.title = title;
-            update.working_git_branch = working_git_branch;
-            update.base_git_branch = base_git_branch;
-            update.profile_name = profile_name;
+            update.git_branch = git_branch;
+            update.git_branch_base = git_branch_base;
+            update.profile = profile;
             update.size = size;
             update.storage_size = storage_size;
             update.enable_automations = enable_automations;

@@ -84,7 +84,7 @@ from ascend_tools import Client
 
 client = Client()  # reads from env vars
 client.list_workspaces()
-client.run_flow(flow_name="sales", workspace="My Workspace")
+client.run_flow(flow="sales", workspace="My Workspace")
 ```
 
 ## MCP server
@@ -193,7 +193,7 @@ uvx --refresh ascend-tools --version
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
 | `list_otto_providers` | List Otto providers and models |
-| `otto_chat` | Chat with Otto AI assistant |
+| `otto` | Chat with Otto AI assistant |
 
 ## Skills
 

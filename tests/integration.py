@@ -55,7 +55,7 @@ def run_flow_with_retry(
     client: Client,
     *,
     workspace: str,
-    flow_name: str,
+    flow: str,
     spec: dict | None = None,
     resume: bool = False,
 ) -> dict:
@@ -66,7 +66,7 @@ def run_flow_with_retry(
             time.sleep(delay)
         try:
             return client.run_flow(
-                flow_name=flow_name,
+                flow=flow,
                 workspace=workspace,
                 spec=spec,
                 resume=resume,
@@ -230,16 +230,16 @@ def main():
     print("=== otto chat ===")
 
     try:
-        otto_resp = client.otto_chat(prompt="ping", workspace=ws_title)
-        check(isinstance(otto_resp, dict), "otto_chat returns dict")
-        check("message" in otto_resp, "otto_chat response has 'message' key")
-        check("thread_id" in otto_resp, "otto_chat response has 'thread_id' key")
+        otto_resp = client.otto(prompt="ping", workspace=ws_title)
+        check(isinstance(otto_resp, dict), "otto returns dict")
+        check("message" in otto_resp, "otto response has 'message' key")
+        check("thread_id" in otto_resp, "otto response has 'thread_id' key")
     except Exception as e:  # noqa: BLE001
         msg = str(e).lower()
         if "not found" in msg or "not implemented" in msg or "404" in msg:
-            skip(f"otto_chat not available: {e}")
+            skip(f"otto not available: {e}")
         else:
-            check(False, "otto_chat", str(e))
+            check(False, "otto", str(e))
 
     # ---------- otto provider ----------
 
@@ -289,7 +289,7 @@ def main():
 
     print("=== flow runs (before trigger) ===")
 
-    runs_before_result = client.list_flow_runs(workspace=ws_title, flow_name=flow_name)
+    runs_before_result = client.list_flow_runs(workspace=ws_title, flow=flow_name)
     check(isinstance(runs_before_result, dict), "list_flow_runs returns dict")
     check("items" in runs_before_result, "list_flow_runs has 'items' key")
     check("truncated" in runs_before_result, "list_flow_runs has 'truncated' key")
@@ -322,7 +322,7 @@ def main():
         )
 
     # test pagination
-    limited = client.list_flow_runs(workspace=ws_title, flow_name=flow_name, limit=1)[
+    limited = client.list_flow_runs(workspace=ws_title, flow=flow_name, limit=1)[
         "items"
     ]
     check(
@@ -333,7 +333,7 @@ def main():
 
     if runs_before_count > 1:
         offset_runs = client.list_flow_runs(
-            workspace=ws_title, flow_name=flow_name, offset=1, limit=1
+            workspace=ws_title, flow=flow_name, offset=1, limit=1
         )["items"]
         check(
             len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1"
@@ -350,7 +350,7 @@ def main():
 
     # Workspace may already be paused from previous sessions; use resume=True for baseline trigger.
     trigger = run_flow_with_retry(
-        client, workspace=ws_title, flow_name=flow_name, resume=True
+        client, workspace=ws_title, flow=flow_name, resume=True
     )
     check(isinstance(trigger, dict), "run_flow returns dict")
     check(
@@ -369,9 +369,7 @@ def main():
     runs_after_count = runs_before_count
     for delay in (2, 3, 5, 5):
         time.sleep(delay)
-        runs_after = client.list_flow_runs(workspace=ws_title, flow_name=flow_name)[
-            "items"
-        ]
+        runs_after = client.list_flow_runs(workspace=ws_title, flow=flow_name)["items"]
         runs_after_count = len(runs_after)
         if runs_after_count > runs_before_count:
             break
@@ -418,7 +416,7 @@ def main():
     print("=== run_flow with spec ===")
 
     trigger2 = run_flow_with_retry(
-        client, workspace=ws_title, flow_name=flow_name, spec={}, resume=True
+        client, workspace=ws_title, flow=flow_name, spec={}, resume=True
     )
     check(trigger2.get("event_uuid") is not None, "run_flow with empty spec works")
 
@@ -426,7 +424,7 @@ def main():
     trigger3_fr = run_flow_with_retry(
         client,
         workspace=ws_title,
-        flow_name=flow_name,
+        flow=flow_name,
         spec={"full_refresh": True},
         resume=True,
     )
@@ -439,7 +437,7 @@ def main():
     trigger3_params = run_flow_with_retry(
         client,
         workspace=ws_title,
-        flow_name=flow_name,
+        flow=flow_name,
         spec={"parameters": {"key": "value"}},
         resume=True,
     )
@@ -452,7 +450,7 @@ def main():
     trigger3_multi = run_flow_with_retry(
         client,
         workspace=ws_title,
-        flow_name=flow_name,
+        flow=flow_name,
         spec={
             "run_tests": False,
             "halt_flow_on_error": True,
@@ -477,7 +475,7 @@ def main():
 
     # run_flow without resume should fail on a paused workspace
     try:
-        client.run_flow(flow_name=flow_name, workspace=ws_title)
+        client.run_flow(flow=flow_name, workspace=ws_title)
         check(False, "run_flow on paused workspace should raise", "no error raised")
     except Exception as e:
         msg = str(e).lower()
@@ -499,7 +497,7 @@ def main():
     print("=== workspace resume via flow run ===")
 
     trigger3 = run_flow_with_retry(
-        client, workspace=ws_title, flow_name=flow_name, resume=True
+        client, workspace=ws_title, flow=flow_name, resume=True
     )
     check(trigger3.get("event_uuid") is not None, "run_flow with resume=True succeeds")
 

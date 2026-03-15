@@ -112,7 +112,7 @@ impl Client {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let mut create = models::RuntimeCreate::new(&title, &environment, &project, &profile, &git_branch);
-            create.base_git_branch = git_branch_base;
+            create.git_branch_base = git_branch_base;
             create.size = size;
             create.storage_size = storage_size;
             create.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
@@ -127,9 +127,9 @@ impl Client {
         AsyncTask::new(TypedTask::new(move || {
             let mut update = models::RuntimeUpdate::default();
             update.title = new_title;
-            update.working_git_branch = git_branch;
-            update.base_git_branch = git_branch_base;
-            update.profile_name = profile;
+            update.git_branch = git_branch;
+            update.git_branch_base = git_branch_base;
+            update.profile = profile;
             update.size = size;
             update.storage_size = storage_size;
             update.auto_snooze_timeout_minutes = auto_snooze_timeout_minutes;
@@ -170,7 +170,7 @@ impl Client {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let mut create = models::RuntimeCreate::new(&title, &environment, &project, &profile, &git_branch);
-            create.base_git_branch = git_branch_base;
+            create.git_branch_base = git_branch_base;
             create.size = size;
             create.storage_size = storage_size;
             create.enable_automations = enable_automations;
@@ -185,9 +185,9 @@ impl Client {
         AsyncTask::new(TypedTask::new(move || {
             let mut update = models::RuntimeUpdate::default();
             update.title = new_title;
-            update.working_git_branch = git_branch;
-            update.base_git_branch = git_branch_base;
-            update.profile_name = profile;
+            update.git_branch = git_branch;
+            update.git_branch_base = git_branch_base;
+            update.profile = profile;
             update.size = size;
             update.storage_size = storage_size;
             update.enable_automations = enable_automations;
@@ -265,11 +265,11 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<FlowRunTrigger>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn run_flow(&self, flow_name: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, spec: Option<serde_json::Value>, resume: Option<bool>) -> AsyncTask<TypedTask<models::FlowRunTrigger>> {
+    pub fn run_flow(&self, flow: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, spec: Option<serde_json::Value>, resume: Option<bool>) -> AsyncTask<TypedTask<models::FlowRunTrigger>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let runtime_uuid = client.resolve_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
-            client.run_flow(&runtime_uuid, &flow_name, spec, resume.unwrap_or(false)).map_err(to_napi_err)
+            client.run_flow(&runtime_uuid, &flow, spec, resume.unwrap_or(false)).map_err(to_napi_err)
         }))
     }
 
@@ -277,13 +277,13 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<FlowRunList>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn list_flow_runs(&self, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, status: Option<String>, flow_name: Option<String>, since: Option<String>, until: Option<String>, offset: Option<u32>, limit: Option<u32>) -> AsyncTask<TypedTask<models::FlowRunList>> {
+    pub fn list_flow_runs(&self, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, status: Option<String>, flow: Option<String>, since: Option<String>, until: Option<String>, offset: Option<u32>, limit: Option<u32>) -> AsyncTask<TypedTask<models::FlowRunList>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let runtime_uuid = client.resolve_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let mut filters = models::FlowRunFilters::default();
             filters.status = status;
-            filters.flow = flow_name;
+            filters.flow = flow;
             filters.since = since;
             filters.until = until;
             filters.offset = offset.map(u64::from);
@@ -311,25 +311,25 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto_chat_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
-            client.otto_chat_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
+            client.otto_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))
     }
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto_chat(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
-            client.otto_chat(&request).map_err(to_napi_err)
+            client.otto(&request).map_err(to_napi_err)
         }))
     }
 }

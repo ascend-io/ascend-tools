@@ -1517,7 +1517,7 @@ pub fn run_tui(
                     let send = |kind: StreamMsgKind| {
                         let _ = tx.send(StreamMsg::Stream { generation, kind });
                     };
-                    let result = client.otto_chat_streaming(
+                    let result = client.otto_streaming(
                         &request,
                         |event| {
                             if cancel_ref.load(Ordering::Relaxed) {
@@ -1539,7 +1539,7 @@ pub fn run_tui(
                             }
                             ControlFlow::Continue(())
                         },
-                        |tid| {
+                        |tid: &str| {
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),

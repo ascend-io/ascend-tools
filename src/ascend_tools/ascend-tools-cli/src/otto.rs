@@ -272,7 +272,7 @@ pub(crate) fn handle_otto_cmd(
 
             match output {
                 OutputMode::Json => {
-                    let response = client.otto_chat(&request)?;
+                    let response = client.otto(&request)?;
                     print_json(&serde_json::json!({
                         "message": response.message,
                         "thread_id": response.thread_id,
@@ -281,7 +281,7 @@ pub(crate) fn handle_otto_cmd(
                 OutputMode::Text => {
                     let mut renderer = StreamRenderer::start("");
                     let mut thread_id = None;
-                    client.otto_chat_streaming(
+                    client.otto_streaming(
                         &request,
                         |event| {
                             if let StreamEvent::TextDelta(delta) = event {

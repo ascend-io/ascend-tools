@@ -18,7 +18,7 @@ from ascend_tools import Client
 
 client = Client()  # reads from env vars
 client.list_workspaces()
-client.run_flow(flow_name="sales", workspace="My Workspace")
+client.run_flow(flow="sales", workspace="My Workspace")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
