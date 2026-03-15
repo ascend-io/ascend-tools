@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
@@ -266,6 +266,8 @@ struct App {
     show_timestamps: bool,
     active_tool_call: Option<String>,
     stream_generation: u64,
+    /// Set when cancel fires; the main loop spawns a thread to stop the backend.
+    stop_pending: bool,
 }
 
 impl App {
@@ -305,6 +307,7 @@ impl App {
             show_timestamps: false,
             active_tool_call: None,
             stream_generation: 0,
+            stop_pending: false,
         }
     }
 
@@ -332,13 +335,16 @@ impl App {
         // Ctrl+C: cancel stream or quit
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.streaming {
-                cancel.store(true, Ordering::Relaxed);
-                self.finish_stream();
-                self.push_system("Cancelled");
-                self.stream_start = None;
+                self.cancel_stream(cancel);
             } else {
                 self.should_quit = true;
             }
+            return;
+        }
+
+        // Escape: cancel stream (if streaming), otherwise normal key handling
+        if key.code == KeyCode::Esc && key.modifiers == KeyModifiers::NONE && self.streaming {
+            self.cancel_stream(cancel);
             return;
         }
 
@@ -858,6 +864,14 @@ impl App {
                 timestamp: SystemTime::now(),
             });
         }
+    }
+
+    fn cancel_stream(&mut self, cancel: &AtomicBool) {
+        cancel.store(true, Ordering::Relaxed);
+        self.finish_stream();
+        self.push_system("Cancelled");
+        self.stream_start = None;
+        self.stop_pending = true;
     }
 
     fn finish_stream(&mut self) {
@@ -1456,6 +1470,7 @@ pub fn run_tui(
     let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
     let cancel = AtomicBool::new(false);
     let gen_counter = AtomicU64::new(0);
+    let active_thread_id: Mutex<Option<String>> = Mutex::new(None);
 
     let result = std::thread::scope(|scope| {
         // Resolve provider/model labels in the background so the TUI loads instantly
@@ -1504,13 +1519,26 @@ pub fn run_tui(
                 app.handle_stream_msg(msg);
             }
 
+            // If the user cancelled, tell the backend to stop the thread.
+            // Spawns a background thread so the TUI stays responsive.
+            if app.stop_pending {
+                app.stop_pending = false;
+                if let Some(tid) = active_thread_id.lock().unwrap().clone() {
+                    scope.spawn(move || {
+                        let _ = client.stop_thread_and_wait(&tid);
+                    });
+                }
+            }
+
             // Launch streaming request if pending
             if let Some(request) = app.take_pending_request() {
                 let generation = gen_counter.fetch_add(1, Ordering::Relaxed) + 1;
                 app.stream_generation = generation;
                 cancel.store(false, Ordering::Relaxed);
+                *active_thread_id.lock().unwrap() = None;
                 let tx = stream_tx.clone();
                 let cancel_ref = &cancel;
+                let active_tid = &active_thread_id;
                 scope.spawn(move || {
                     let tx2 = tx.clone();
                     let mut tool_names: HashMap<String, String> = HashMap::new();
@@ -1540,6 +1568,7 @@ pub fn run_tui(
                             ControlFlow::Continue(())
                         },
                         |tid: &str| {
+                            *active_tid.lock().unwrap() = Some(tid.to_string());
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),

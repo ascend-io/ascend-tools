@@ -500,15 +500,45 @@ impl AscendClient {
         let url = format!("{}{path}", self.instance_api_url);
         let json_body = serde_json::to_string(&body)
             .with_json_serialize_context(format!("{context} request body"))?;
+        let is_follow_up = request.thread_id.is_some();
         let create_resp: Value = {
-            let resp = self
-                .agent
-                .post(&url)
-                .header("Authorization", &format!("Bearer {token}"))
-                .header("Content-Type", "application/json")
-                .send(json_body.as_bytes())
-                .with_request_context(context.clone())?;
-            handle_response(resp, &context)?
+            let mut last_err = None;
+            let mut resp_val = None;
+            // Retry on 409 (thread still processing from a cancelled run).
+            // The stop request is async, so the thread may not have fully
+            // wound down yet when the user sends a follow-up message.
+            let attempts = if is_follow_up { 30 } else { 1 };
+            for attempt in 0..attempts {
+                if attempt > 0 {
+                    // Call stop to nudge the backend, then wait before retrying
+                    if let Some(ref tid) = request.thread_id {
+                        let _ = self.stop_thread(tid);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                let resp = self
+                    .agent
+                    .post(&url)
+                    .header("Authorization", &format!("Bearer {token}"))
+                    .header("Content-Type", "application/json")
+                    .send(json_body.as_bytes())
+                    .with_request_context(context.clone())?;
+                let status = resp.status().as_u16();
+                if status == 409 && is_follow_up {
+                    let body_str = resp
+                        .into_body()
+                        .read_to_string()
+                        .unwrap_or_default();
+                    last_err = Some(api_error(status, &body_str));
+                    continue;
+                }
+                resp_val = Some(handle_response(resp, &context)?);
+                break;
+            }
+            match resp_val {
+                Some(v) => v,
+                None => return Err(last_err.unwrap()),
+            }
         };
 
         let thread_id = create_resp
@@ -615,6 +645,32 @@ impl AscendClient {
             message: String::new(),
             thread_id: Some(thread_id),
         })
+    }
+
+    /// Stop a running Otto thread. Returns the thread ID and status
+    /// ("stopping", "not_processing", or "not_found").
+    pub fn stop_thread(&self, thread_id: &str) -> Result<Value> {
+        self.post_empty(&format!("/api/v1/otto/threads/{thread_id}/stop"))
+    }
+
+    /// Stop a running Otto thread and wait until processing has fully stopped.
+    /// Polls the stop endpoint until the backend reports "not_processing".
+    pub fn stop_thread_and_wait(&self, thread_id: &str) -> Result<()> {
+        let resp: Value = self.stop_thread(thread_id)?;
+        let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if status != "stopping" {
+            return Ok(());
+        }
+        // Poll until the backend confirms the thread is no longer processing
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let resp: Value = self.stop_thread(thread_id)?;
+            let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            if status != "stopping" {
+                return Ok(());
+            }
+        }
+        Ok(())
     }
 
     // -- HTTP helpers --

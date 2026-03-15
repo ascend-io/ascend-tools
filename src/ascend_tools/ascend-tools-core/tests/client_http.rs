@@ -422,3 +422,87 @@ fn run_flow_returns_typed_error_for_starting_runtime() {
     run.assert();
     assert!(matches!(err, Error::RuntimeStarting));
 }
+
+#[test]
+fn otto_streaming_retries_on_409_thread_busy() {
+    use std::ops::ControlFlow;
+    use ascend_tools::models::OttoChatRequest;
+
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    // Auth may be called multiple times due to stop + retries
+    mock_auth(&mut server, "token-otto", now + 3600, 10);
+
+    // First two POST /messages return 409 (thread still processing)
+    let busy1 = server
+        .mock("POST", "/api/v1/otto/threads/t-1/messages")
+        .match_header("authorization", "Bearer token-otto")
+        .with_status(409)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"detail":"Thread is currently processing"}"#)
+        .expect(1)
+        .create();
+    let busy2 = server
+        .mock("POST", "/api/v1/otto/threads/t-1/messages")
+        .match_header("authorization", "Bearer token-otto")
+        .with_status(409)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"detail":"Thread is currently processing"}"#)
+        .expect(1)
+        .create();
+    // Third POST succeeds
+    let send_ok = server
+        .mock("POST", "/api/v1/otto/threads/t-1/messages")
+        .match_header("authorization", "Bearer token-otto")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-1","status":"processing"}"#)
+        .expect(1)
+        .create();
+    // Stop endpoint called during retries (once per 409 retry)
+    let stop = server
+        .mock("POST", "/api/v1/otto/threads/t-1/stop")
+        .match_header("authorization", "Bearer token-otto")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-1","status":"not_processing"}"#)
+        .expect(2)
+        .create();
+    // SSE updates stream (minimal: just thread.done)
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/t-1/updates")
+        .match_header("authorization", "Bearer token-otto")
+        .with_status(200)
+        .with_header("content-type", "text/event-stream")
+        .with_body("event: thread.done\ndata: {}\n\n")
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "what did we try?".to_string(),
+        runtime_uuid: None,
+        thread_id: Some("t-1".to_string()),
+        model: None,
+    };
+    let mut got_thread_id = false;
+    let result = client.otto_streaming(
+        &request,
+        |_event| ControlFlow::Continue(()),
+        |tid| {
+            assert_eq!(tid, "t-1");
+            got_thread_id = true;
+        },
+    );
+    assert!(result.is_ok(), "expected Ok, got: {result:?}");
+    assert!(got_thread_id, "on_thread_id should have been called");
+    busy1.assert();
+    busy2.assert();
+    send_ok.assert();
+    updates.assert();
+    // stop should have been called during retries
+    stop.assert();
+}
