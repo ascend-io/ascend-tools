@@ -8,8 +8,8 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Deployment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Runtime, RuntimeCreate,
-    RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
+    Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Project,
+    Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
 };
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
@@ -314,6 +314,47 @@ impl AscendClient {
         }
         self.resolve_runtime_target(workspace, deployment, uuid)
             .map(Some)
+    }
+
+    // -- Environments --
+
+    pub fn list_environments(&self) -> Result<Vec<Environment>> {
+        self.get("/api/v1/environments")
+    }
+
+    pub fn get_environment(&self, title: &str) -> Result<Environment> {
+        let mut qs = QueryString::new();
+        qs.push("title", title);
+        let envs: Vec<Environment> = self.get(&format!("/api/v1/environments{}", qs.finish()))?;
+        resolve_one(envs, "environment", title, |e| (&e.uuid, &e.title))
+    }
+
+    // -- Projects --
+
+    pub fn list_projects(&self) -> Result<Vec<Project>> {
+        self.get("/api/v1/projects")
+    }
+
+    pub fn get_project(&self, title: &str) -> Result<Project> {
+        let mut qs = QueryString::new();
+        qs.push("title", title);
+        let projects: Vec<Project> = self.get(&format!("/api/v1/projects{}", qs.finish()))?;
+        resolve_one(projects, "project", title, |p| (&p.uuid, &p.title))
+    }
+
+    // -- Profiles --
+
+    pub fn list_profiles(
+        &self,
+        runtime_uuid: Option<&str>,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let mut qs = QueryString::new();
+        qs.push_opt("runtime_uuid", runtime_uuid);
+        qs.push_opt("project", project);
+        qs.push_opt("branch", branch);
+        self.get(&format!("/api/v1/profiles{}", qs.finish()))
     }
 
     // -- Flows --

@@ -126,6 +126,22 @@ ascend-tools deployment resume-automations "My Deployment"
 ascend-tools deployment delete "My Deployment"
 ```
 
+## Environments, projects, and profiles
+
+```bash
+# List environments
+ascend-tools environment list
+ascend-tools environment get "Production"
+
+# List projects
+ascend-tools project list
+ascend-tools project get "My Project"
+
+# List profiles (requires a workspace/deployment or project+branch)
+ascend-tools profile list --workspace "My Workspace"
+ascend-tools profile list --project "My Project" --git-branch main
+```
+
 ## Manage flows
 
 ### List flows

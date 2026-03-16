@@ -61,6 +61,28 @@ ascend-tools deployment resume-automations <TITLE>
 ascend-tools deployment delete <TITLE>
 ```
 
+### Environments
+
+```bash
+ascend-tools environment list
+ascend-tools environment get <TITLE>
+```
+
+### Projects
+
+```bash
+ascend-tools project list
+ascend-tools project get <TITLE>
+```
+
+### Profiles
+
+```bash
+ascend-tools profile list --workspace <TITLE>
+ascend-tools profile list --deployment <TITLE>
+ascend-tools profile list --project <TITLE> --git-branch <BRANCH>
+```
+
 ### Flows
 
 ```bash

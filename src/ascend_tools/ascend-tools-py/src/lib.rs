@@ -285,6 +285,60 @@ impl Client {
         Ok(())
     }
 
+    #[pyo3(signature = ())]
+    fn list_environments(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let environments = py
+            .detach(|| self.inner.list_environments())
+            .map_err(to_py_err)?;
+        to_python(py, &environments)
+    }
+
+    #[pyo3(signature = (*, title))]
+    fn get_environment(&self, py: Python<'_>, title: &str) -> PyResult<Py<PyAny>> {
+        let env = py
+            .detach(|| self.inner.get_environment(title))
+            .map_err(to_py_err)?;
+        to_python(py, &env)
+    }
+
+    #[pyo3(signature = ())]
+    fn list_projects(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let projects = py
+            .detach(|| self.inner.list_projects())
+            .map_err(to_py_err)?;
+        to_python(py, &projects)
+    }
+
+    #[pyo3(signature = (*, title))]
+    fn get_project(&self, py: Python<'_>, title: &str) -> PyResult<Py<PyAny>> {
+        let proj = py
+            .detach(|| self.inner.get_project(title))
+            .map_err(to_py_err)?;
+        to_python(py, &proj)
+    }
+
+    #[pyo3(signature = (*, workspace=None, deployment=None, uuid=None, project=None, branch=None))]
+    fn list_profiles(
+        &self,
+        py: Python<'_>,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let profiles = py
+            .detach(|| {
+                let runtime_uuid = self
+                    .inner
+                    .resolve_optional_runtime_target(workspace, deployment, uuid)?;
+                self.inner
+                    .list_profiles(runtime_uuid.as_deref(), project, branch)
+            })
+            .map_err(to_py_err)?;
+        to_python(py, &profiles)
+    }
+
     #[pyo3(signature = (*, workspace=None, deployment=None, uuid=None))]
     fn list_flows(
         &self,

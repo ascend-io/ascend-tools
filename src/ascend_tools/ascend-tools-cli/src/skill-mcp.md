@@ -187,6 +187,26 @@ Delete a deployment.
 |-----------|----------|-------------|
 | `title` | yes | Deployment title |
 
+### list_environments
+
+List environments. No parameters.
+
+### list_projects
+
+List projects. No parameters.
+
+### list_profiles
+
+List available profiles for a workspace, deployment, or project+branch.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `workspace` | no | Workspace title |
+| `deployment` | no | Deployment title |
+| `uuid` | no | UUID (direct override) |
+| `project` | no | Project name (or UUID) — use with branch |
+| `branch` | no | Git branch (required with project) |
+
 ### list_flows
 
 List flows in a workspace or deployment.

@@ -51,6 +51,22 @@ from ascend_tools import Client
 client = Client()
 ```
 
+### Environments and projects
+
+```python
+# List environments
+client.list_environments()
+
+# Get by title
+client.get_environment(title="Production")
+
+# List projects
+client.list_projects()
+
+# Get by title
+client.get_project(title="My Project")
+```
+
 ### Workspaces
 
 ```python

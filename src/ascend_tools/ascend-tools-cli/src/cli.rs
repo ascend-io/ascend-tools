@@ -6,7 +6,10 @@ use std::ffi::OsString;
 
 use crate::common::OutputMode;
 use crate::deployment::DeploymentCommands;
+use crate::environment::EnvironmentCommands;
 use crate::flow::FlowCommands;
+use crate::profile::ProfileCommands;
+use crate::project::ProjectCommands;
 use crate::skill::SkillCommands;
 use crate::workspace::WorkspaceCommands;
 
@@ -79,6 +82,33 @@ enum Commands {
         #[command(subcommand)]
         command: Option<FlowCommands>,
     },
+    /// Manage environments
+    #[command(long_about = "Manage Ascend environments.\n\n\
+            Examples:\n  \
+            ascend-tools environment list\n  \
+            ascend-tools environment get Production")]
+    Environment {
+        #[command(subcommand)]
+        command: Option<EnvironmentCommands>,
+    },
+    /// Manage projects
+    #[command(long_about = "Manage Ascend projects.\n\n\
+            Examples:\n  \
+            ascend-tools project list\n  \
+            ascend-tools project get \"My Project\"")]
+    Project {
+        #[command(subcommand)]
+        command: Option<ProjectCommands>,
+    },
+    /// Manage profiles
+    #[command(long_about = "Manage Ascend profiles.\n\n\
+            Examples:\n  \
+            ascend-tools profile list --workspace my-ws\n  \
+            ascend-tools profile list --project MyProject --git-branch main")]
+    Profile {
+        #[command(subcommand)]
+        command: Option<ProfileCommands>,
+    },
     /// Start an MCP server
     Mcp {
         /// Use HTTP transport instead of stdio
@@ -140,6 +170,15 @@ where
         }
         Commands::Deployment { command } => {
             crate::deployment::handle_deployment(&client, command, &cli.output)
+        }
+        Commands::Environment { command } => {
+            crate::environment::handle_environment(&client, command, &cli.output)
+        }
+        Commands::Project { command } => {
+            crate::project::handle_project(&client, command, &cli.output)
+        }
+        Commands::Profile { command } => {
+            crate::profile::handle_profile(&client, command, &cli.output)
         }
         Commands::Flow { command } => crate::flow::handle_flow(&client, command, &cli.output),
         Commands::Mcp { .. } | Commands::Skill { .. } => unreachable!(),
@@ -508,5 +547,82 @@ mod tests {
             cli.command,
             Some(Commands::Mcp { http: true, .. })
         ));
+    }
+
+    #[test]
+    fn test_cli_parses_environment_list() {
+        let cli = CliParser::parse_from(["ascend-tools", "environment", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Environment {
+                command: Some(EnvironmentCommands::List)
+            })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_environment_default_is_list() {
+        let cli = CliParser::parse_from(["ascend-tools", "environment"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Environment { command: None })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_project_list() {
+        let cli = CliParser::parse_from(["ascend-tools", "project", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Project {
+                command: Some(ProjectCommands::List)
+            })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_profile_list_with_workspace() {
+        let cli = CliParser::parse_from(["ascend-tools", "profile", "list", "--workspace", "Cody"]);
+        match cli.command {
+            Some(Commands::Profile {
+                command:
+                    Some(ProfileCommands::List {
+                        workspace,
+                        deployment,
+                        project,
+                        ..
+                    }),
+            }) => {
+                assert_eq!(workspace.as_deref(), Some("Cody"));
+                assert!(deployment.is_none());
+                assert!(project.is_none());
+            }
+            _ => panic!("expected Profile List command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_profile_list_with_project_and_branch() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "profile",
+            "list",
+            "--project",
+            "MyProject",
+            "--git-branch",
+            "main",
+        ]);
+        match cli.command {
+            Some(Commands::Profile {
+                command:
+                    Some(ProfileCommands::List {
+                        project, branch, ..
+                    }),
+            }) => {
+                assert_eq!(project.as_deref(), Some("MyProject"));
+                assert_eq!(branch.as_deref(), Some("main"));
+            }
+            _ => panic!("expected Profile List command"),
+        }
     }
 }

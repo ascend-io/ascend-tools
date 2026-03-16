@@ -40,6 +40,36 @@ client = Client(
 
 All parameters are keyword-only.
 
+## Environments and projects
+
+### List environments
+
+```python
+environments = client.list_environments()
+```
+
+### Get an environment by title
+
+```python
+env = client.get_environment(title="Production")
+```
+
+Returns `dict` with the matching environment. Raises an error if not found or ambiguous.
+
+### List projects
+
+```python
+projects = client.list_projects()
+```
+
+### Get a project by title
+
+```python
+project = client.get_project(title="My Project")
+```
+
+Returns `dict` with the matching project. Raises an error if not found or ambiguous.
+
 ## Manage workspaces and deployments
 
 ### Workspaces
