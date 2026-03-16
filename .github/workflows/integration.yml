@@ -1,0 +1,75 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - app-dev
+          - app
+          - both
+        default: app-dev
+
+concurrency:
+  group: "${{ github.workflow }}-${{ inputs.environment }}"
+  cancel-in-progress: true
+
+jobs:
+  integration-app-dev:
+    if: inputs.environment == 'app-dev' || inputs.environment == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-prefix: integration
+      - run: bin/build
+      - name: CLI integration tests
+        run: ./tests/integration.sh
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+      - name: Python SDK integration tests
+        run: ./tests/integration.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+      - name: REST API integration tests
+        run: ./tests/rest.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
+
+  integration-app:
+    if: inputs.environment == 'app' || inputs.environment == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          cache-prefix: integration
+      - run: bin/build
+      - name: CLI integration tests
+        run: ./tests/integration.sh
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
+      - name: Python SDK integration tests
+        run: ./tests/integration.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
+      - name: REST API integration tests
+        run: ./tests/rest.py
+        env:
+          ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
+          ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
+          ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}

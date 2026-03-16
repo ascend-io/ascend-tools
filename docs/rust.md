@@ -2,7 +2,7 @@
 
 > The Rust SDK (`ascend-tools-core`) is not yet published on crates.io. Contact your Ascend representative if you're interested in using the Rust SDK directly.
 
-Manage Ascend runtimes, flows, and flow runs from Rust.
+Manage Ascend workspaces, deployments, flows, and flow runs from Rust.
 
 ## Install
 
@@ -43,36 +43,33 @@ let client = AscendClient::new(config)?;
 
 `with_overrides` falls back to environment variables for any `None` fields.
 
-## Manage runtimes
+## Manage workspaces and deployments
 
-### List runtimes
+### List workspaces
 
 ```rust
-use ascend_tools::models::RuntimeFilters;
-
-let runtimes = client.list_runtimes(Default::default())?;
-
-// With filters
-let runtimes = client.list_runtimes(RuntimeFilters {
-    kind: Some("deployment".into()),
-    ..Default::default()
-})?;
+let workspaces = client.list_workspaces(Default::default())?;
 ```
 
-Returns `Vec<Runtime>`.
-
-### Get a runtime
+### Get a workspace
 
 ```rust
-let runtime = client.get_runtime("<RUNTIME_UUID>")?;
-println!("{} ({})", runtime.id, runtime.uuid);
+let ws = client.get_workspace("My Workspace", None)?;
+println!("{} ({})", ws.title, ws.uuid);
 ```
 
 ### Pause and resume
 
 ```rust
-client.pause_runtime("<RUNTIME_UUID>")?;
-client.resume_runtime("<RUNTIME_UUID>")?;
+client.pause_workspace("My Workspace", None)?;
+client.resume_workspace("My Workspace", None)?;
+```
+
+### Deployments
+
+```rust
+let deployments = client.list_deployments(Default::default())?;
+let dep = client.get_deployment("My Deployment", None)?;
 ```
 
 ## Manage flows
@@ -108,7 +105,7 @@ println!("event_uuid: {}", trigger.event_uuid);
 
 The `spec` parameter is `Option<serde_json::Value>`. See [CLI guide](cli.md#flow-run-spec-options) for the full spec options reference.
 
-The SDK automatically checks runtime health before submitting and returns typed errors for paused, starting, or error states.
+The SDK automatically checks health before submitting and returns typed errors for paused, starting, or error states.
 
 ## Monitor flow runs
 
@@ -162,8 +159,8 @@ use ascend_tools::Error;
 
 match client.run_flow(uuid, flow, None, false) {
     Ok(trigger) => println!("triggered: {}", trigger.event_uuid),
-    Err(Error::RuntimePaused) => println!("runtime is paused, use resume=true"),
-    Err(Error::RuntimeStarting) => println!("runtime is still starting"),
+    Err(Error::RuntimePaused) => println!("paused, use resume=true"),
+    Err(Error::RuntimeStarting) => println!("still starting, try again shortly"),
     Err(Error::ApiError { status, message }) => println!("API error {status}: {message}"),
     Err(e) => println!("error: {e}"),
 }
@@ -175,7 +172,7 @@ Key error variants:
 |---------|-------------|
 | `MissingConfig` | Required env var or flag not set |
 | `ApiError` | HTTP error from the Ascend API |
-| `RuntimePaused` | Runtime is paused; use `resume=true` |
-| `RuntimeStarting` | Runtime is starting, not yet ready |
-| `RuntimeInErrorState` | Runtime is in error state |
-| `RuntimeHealthMissing` | Runtime has no health status (may be initializing) |
+| `RuntimePaused` | Workspace/deployment is paused; use `resume=true` |
+| `RuntimeStarting` | Workspace/deployment is starting, not yet ready |
+| `RuntimeInErrorState` | Workspace/deployment is in error state |
+| `RuntimeHealthMissing` | Workspace/deployment has no health status (may be initializing) |

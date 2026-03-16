@@ -1,7 +1,5 @@
 # Get started with ascend-tools
 
-> **Private preview**: ascend-tools is currently in private preview. Contact your Ascend representative to request access via service accounts on your Instance.
-
 ascend-tools provides a CLI, Python SDK, Rust SDK, and MCP server for the Ascend REST API. This guide walks you through authentication and your first commands.
 
 ## Quick start: remote MCP server
@@ -86,18 +84,18 @@ See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries
 ## Verify your setup
 
 ```bash
-ascend-tools runtime list
+ascend-tools workspace list
 ```
 
-You should see a table of runtimes in your Instance.
+You should see a table of workspaces in your Instance.
 
 ## Run your first flow
 
-List available flows in a runtime, then trigger a flow run:
+List available flows in a workspace, then trigger a flow run:
 
 ```bash
-ascend-tools flow list --runtime <RUNTIME_UUID>
-ascend-tools flow run <FLOW_NAME> --runtime <RUNTIME_UUID>
+ascend-tools flow list --workspace "My Workspace"
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
 ```
 
 Or from Python:
@@ -106,8 +104,9 @@ Or from Python:
 from ascend_tools import Client
 
 client = Client()
-flows = client.list_flows(runtime_uuid="<RUNTIME_UUID>")
-result = client.run_flow(runtime_uuid="<RUNTIME_UUID>", flow_name="<FLOW_NAME>")
+workspaces = client.list_workspaces()
+flows = client.list_flows(workspace=workspaces[0]["title"])
+result = client.run_flow(flow=flows[0]["name"], workspace=workspaces[0]["title"])
 ```
 
 ## Next steps

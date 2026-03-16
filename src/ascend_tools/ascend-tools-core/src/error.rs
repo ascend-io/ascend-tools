@@ -7,7 +7,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("{field} is required. Set {env_var} or pass --{flag}")]
+    #[error("{field} is required, set {env_var} or pass --{flag}")]
     MissingConfig {
         field: String,
         env_var: String,
@@ -30,7 +30,7 @@ pub enum Error {
     },
 
     #[error(
-        "internal synchronization error: {name} mutex poisoned; client state may be inconsistent, recreate AscendClient"
+        "internal synchronization error: {name} mutex poisoned, client state may be inconsistent — recreate client"
     )]
     MutexPoisoned { name: &'static str },
 
@@ -77,20 +77,70 @@ pub enum Error {
     #[error("API error (HTTP {status}): {message}")]
     ApiError { status: u16, message: String },
 
-    #[error("Runtime is paused. Use --resume (CLI) or resume=True (SDK) to resume before running.")]
+    #[error(
+        "workspace/deployment is paused, use --resume (CLI) or resume=True (SDK) to resume before running"
+    )]
     RuntimePaused,
 
-    #[error("Runtime is starting, not yet ready to accept flow runs.")]
+    #[error("workspace/deployment is starting, not yet ready to accept flow runs")]
     RuntimeStarting,
 
-    #[error("Runtime is in error state and cannot run flows.")]
+    #[error("workspace/deployment is in error state and cannot run flows")]
     RuntimeInErrorState,
 
-    #[error("Runtime health is '{health}', expected 'running'.")]
+    #[error("workspace/deployment health is '{health}', expected 'running'")]
     RuntimeUnexpectedHealth { health: String },
 
-    #[error("Runtime has no health status. It may be initializing.")]
+    #[error("workspace/deployment has no health status, it may be initializing")]
     RuntimeHealthMissing,
+
+    #[error("no {kind} found with title '{title}'")]
+    NotFound { kind: String, title: String },
+
+    #[error("multiple {kind}s found with title '{title}', use --uuid to specify one: {}", .matches.iter().map(|(uuid, title)| format!("{uuid} ({title})")).collect::<Vec<_>>().join(", "))]
+    AmbiguousTitle {
+        kind: String,
+        title: String,
+        matches: Vec<(String, String)>,
+    },
+
+    #[error("SSE stream error: {context}")]
+    SseParseError { context: String },
+}
+
+impl Error {
+    /// Returns the HTTP status code if this is an API error, or `None` otherwise.
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::ApiError { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if this is an HTTP 401 Unauthorized error.
+    pub fn is_unauthorized(&self) -> bool {
+        self.http_status() == Some(401)
+    }
+
+    /// Returns `true` if this is an HTTP 403 Forbidden error.
+    pub fn is_forbidden(&self) -> bool {
+        self.http_status() == Some(403)
+    }
+
+    /// Returns `true` if this is an HTTP 404 Not Found error or a title-based `NotFound`.
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::NotFound { .. }) || self.http_status() == Some(404)
+    }
+
+    /// Returns `true` if this error is transient and the request should be retried.
+    /// Covers rate limiting (429), server errors (502/503/504), and network failures.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::ApiError { status, .. } => matches!(status, 429 | 502 | 503 | 504),
+            Self::RequestFailed { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 pub(crate) trait UreqResultExt<T> {

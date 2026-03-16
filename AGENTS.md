@@ -23,30 +23,30 @@ src/ascend_tools/
 │       ├── client.rs        # AscendClient — typed HTTP methods for /api/v1
 │       ├── config.rs        # env var + CLI flag resolution
 │       ├── error.rs         # public typed Error enum + Result alias for SDK consumers
-│       └── models.rs        # Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       └── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
 │
 ├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 8 tools via rmcp #[tool_router]
+│       ├── server.rs        # AscendMcpServer — 18 tools via rmcp #[tool_router]
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
 │   └── src/
-│       ├── lib.rs           # pub fn run(args) — testable entry point
+│       ├── lib.rs           # pub fn run_cli(args) — testable entry point
 │       ├── main.rs          # binary entry point
 │       ├── cli.rs           # clap commands, table/json output, print_table helper
 │       └── skill-cli.md     # SKILL.md template (embedded via include_str!, installed by `skill install`)
 │
 └── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
     └── src/
-        └── lib.rs           # exposes Client class + run() to Python via pythonize (direct Rust→Python dict conversion)
+        └── lib.rs           # exposes Client class + run_cli() to Python via pythonize (direct Rust→Python dict conversion)
 ```
 
 The `-py` crate is **not** in the Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop` and has its own Cargo.lock. The `-mcp` crate uses `rmcp` for the MCP protocol implementation.
 Integration tests live under `ascend-tools-core/tests/` and `ascend-tools-cli/tests/`.
 
-PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
+PyPI: `ascend-tools`. Crates.io: not yet published. Installed binary: `ascend-tools`.
 
 ## development
 
@@ -101,15 +101,26 @@ export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.de
 ```
 ascend-tools [-o text|json] [-V]
 
-  runtime list [--id, --kind, --project-uuid, --environment-uuid]
-  runtime get <UUID>
-  runtime resume <UUID>
-  runtime pause <UUID>
+  workspace list [--environment <NAME>] [--project <NAME>]
+  workspace get <TITLE>
+  workspace create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH> [--git-branch-base, --size, --storage-size, --auto-snooze-timeout-minutes]
+  workspace update <TITLE> [--title, --git-branch, --git-branch-base, --profile, --size, --storage-size, --auto-snooze-timeout-minutes]
+  workspace pause <TITLE>
+  workspace resume <TITLE>
+  workspace delete <TITLE>
 
-  flow list --runtime <UUID>
-  flow run <FLOW_NAME> --runtime <UUID> [--spec '{}'] [--resume]
-  flow list-runs -r/--runtime <UUID> [--status, -f/--flow-name, --since, --until, --offset, --limit]
-  flow get-run <RUN_NAME> -r/--runtime <UUID>
+  deployment list [--environment <NAME>] [--project <NAME>]
+  deployment get <TITLE>
+  deployment create --title <TITLE> --environment <NAME> --project <NAME> --profile <NAME> --git-branch <BRANCH> [--git-branch-base, --size, --storage-size, --enable-automations]
+  deployment update <TITLE> [--title, --git-branch, --git-branch-base, --profile, --size, --storage-size, --enable-automations]
+  deployment pause-automations <TITLE>
+  deployment resume-automations <TITLE>
+  deployment delete <TITLE>
+
+  flow list --workspace <TITLE> | --deployment <TITLE>
+  flow run <FLOW_NAME> --workspace <TITLE> | --deployment <TITLE> [--spec '{}'] [--resume]
+  flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
+  flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
   skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
 
@@ -117,6 +128,8 @@ ascend-tools [-o text|json] [-V]
 ```
 
 Default output is table format. Use `-o json` for machine-readable output.
+
+`--environment` and `--project` accept friendly names (titles), not UUIDs. UUIDs still work for all commands via `--uuid` flag.
 
 No subcommand prints help. Auth params can be passed as `--service-account-id`, `--service-account-key`, etc. or via env vars. Secret values are hidden in `--help` output.
 
@@ -135,19 +148,27 @@ client = Client(
     instance_api_url="https://api.instance.ascend.io",
 )
 
-# Runtimes
-client.list_runtimes()
-client.list_runtimes(kind="deployment")
-client.get_runtime(uuid="...")
+# Workspaces
+client.list_workspaces()
+client.list_workspaces(environment="Production", project="My Project")
+client.get_workspace(title="My Workspace")
+client.pause_workspace(title="My Workspace")
+client.resume_workspace(title="My Workspace")
+client.delete_workspace(title="My Workspace")
+
+# Deployments
+client.list_deployments()
+client.get_deployment(title="My Deployment")
+client.delete_deployment(title="My Deployment")
 
 # Flows
-client.list_flows(runtime_uuid="...")
-client.run_flow(runtime_uuid="...", flow_name="sales")
+client.list_flows(workspace="My Workspace")
+client.run_flow(flow="sales", workspace="My Workspace")
 
 # Flow runs
-client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow_name="sales", limit=10)
-client.get_flow_run(runtime_uuid="...", name="fr-...")
+client.list_flow_runs(workspace="My Workspace", status="running")
+client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
+client.get_flow_run(name="fr-...", workspace="My Workspace")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
@@ -165,13 +186,23 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 
 | Tool | Description |
 |------|-------------|
-| `list_runtimes` | List runtimes with optional filters (id, kind, project_uuid, environment_uuid) |
-| `get_runtime` | Get a runtime by UUID |
-| `resume_runtime` | Resume a paused runtime |
-| `pause_runtime` | Pause a running runtime |
-| `list_flows` | List flows in a runtime |
+| `list_workspaces` | List workspaces with optional filters (environment, project) |
+| `get_workspace` | Get a workspace by title |
+| `create_workspace` | Create a new workspace |
+| `update_workspace` | Update an existing workspace |
+| `pause_workspace` | Pause a running workspace |
+| `resume_workspace` | Resume a paused workspace |
+| `delete_workspace` | Delete a workspace |
+| `list_deployments` | List deployments with optional filters (environment, project) |
+| `get_deployment` | Get a deployment by title |
+| `create_deployment` | Create a new deployment |
+| `update_deployment` | Update an existing deployment |
+| `pause_deployment_automations` | Pause automations on a deployment |
+| `resume_deployment_automations` | Resume automations on a deployment |
+| `delete_deployment` | Delete a deployment |
+| `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
-| `list_flow_runs` | List flow runs with filters (status, flow_name, since, until, offset, limit) |
+| `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
 
 ### usage with Claude Code
@@ -265,8 +296,11 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 |----------|--------|-------------|
 | `/api/v1/auth/config` | GET | Get JWT audience domain for SA authentication |
 | `/api/v1/auth/token` | POST | Exchange SA JWT for instance token (no pre-existing token required) |
-| `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, project_uuid, environment_uuid) |
+| `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, title, project_uuid, environment_uuid) |
+| `/api/v1/runtimes` | POST | Create a runtime |
 | `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
+| `/api/v1/runtimes/{uuid}` | PATCH | Update a runtime |
+| `/api/v1/runtimes/{uuid}` | DELETE | Delete a runtime |
 | `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
 | `/api/v1/runtimes/{uuid}/flows/{name}:run` | POST | Trigger a flow run |
 | `/api/v1/flow-runs` | GET | List flow runs (requires runtime_uuid, filters: status, flow, since, until) |
@@ -288,7 +322,7 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 - CLI prints tables by default, JSON with `-o json`; empty results print "No results." to stderr
 - MCP tool parameters use `schemars` `JsonSchema` derive for automatic JSON Schema generation; doc comments on fields become schema descriptions
 - MCP `FlowRunSpec` uses `#[serde(flatten)]` with a catch-all map for forward compatibility with new backend fields
-- PyO3 `run()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
+- PyO3 `run_cli()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
 - Test coverage includes integration tests with mock servers (`mockito`) for core HTTP/auth behavior, MCP tool behavior, and CLI output regressions
 - When adding or changing CLI commands, update `src/ascend_tools/ascend-tools-cli/src/skill-cli.md` to keep the skill in sync
 

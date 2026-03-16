@@ -25,7 +25,7 @@ uv tool install --upgrade ascend-tools
 You can also run without installing:
 
 ```bash
-uvx ascend-tools runtime list
+uvx ascend-tools workspace list
 ```
 
 ### Python SDK
@@ -66,7 +66,7 @@ mv ascend-tools /usr/local/bin/
 
 ```bash
 # Set version and platform
-VERSION="v0.4.0"
+VERSION="v0.5.0"
 PLATFORM="aarch64-apple-darwin"
 
 # Download and extract
@@ -106,7 +106,7 @@ export ASCEND_SERVICE_ACCOUNT_ID="<YOUR_SERVICE_ACCOUNT_ID>"
 export ASCEND_SERVICE_ACCOUNT_KEY="<YOUR_SERVICE_ACCOUNT_KEY>"
 export ASCEND_INSTANCE_API_URL="<YOUR_INSTANCE_API_URL>"
 
-ascend-tools runtime list
+ascend-tools workspace list
 ```
 
 See the [Quickstart](QUICKSTART.md) for the full setup walkthrough.

@@ -1,13 +1,11 @@
 ---
 name: ascend-tools-python
-description: Use the ascend-tools Python SDK to manage Ascend runtimes, flows, and flow runs.
+description: Use the ascend-tools Python SDK to manage Ascend workspaces, deployments, flows, and flow runs.
 ---
 
 # ascend-tools Python SDK
 
-Manage Ascend runtimes, flows, and flow runs from Python via the `ascend-tools` SDK.
-
-> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
+Manage Ascend workspaces, deployments, flows, and flow runs from Python via the `ascend-tools` SDK.
 
 ## Installation
 
@@ -53,40 +51,42 @@ from ascend_tools import Client
 client = Client()
 ```
 
-### Runtimes
+### Workspaces
 
 ```python
-# List all runtimes
-client.list_runtimes()
+client.list_workspaces()
+client.list_workspaces(environment="Production", project="My Project")
+client.get_workspace(title="My Workspace")
+client.pause_workspace(title="My Workspace")
+client.resume_workspace(title="My Workspace")
+client.delete_workspace(title="My Workspace")
+```
 
-# Filter by id, kind, project, or environment
-client.list_runtimes(kind="deployment")
-client.list_runtimes(project_uuid="...", environment_uuid="...")
+### Deployments
 
-# Get a single runtime
-client.get_runtime(uuid="...")
-
-# Pause / resume
-client.pause_runtime(uuid="...")
-client.resume_runtime(uuid="...")
+```python
+client.list_deployments()
+client.get_deployment(title="My Deployment")
+client.delete_deployment(title="My Deployment")
 ```
 
 ### Flows
 
 ```python
-# List flows in a runtime
-client.list_flows(runtime_uuid="...")
+# List flows in a workspace or deployment
+client.list_flows(workspace="My Workspace")
+client.list_flows(deployment="My Deployment")
 
 # Trigger a flow run
-client.run_flow(runtime_uuid="...", flow_name="sales")
+client.run_flow(flow="sales", workspace="My Workspace")
 
-# Resume a paused runtime before running
-client.run_flow(runtime_uuid="...", flow_name="sales", resume=True)
+# Resume a paused workspace before running
+client.run_flow(flow="sales", workspace="My Workspace", resume=True)
 
 # Pass a spec to control behavior
 client.run_flow(
-    runtime_uuid="...",
-    flow_name="sales",
+    flow="sales",
+    workspace="My Workspace",
     spec={"components": ["component_a", "component_b"]},
 )
 ```
@@ -95,18 +95,18 @@ client.run_flow(
 
 ```python
 # List flow runs (returns {"items": [...], "truncated": bool})
-client.list_flow_runs(runtime_uuid="...")
+client.list_flow_runs(workspace="My Workspace")
 
 # Filter by status, flow name, or time range
-client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow_name="sales", limit=10)
-client.list_flow_runs(runtime_uuid="...", since="2025-01-01T00:00:00Z", until="2025-12-31T23:59:59Z")
+client.list_flow_runs(workspace="My Workspace", status="running")
+client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
+client.list_flow_runs(workspace="My Workspace", since="2025-01-01T00:00:00Z", until="2025-12-31T23:59:59Z")
 
 # Paginate
-client.list_flow_runs(runtime_uuid="...", offset=10, limit=50)
+client.list_flow_runs(workspace="My Workspace", offset=10, limit=50)
 
 # Get a single flow run
-client.get_flow_run(runtime_uuid="...", name="fr-...")
+client.get_flow_run(name="fr-...", workspace="My Workspace")
 ```
 
 ### Flow run spec
@@ -114,9 +114,9 @@ client.get_flow_run(runtime_uuid="...", name="fr-...")
 Pass `spec` as a dict to `run_flow` to control flow run behavior:
 
 ```python
-client.run_flow(runtime_uuid="...", flow_name="sales", spec={"full_refresh": True})
-client.run_flow(runtime_uuid="...", flow_name="sales", spec={"run_tests": False})
-client.run_flow(runtime_uuid="...", flow_name="sales", spec={"parameters": {"key": "value"}})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"full_refresh": True})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"run_tests": False})
+client.run_flow(flow="sales", workspace="My Workspace", spec={"parameters": {"key": "value"}})
 ```
 
 Available spec fields: `full_refresh`, `components`, `component_categories`, `parameters`, `run_tests`, `store_test_results`, `halt_flow_on_error`, `disable_optimizers`, `update_materialization_type`, `deep_data_pruning`, `backfill_missing_statistics`, `disable_incremental_metadata_collection`, `runner_overrides`.

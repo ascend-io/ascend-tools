@@ -1,6 +1,6 @@
 # Use the Python SDK
 
-Manage Ascend runtimes, flows, and flow runs from Python.
+Manage Ascend workspaces, deployments, flows, and flow runs from Python.
 
 ## Install
 
@@ -40,37 +40,26 @@ client = Client(
 
 All parameters are keyword-only.
 
-## Manage runtimes
+## Manage workspaces and deployments
 
-### List runtimes
+### Workspaces
 
 ```python
-runtimes = client.list_runtimes()
+client.list_workspaces()
+client.list_workspaces(environment="Production", project="My Project")
+client.get_workspace(title="My Workspace")
+client.pause_workspace(title="My Workspace")
+client.resume_workspace(title="My Workspace")
+client.delete_workspace(title="My Workspace")
 ```
 
-Filter by ID, kind, project, or environment:
+### Deployments
 
 ```python
-client.list_runtimes(id="my-runtime")
-client.list_runtimes(kind="deployment")
-client.list_runtimes(project_uuid="...", environment_uuid="...")
-```
-
-Returns `list[dict]`.
-
-### Get a runtime
-
-```python
-runtime = client.get_runtime(uuid="<RUNTIME_UUID>")
-```
-
-Returns `dict` with fields: `uuid`, `id`, `title`, `kind`, `project_uuid`, `environment_uuid`, `build_uuid`, `created_at`, `updated_at`, `health`, `paused`.
-
-### Pause and resume
-
-```python
-client.pause_runtime(uuid="<RUNTIME_UUID>")
-client.resume_runtime(uuid="<RUNTIME_UUID>")
+client.list_deployments()
+client.list_deployments(environment="Production")
+client.get_deployment(title="My Deployment")
+client.delete_deployment(title="My Deployment")
 ```
 
 ## Manage flows
@@ -78,7 +67,8 @@ client.resume_runtime(uuid="<RUNTIME_UUID>")
 ### List flows
 
 ```python
-flows = client.list_flows(runtime_uuid="<RUNTIME_UUID>")
+flows = client.list_flows(workspace="My Workspace")
+flows = client.list_flows(deployment="My Deployment")
 ```
 
 Returns `list[dict]`, each with a `name` field.
@@ -86,15 +76,15 @@ Returns `list[dict]`, each with a `name` field.
 ### Run a flow
 
 ```python
-result = client.run_flow(runtime_uuid="<RUNTIME_UUID>", flow_name="sales")
+result = client.run_flow(flow="sales", workspace="My Workspace")
 ```
 
-Resume a paused runtime before running:
+Resume a paused workspace before running:
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
-    flow_name="sales",
+    flow="sales",
+    workspace="My Workspace",
     resume=True,
 )
 ```
@@ -103,16 +93,16 @@ Pass a spec dict for advanced options:
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
-    flow_name="sales",
+    flow="sales",
+    workspace="My Workspace",
     spec={"full_refresh": True},
 )
 ```
 
 ```python
 result = client.run_flow(
-    runtime_uuid="<RUNTIME_UUID>",
-    flow_name="sales",
+    flow="sales",
+    workspace="My Workspace",
     spec={
         "components": ["transform_orders", "transform_customers"],
         "parameters": {"date": "2025-01-01"},
@@ -131,7 +121,7 @@ See [CLI guide](cli.md#flow-run-spec-options) for the full spec options referenc
 ### List flow runs
 
 ```python
-result = client.list_flow_runs(runtime_uuid="<RUNTIME_UUID>")
+result = client.list_flow_runs(workspace="My Workspace")
 runs = result["items"]       # list[dict]
 truncated = result["truncated"]  # bool
 ```
@@ -139,16 +129,16 @@ truncated = result["truncated"]  # bool
 Filter by status, flow name, time range, or paginate:
 
 ```python
-client.list_flow_runs(runtime_uuid="...", status="running")
-client.list_flow_runs(runtime_uuid="...", flow_name="sales")
-client.list_flow_runs(runtime_uuid="...", since="2025-01-01T00:00:00Z")
-client.list_flow_runs(runtime_uuid="...", limit=10, offset=20)
+client.list_flow_runs(workspace="My Workspace", status="running")
+client.list_flow_runs(deployment="My Deployment", flow="sales")
+client.list_flow_runs(workspace="My Workspace", since="2025-01-01T00:00:00Z")
+client.list_flow_runs(workspace="My Workspace", limit=10, offset=20)
 ```
 
 ### Get a flow run
 
 ```python
-run = client.get_flow_run(runtime_uuid="<RUNTIME_UUID>", name="fr-...")
+run = client.get_flow_run(name="fr-...", workspace="My Workspace")
 ```
 
 Returns `dict` with fields: `name`, `flow`, `build_uuid`, `runtime_uuid`, `status`, `created_at`, `error`.
@@ -167,11 +157,11 @@ The SDK raises exceptions for:
 - Missing configuration (environment variables not set)
 - Authentication failures (invalid or expired key)
 - HTTP errors (API returns non-2xx status)
-- Runtime state errors (paused, starting, error state)
+- State errors (paused, starting, error state)
 
 ```python
 try:
-    client.run_flow(runtime_uuid="...", flow_name="sales")
+    client.run_flow(flow="sales", workspace="My Workspace")
 except Exception as e:
     print(f"Error: {e}")
 ```

@@ -8,11 +8,14 @@ use rmcp::{
 };
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{FlowRunFilters, RuntimeFilters};
+use ascend_tools::models::{FlowRunFilters, RuntimeCreate, RuntimeFilters, RuntimeUpdate};
 
 use crate::params::{
-    GetFlowRunParams, GetRuntimeParams, ListFlowRunsParams, ListFlowsParams, ListRuntimesParams,
-    PauseRuntimeParams, ResumeRuntimeParams, RunFlowParams,
+    CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
+    GetDeploymentParams, GetFlowRunParams, GetWorkspaceParams, ListDeploymentsParams,
+    ListFlowRunsParams, ListFlowsParams, ListWorkspacesParams, PauseDeploymentAutomationsParams,
+    PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
+    UpdateDeploymentParams, UpdateWorkspaceParams,
 };
 
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
@@ -28,6 +31,16 @@ async fn blocking<T: serde::Serialize + Send + 'static>(
     let json = serde_json::to_string_pretty(&result)
         .map_err(|e| McpError::internal_error(format!("JSON serialization error: {e}"), None))?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
+}
+
+/// Resolve target UUID from workspace_title/deployment_title/uuid params.
+fn resolve_flow_target(
+    client: &AscendClient,
+    workspace: Option<String>,
+    deployment: Option<String>,
+    uuid: Option<String>,
+) -> ascend_tools::Result<String> {
+    client.resolve_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref())
 }
 
 #[derive(Clone)]
@@ -70,63 +83,243 @@ impl AscendMcpServer {
         })
     }
 
-    #[tool(
-        description = "List Ascend runtimes, optionally filtered by id, kind, project, or environment"
-    )]
-    async fn list_runtimes(
+    // -- Workspace tools --
+
+    #[tool(description = "List workspaces, optionally filtered by title, project, or environment")]
+    async fn list_workspaces(
         &self,
-        Parameters(params): Parameters<ListRuntimesParams>,
+        Parameters(params): Parameters<ListWorkspacesParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
             let mut filters = RuntimeFilters::default();
-            filters.id = params.id;
-            filters.kind = params.kind;
-            filters.project_uuid = params.project_uuid;
-            filters.environment_uuid = params.environment_uuid;
-            c.list_runtimes(filters)
+            filters.title = params.title;
+            filters.project = params.project;
+            filters.environment = params.environment;
+            c.list_workspaces(filters)
         })
         .await
     }
 
-    #[tool(description = "Get details of a specific Ascend runtime by UUID")]
-    async fn get_runtime(
+    #[tool(description = "Get a workspace by title (or UUID)")]
+    async fn get_workspace(
         &self,
-        Parameters(params): Parameters<GetRuntimeParams>,
+        Parameters(params): Parameters<GetWorkspaceParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        blocking(client, move |c| c.get_runtime(&params.uuid)).await
+        blocking(client, move |c| {
+            c.get_workspace(&params.title, params.uuid.as_deref())
+        })
+        .await
     }
 
-    #[tool(description = "Resume a paused Ascend runtime")]
-    async fn resume_runtime(
+    #[tool(description = "Create a workspace")]
+    async fn create_workspace(
         &self,
-        Parameters(params): Parameters<ResumeRuntimeParams>,
+        Parameters(params): Parameters<CreateWorkspaceParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        blocking(client, move |c| c.resume_runtime(&params.runtime_uuid)).await
+        blocking(client, move |c| {
+            let mut create = RuntimeCreate::new(
+                params.title,
+                params.environment,
+                params.project,
+                params.profile,
+                params.git_branch,
+            );
+            create.git_branch_base = params.git_branch_base;
+            create.size = params.size;
+            create.storage_size = params.storage_size;
+            create.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
+            c.create_workspace(&create)
+        })
+        .await
     }
 
-    #[tool(description = "Pause a running Ascend runtime")]
-    async fn pause_runtime(
+    #[tool(description = "Update a workspace (only provided fields are changed)")]
+    async fn update_workspace(
         &self,
-        Parameters(params): Parameters<PauseRuntimeParams>,
+        Parameters(params): Parameters<UpdateWorkspaceParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        blocking(client, move |c| c.pause_runtime(&params.runtime_uuid)).await
+        blocking(client, move |c| {
+            let mut update = RuntimeUpdate::default();
+            update.title = params.title;
+            update.git_branch = params.git_branch;
+            update.git_branch_base = params.git_branch_base;
+            update.profile = params.profile;
+            update.size = params.size;
+            update.storage_size = params.storage_size;
+            update.auto_snooze_timeout_minutes = params.auto_snooze_timeout_minutes;
+            c.update_workspace(&params.current_title, params.uuid.as_deref(), &update)
+        })
+        .await
     }
 
-    #[tool(description = "List flows in an Ascend runtime")]
+    #[tool(description = "Pause a workspace")]
+    async fn pause_workspace(
+        &self,
+        Parameters(params): Parameters<PauseWorkspaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.pause_workspace(&params.title, params.uuid.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Resume a paused workspace")]
+    async fn resume_workspace(
+        &self,
+        Parameters(params): Parameters<ResumeWorkspaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.resume_workspace(&params.title, params.uuid.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Delete a workspace")]
+    async fn delete_workspace(
+        &self,
+        Parameters(params): Parameters<DeleteWorkspaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.delete_workspace(&params.title, params.uuid.as_deref())
+        })
+        .await
+        .map(|_| CallToolResult::success(vec![Content::text("Workspace deleted")]))
+    }
+
+    // -- Deployment tools --
+
+    #[tool(description = "List deployments, optionally filtered by title, project, or environment")]
+    async fn list_deployments(
+        &self,
+        Parameters(params): Parameters<ListDeploymentsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let mut filters = RuntimeFilters::default();
+            filters.title = params.title;
+            filters.project = params.project;
+            filters.environment = params.environment;
+            c.list_deployments(filters)
+        })
+        .await
+    }
+
+    #[tool(description = "Get a deployment by title (or UUID)")]
+    async fn get_deployment(
+        &self,
+        Parameters(params): Parameters<GetDeploymentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.get_deployment(&params.title, params.uuid.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Create a deployment")]
+    async fn create_deployment(
+        &self,
+        Parameters(params): Parameters<CreateDeploymentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let mut create = RuntimeCreate::new(
+                params.title,
+                params.environment,
+                params.project,
+                params.profile,
+                params.git_branch,
+            );
+            create.git_branch_base = params.git_branch_base;
+            create.size = params.size;
+            create.storage_size = params.storage_size;
+            create.enable_automations = params.enable_automations;
+            c.create_deployment(&create)
+        })
+        .await
+    }
+
+    #[tool(description = "Update a deployment (only provided fields are changed)")]
+    async fn update_deployment(
+        &self,
+        Parameters(params): Parameters<UpdateDeploymentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let mut update = RuntimeUpdate::default();
+            update.title = params.title;
+            update.git_branch = params.git_branch;
+            update.git_branch_base = params.git_branch_base;
+            update.profile = params.profile;
+            update.size = params.size;
+            update.storage_size = params.storage_size;
+            update.enable_automations = params.enable_automations;
+            c.update_deployment(&params.current_title, params.uuid.as_deref(), &update)
+        })
+        .await
+    }
+
+    #[tool(description = "Pause automations on a deployment")]
+    async fn pause_deployment_automations(
+        &self,
+        Parameters(params): Parameters<PauseDeploymentAutomationsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.pause_deployment_automations(&params.title, params.uuid.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Resume automations on a deployment")]
+    async fn resume_deployment_automations(
+        &self,
+        Parameters(params): Parameters<ResumeDeploymentAutomationsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.resume_deployment_automations(&params.title, params.uuid.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Delete a deployment")]
+    async fn delete_deployment(
+        &self,
+        Parameters(params): Parameters<DeleteDeploymentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.delete_deployment(&params.title, params.uuid.as_deref())
+        })
+        .await
+        .map(|_| CallToolResult::success(vec![Content::text("Deployment deleted")]))
+    }
+
+    // -- Flow tools --
+
+    #[tool(description = "List flows in a workspace or deployment")]
     async fn list_flows(
         &self,
         Parameters(params): Parameters<ListFlowsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
-        blocking(client, move |c| c.list_flows(&params.runtime_uuid)).await
+        blocking(client, move |c| {
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
+            c.list_flows(&uuid)
+        })
+        .await
     }
 
     #[tool(
-        description = "Trigger a flow run in an Ascend runtime. Checks runtime health first; use resume=true to resume a paused runtime before running."
+        description = "Trigger a flow run (checks health first; use resume=true to resume a paused workspace/deployment)"
     )]
     async fn run_flow(
         &self,
@@ -139,14 +332,16 @@ impl AscendMcpServer {
             .transpose()
             .map_err(|e| McpError::internal_error(format!("invalid spec: {e}"), None))?;
         let resume = params.resume.unwrap_or(false);
+        let flow = params.flow;
         blocking(client, move |c| {
-            c.run_flow(&params.runtime_uuid, &params.flow_name, spec, resume)
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
+            c.run_flow(&uuid, &flow, spec, resume)
         })
         .await
     }
 
     #[tool(
-        description = "List flow runs in an Ascend runtime, optionally filtered by status or flow name"
+        description = "List flow runs in a workspace or deployment, optionally filtered by status or flow name"
     )]
     async fn list_flow_runs(
         &self,
@@ -154,14 +349,15 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
             let mut filters = FlowRunFilters::default();
             filters.status = params.status;
-            filters.flow = params.flow_name;
+            filters.flow = params.flow;
             filters.since = params.since;
             filters.until = params.until;
             filters.offset = params.offset;
             filters.limit = params.limit;
-            c.list_flow_runs(&params.runtime_uuid, filters)
+            c.list_flow_runs(&uuid, filters)
         })
         .await
     }
@@ -173,7 +369,8 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, move |c| {
-            c.get_flow_run(&params.runtime_uuid, &params.name)
+            let uuid = resolve_flow_target(c, params.workspace, params.deployment, params.uuid)?;
+            c.get_flow_run(&uuid, &params.name)
         })
         .await
     }
@@ -184,7 +381,7 @@ impl ServerHandler for AscendMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "Ascend MCP server. Provides tools to manage runtimes, flows, and flow runs."
+                "Ascend MCP server. Provides tools to manage workspaces, deployments, and flows."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
@@ -202,10 +399,7 @@ mod tests {
     use rmcp::handler::server::wrapper::Parameters;
 
     use super::*;
-    use crate::params::{
-        GetFlowRunParams, GetRuntimeParams, ListFlowRunsParams, ListFlowsParams,
-        ListRuntimesParams, PauseRuntimeParams, ResumeRuntimeParams, RunFlowParams,
-    };
+    use crate::params::{GetWorkspaceParams, ListDeploymentsParams, ListWorkspacesParams};
 
     fn test_server(server: &Server) -> AscendMcpServer {
         let key = URL_SAFE_NO_PAD.encode([7u8; 32]);
@@ -234,6 +428,24 @@ mod tests {
             .create();
     }
 
+    fn runtime_json(kind: &str) -> serde_json::Value {
+        serde_json::json!({
+            "uuid": "rt-1",
+            "id": "runtime-1",
+            "title": "My Runtime",
+            "kind": kind,
+            "project_uuid": "p-1",
+            "environment_uuid": "e-1",
+            "build_uuid": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "health": "running",
+            "paused": false,
+            "profile_name": "default",
+            "working_git_branch": "main"
+        })
+    }
+
     fn tool_result_json(result: CallToolResult) -> serde_json::Value {
         let text = serde_json::to_value(result).unwrap()["content"][0]["text"]
             .as_str()
@@ -243,354 +455,107 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_tools_succeed_with_expected_json_shapes() {
+    async fn workspace_tools_succeed() {
         let mut server = Server::new_async().await;
         mock_auth(&mut server);
 
-        let list_runtimes = server
+        let list_mock = server
             .mock("GET", "/api/v1/runtimes")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!([{
-                    "uuid": "rt-1",
-                    "id": "runtime-1",
-                    "title": "Runtime 1",
-                    "kind": "deployment",
-                    "project_uuid": "p-1",
-                    "environment_uuid": "e-1",
-                    "build_uuid": null,
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "updated_at": "2026-01-01T00:00:00Z",
-                    "health": "running",
-                    "paused": false
-                }])
-                .to_string(),
-            )
-            .expect(1)
-            .create();
-
-        let get_runtime = server
-            .mock("GET", "/api/v1/runtimes/rt-1")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "uuid": "rt-1",
-                    "id": "runtime-1",
-                    "title": "Runtime 1",
-                    "kind": "deployment",
-                    "project_uuid": "p-1",
-                    "environment_uuid": "e-1",
-                    "build_uuid": null,
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "updated_at": "2026-01-01T00:00:00Z",
-                    "health": "running",
-                    "paused": false
-                })
-                .to_string(),
-            )
-            .expect(2)
-            .create();
-
-        let resume_runtime = server
-            .mock("POST", "/api/v1/runtimes/rt-1:resume")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "uuid": "rt-1",
-                    "id": "runtime-1",
-                    "title": "Runtime 1",
-                    "kind": "deployment",
-                    "project_uuid": "p-1",
-                    "environment_uuid": "e-1",
-                    "build_uuid": null,
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "updated_at": "2026-01-01T00:00:00Z",
-                    "health": "running",
-                    "paused": false
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create();
-
-        let pause_runtime = server
-            .mock("POST", "/api/v1/runtimes/rt-1:pause")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "uuid": "rt-1",
-                    "id": "runtime-1",
-                    "title": "Runtime 1",
-                    "kind": "deployment",
-                    "project_uuid": "p-1",
-                    "environment_uuid": "e-1",
-                    "build_uuid": null,
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "updated_at": "2026-01-01T00:00:00Z",
-                    "health": "running",
-                    "paused": true
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create();
-
-        let list_flows = server
-            .mock("GET", "/api/v1/runtimes/rt-1/flows")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(r#"[{"name":"sales"}]"#)
-            .expect(1)
-            .create();
-
-        let run_flow = server
-            .mock("POST", "/api/v1/runtimes/rt-1/flows/sales:run")
-            .match_header("authorization", "Bearer mcp-token")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(r#"{"event_uuid":"ev-1","event_type":"flow_run_requested"}"#)
-            .expect(1)
-            .create();
-
-        let list_flow_runs = server
-            .mock("GET", "/api/v1/flow-runs")
-            .match_header("authorization", "Bearer mcp-token")
-            .match_query(mockito::Matcher::AllOf(vec![
-                mockito::Matcher::UrlEncoded("runtime_uuid".into(), "rt-1".into()),
-                mockito::Matcher::UrlEncoded("status".into(), "running".into()),
-                mockito::Matcher::UrlEncoded("flow".into(), "sales".into()),
-            ]))
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "items": [{
-                        "name": "fr-1",
-                        "flow": "sales",
-                        "build_uuid": "b-1",
-                        "runtime_uuid": "rt-1",
-                        "status": "running",
-                        "created_at": "2026-01-01T00:00:00Z",
-                        "error": null
-                    }],
-                    "truncated": false
-                })
-                .to_string(),
-            )
-            .expect(1)
-            .create();
-
-        let get_flow_run = server
-            .mock("GET", "/api/v1/flow-runs/fr-1")
-            .match_header("authorization", "Bearer mcp-token")
             .match_query(mockito::Matcher::UrlEncoded(
-                "runtime_uuid".into(),
-                "rt-1".into(),
+                "kind".into(),
+                "workspace".into(),
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "name": "fr-1",
-                    "flow": "sales",
-                    "build_uuid": "b-1",
-                    "runtime_uuid": "rt-1",
-                    "status": "running",
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "error": null
-                })
-                .to_string(),
-            )
+            .with_body(serde_json::json!([runtime_json("workspace")]).to_string())
+            .expect(1)
+            .create();
+
+        // For get_workspace: first resolves title via list, then gets by UUID
+        let resolve_mock = server
+            .mock("GET", "/api/v1/runtimes")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("title".into(), "My Runtime".into()),
+                mockito::Matcher::UrlEncoded("kind".into(), "workspace".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::json!([runtime_json("workspace")]).to_string())
             .expect(1)
             .create();
 
         let mcp = test_server(&server);
 
-        let runtimes = mcp
-            .list_runtimes(Parameters(ListRuntimesParams {
-                id: None,
-                kind: None,
-                project_uuid: None,
-                environment_uuid: None,
+        let workspaces = mcp
+            .list_workspaces(Parameters(ListWorkspacesParams {
+                title: None,
+                project: None,
+                environment: None,
             }))
             .await
             .unwrap();
-        assert!(tool_result_json(runtimes).is_array());
+        assert!(tool_result_json(workspaces).is_array());
 
-        let runtime = mcp
-            .get_runtime(Parameters(GetRuntimeParams {
-                uuid: "rt-1".to_string(),
+        // get_workspace resolves by title via list (no separate GET by UUID)
+        let workspace = mcp
+            .get_workspace(Parameters(GetWorkspaceParams {
+                title: "My Runtime".to_string(),
+                uuid: None,
             }))
             .await
             .unwrap();
-        assert_eq!(tool_result_json(runtime)["uuid"], "rt-1");
+        assert_eq!(tool_result_json(workspace)["uuid"], "rt-1");
 
-        let resumed = mcp
-            .resume_runtime(Parameters(ResumeRuntimeParams {
-                runtime_uuid: "rt-1".to_string(),
+        list_mock.assert();
+        resolve_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn deployment_list_filters_by_kind() {
+        let mut server = Server::new_async().await;
+        mock_auth(&mut server);
+
+        let mock = server
+            .mock("GET", "/api/v1/runtimes")
+            .match_query(mockito::Matcher::UrlEncoded(
+                "kind".into(),
+                "deployment".into(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::json!([runtime_json("deployment")]).to_string())
+            .expect(1)
+            .create();
+
+        let mcp = test_server(&server);
+
+        let deployments = mcp
+            .list_deployments(Parameters(ListDeploymentsParams {
+                title: None,
+                project: None,
+                environment: None,
             }))
             .await
             .unwrap();
-        assert_eq!(tool_result_json(resumed)["paused"], false);
-
-        let paused = mcp
-            .pause_runtime(Parameters(PauseRuntimeParams {
-                runtime_uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap();
-        assert_eq!(tool_result_json(paused)["paused"], true);
-
-        let flows = mcp
-            .list_flows(Parameters(ListFlowsParams {
-                runtime_uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap();
-        assert_eq!(tool_result_json(flows)[0]["name"], "sales");
-
-        let trigger = mcp
-            .run_flow(Parameters(RunFlowParams {
-                runtime_uuid: "rt-1".to_string(),
-                flow_name: "sales".to_string(),
-                spec: None,
-                resume: None,
-            }))
-            .await
-            .unwrap();
-        assert_eq!(tool_result_json(trigger)["event_uuid"], "ev-1");
-
-        let runs = mcp
-            .list_flow_runs(Parameters(ListFlowRunsParams {
-                runtime_uuid: "rt-1".to_string(),
-                status: Some("running".to_string()),
-                flow_name: Some("sales".to_string()),
-                since: None,
-                until: None,
-                offset: None,
-                limit: None,
-            }))
-            .await
-            .unwrap();
-        let runs_json = tool_result_json(runs);
-        assert_eq!(runs_json["items"][0]["name"], "fr-1");
-        assert_eq!(runs_json["truncated"], false);
-
-        let run = mcp
-            .get_flow_run(Parameters(GetFlowRunParams {
-                runtime_uuid: "rt-1".to_string(),
-                name: "fr-1".to_string(),
-            }))
-            .await
-            .unwrap();
-        assert_eq!(tool_result_json(run)["status"], "running");
-
-        list_runtimes.assert();
-        get_runtime.assert();
-        resume_runtime.assert();
-        pause_runtime.assert();
-        list_flows.assert();
-        run_flow.assert();
-        list_flow_runs.assert();
-        get_flow_run.assert();
+        assert!(tool_result_json(deployments).is_array());
+        mock.assert();
     }
 
     #[tokio::test]
     async fn all_tools_fail_when_client_is_unconfigured() {
         let mcp = AscendMcpServer::with_client_init_error("missing env vars");
 
-        let mut errors = Vec::new();
+        let err = mcp
+            .list_workspaces(Parameters(ListWorkspacesParams {
+                title: None,
+                project: None,
+                environment: None,
+            }))
+            .await
+            .unwrap_err()
+            .to_string();
 
-        errors.push(
-            mcp.list_runtimes(Parameters(ListRuntimesParams {
-                id: None,
-                kind: None,
-                project_uuid: None,
-                environment_uuid: None,
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.get_runtime(Parameters(GetRuntimeParams {
-                uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.resume_runtime(Parameters(ResumeRuntimeParams {
-                runtime_uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.pause_runtime(Parameters(PauseRuntimeParams {
-                runtime_uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.list_flows(Parameters(ListFlowsParams {
-                runtime_uuid: "rt-1".to_string(),
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.run_flow(Parameters(RunFlowParams {
-                runtime_uuid: "rt-1".to_string(),
-                flow_name: "sales".to_string(),
-                spec: None,
-                resume: None,
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.list_flow_runs(Parameters(ListFlowRunsParams {
-                runtime_uuid: "rt-1".to_string(),
-                status: None,
-                flow_name: None,
-                since: None,
-                until: None,
-                offset: None,
-                limit: None,
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-        errors.push(
-            mcp.get_flow_run(Parameters(GetFlowRunParams {
-                runtime_uuid: "rt-1".to_string(),
-                name: "fr-1".to_string(),
-            }))
-            .await
-            .unwrap_err()
-            .to_string(),
-        );
-
-        for err in errors {
-            assert!(err.contains("Ascend client is not configured"));
-            assert!(err.contains("ASCEND_SERVICE_ACCOUNT_ID"));
-        }
+        assert!(err.contains("Ascend client is not configured"));
+        assert!(err.contains("ASCEND_SERVICE_ACCOUNT_ID"));
     }
 }

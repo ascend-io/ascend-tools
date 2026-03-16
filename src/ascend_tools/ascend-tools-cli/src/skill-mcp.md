@@ -1,13 +1,11 @@
 ---
 name: ascend-tools-mcp
-description: Use the ascend-tools MCP server to manage Ascend runtimes, flows, and flow runs.
+description: Use the ascend-tools MCP server to manage Ascend workspaces, deployments, flows, and flow runs.
 ---
 
 # ascend-tools MCP server
 
-Manage Ascend runtimes, flows, and flow runs via MCP tools.
-
-> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
+Manage Ascend workspaces, deployments, flows, and flow runs via MCP tools.
 
 ## Setup
 
@@ -43,59 +41,172 @@ For local setup via uv/uvx, use server name `ascend-tools-dev`.
 
 ## Tools
 
-### list_runtimes
+### list_workspaces
 
-List runtimes with optional filters.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `id` | no | Filter by runtime ID |
-| `kind` | no | Filter by runtime kind |
-| `project_uuid` | no | Filter by project UUID |
-| `environment_uuid` | no | Filter by environment UUID |
-
-### get_runtime
-
-Get a runtime by UUID.
+List workspaces with optional filters.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `uuid` | yes | Runtime UUID |
+| `environment` | no | Filter by environment title |
+| `project` | no | Filter by project title |
 
-### resume_runtime
+### get_workspace
 
-Resume a paused runtime.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
-
-### pause_runtime
-
-Pause a running runtime.
+Get a workspace by title.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
+| `title` | yes | Workspace title |
+
+### create_workspace
+
+Create a new workspace.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Workspace title |
+| `environment` | yes | Environment name (or UUID) |
+| `project` | yes | Project name (or UUID) |
+| `profile` | yes | Configuration profile |
+| `git_branch` | yes | Git branch |
+| `git_branch_base` | no | Base git branch |
+| `size` | no | Size (e.g. Small, Medium, Large) |
+| `storage_size` | no | Storage size in GB |
+| `auto_snooze_timeout_minutes` | no | Minutes of inactivity before auto-snooze |
+
+### update_workspace
+
+Update an existing workspace. Only provided fields are changed.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `current_title` | yes | Current workspace title |
+| `uuid` | no | UUID override (skip title lookup) |
+| `title` | no | New title |
+| `git_branch` | no | New git branch |
+| `git_branch_base` | no | New base git branch |
+| `profile` | no | New profile |
+| `size` | no | New size |
+| `storage_size` | no | New storage size in GB |
+| `auto_snooze_timeout_minutes` | no | New auto-snooze timeout in minutes |
+
+### pause_workspace
+
+Pause a running workspace.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Workspace title |
+
+### resume_workspace
+
+Resume a paused workspace.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Workspace title |
+
+### delete_workspace
+
+Delete a workspace.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Workspace title |
+
+### list_deployments
+
+List deployments with optional filters.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `environment` | no | Filter by environment title |
+| `project` | no | Filter by project title |
+
+### get_deployment
+
+Get a deployment by title.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Deployment title |
+
+### create_deployment
+
+Create a new deployment.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Deployment title |
+| `environment` | yes | Environment name (or UUID) |
+| `project` | yes | Project name (or UUID) |
+| `profile` | yes | Configuration profile |
+| `git_branch` | yes | Git branch |
+| `git_branch_base` | no | Base git branch |
+| `size` | no | Size (e.g. Small, Medium, Large) |
+| `storage_size` | no | Storage size in GB |
+| `enable_automations` | no | Enable automations |
+
+### update_deployment
+
+Update an existing deployment. Only provided fields are changed.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `current_title` | yes | Current deployment title |
+| `uuid` | no | UUID override (skip title lookup) |
+| `title` | no | New title |
+| `git_branch` | no | New git branch |
+| `git_branch_base` | no | New base git branch |
+| `profile` | no | New profile |
+| `size` | no | New size |
+| `storage_size` | no | New storage size in GB |
+| `enable_automations` | no | Enable or disable automations |
+
+### pause_deployment_automations
+
+Pause automations on a deployment.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Deployment title |
+
+### resume_deployment_automations
+
+Resume automations on a deployment.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Deployment title |
+
+### delete_deployment
+
+Delete a deployment.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Deployment title |
 
 ### list_flows
 
-List flows in a runtime.
+List flows in a workspace or deployment.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
+| `workspace` | no | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | Deployment title (provide one of workspace or deployment) |
 
 ### run_flow
 
-Trigger a flow run. Checks runtime health first; use `resume: true` to resume a paused runtime before running.
+Trigger a flow run. Checks health first; use `resume: true` to resume a paused workspace/deployment before running.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
-| `flow_name` | yes | Flow name |
+| `workspace` | no | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | Deployment title (provide one of workspace or deployment) |
+| `flow` | yes | Flow name |
 | `spec` | no | Flow run options (see below) |
-| `resume` | no | Resume the runtime if paused before submitting |
+| `resume` | no | Resume the workspace/deployment if paused before submitting |
 
 ### list_flow_runs
 
@@ -103,9 +214,10 @@ List flow runs with optional filters.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
+| `workspace` | no | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | Deployment title (provide one of workspace or deployment) |
 | `status` | no | Filter by status |
-| `flow_name` | no | Filter by flow name |
+| `flow` | no | Filter by flow name |
 | `since` | no | Filter by start time (ISO 8601) |
 | `until` | no | Filter by end time (ISO 8601) |
 | `offset` | no | Pagination offset |
@@ -117,7 +229,8 @@ Get a flow run by name.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `runtime_uuid` | yes | Runtime UUID |
+| `workspace` | no | Workspace title (provide one of workspace or deployment) |
+| `deployment` | no | Deployment title (provide one of workspace or deployment) |
 | `name` | yes | Flow run name |
 
 ## Flow run spec

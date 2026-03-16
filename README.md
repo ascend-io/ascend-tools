@@ -2,8 +2,6 @@
 
 CLI, SDK, and MCP server for the Ascend REST API.
 
-> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
-
 ## Install
 
 Pre-built binaries are available for Linux and macOS. Windows users should use Linux/macOS.
@@ -24,70 +22,46 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 
 ## CLI
 
-List runtimes:
+List workspaces:
 
 ```bash
-ascend-tools runtime list
+ascend-tools workspace list
 ```
 
-Get a runtime:
+Get a workspace:
 
 ```bash
-ascend-tools runtime get <UUID>
+ascend-tools workspace get "My Workspace"
 ```
 
-Resume a runtime:
+Pause / resume a workspace:
 
 ```bash
-ascend-tools runtime resume <UUID>
+ascend-tools workspace pause "My Workspace"
+ascend-tools workspace resume "My Workspace"
 ```
 
-Pause a runtime:
+List and run flows:
 
 ```bash
-ascend-tools runtime pause <UUID>
+ascend-tools flow list --workspace "My Workspace"
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --resume
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --spec '{"full_refresh": true}'
 ```
 
-List flows:
+Deployments work the same way:
 
 ```bash
-ascend-tools flow list --runtime <UUID>
-```
-
-Run a flow:
-
-```bash
-ascend-tools flow run <FLOW_NAME> --runtime <UUID>
-```
-
-Run a flow and resume the runtime first if paused:
-
-```bash
-ascend-tools flow run <FLOW_NAME> --runtime <UUID> --resume
-```
-
-Run a flow with full refresh:
-
-```bash
-ascend-tools flow run <FLOW_NAME> --runtime <UUID> --spec '{"full_refresh": true}'
-```
-
-List flow runs:
-
-```bash
-ascend-tools flow list-runs --runtime <UUID>
-```
-
-Get a flow run:
-
-```bash
-ascend-tools flow get-run <RUN_NAME> --runtime <UUID>
+ascend-tools deployment list
+ascend-tools deployment get "My Deployment"
+ascend-tools flow list --deployment "My Deployment"
 ```
 
 JSON output:
 
 ```bash
-ascend-tools -o json runtime list
+ascend-tools -o json workspace list
 ```
 
 ## Python SDK
@@ -96,8 +70,8 @@ ascend-tools -o json runtime list
 from ascend_tools import Client
 
 client = Client()  # reads from env vars
-client.list_runtimes()
-client.run_flow(runtime_uuid="...", flow_name="sales")
+client.list_workspaces()
+client.run_flow(flow="sales", workspace="My Workspace")
 ```
 
 ## MCP server
@@ -184,12 +158,22 @@ uvx --refresh ascend-tools --version
 
 | Tool | Description |
 |------|-------------|
-| `list_runtimes` | List runtimes with optional filters |
-| `get_runtime` | Get a runtime by UUID |
-| `resume_runtime` | Resume a paused runtime |
-| `pause_runtime` | Pause a running runtime |
-| `list_flows` | List flows in a runtime |
-| `run_flow` | Trigger a flow run (supports resume, full_refresh, components, parameters, etc.) |
+| `list_workspaces` | List workspaces with optional filters |
+| `get_workspace` | Get a workspace by title |
+| `create_workspace` | Create a new workspace |
+| `update_workspace` | Update a workspace |
+| `pause_workspace` | Pause a workspace |
+| `resume_workspace` | Resume a paused workspace |
+| `delete_workspace` | Delete a workspace |
+| `list_deployments` | List deployments with optional filters |
+| `get_deployment` | Get a deployment by title |
+| `create_deployment` | Create a new deployment |
+| `update_deployment` | Update a deployment |
+| `pause_deployment_automations` | Pause automations on a deployment |
+| `resume_deployment_automations` | Resume automations on a deployment |
+| `delete_deployment` | Delete a deployment |
+| `list_flows` | List flows in a workspace or deployment |
+| `run_flow` | Trigger a flow run |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
 

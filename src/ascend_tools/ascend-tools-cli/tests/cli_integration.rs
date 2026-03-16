@@ -37,28 +37,33 @@ fn mock_auth(server: &mut Server) {
 }
 
 #[test]
-fn runtime_list_text_output_regression() {
+fn workspace_list_text_output_regression() {
     let mut server = Server::new();
     mock_auth(&mut server);
 
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer cli-token")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "kind".into(),
+            "workspace".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
             serde_json::json!([{
                 "uuid": "rt-1",
                 "id": "runtime-1",
-                "title": "Runtime One",
-                "kind": "deployment",
+                "title": "My Workspace",
+                "kind": "workspace",
                 "project_uuid": "p-1",
                 "environment_uuid": "e-1",
                 "build_uuid": null,
                 "created_at": "2026-01-01T00:00:00Z",
                 "updated_at": "2026-01-01T00:00:00Z",
                 "health": "running",
-                "paused": false
+                "paused": false,
+                "profile_name": "default"
             }])
             .to_string(),
         )
@@ -66,32 +71,36 @@ fn runtime_list_text_output_regression() {
         .create();
 
     let mut cmd = command_with_auth(&server);
-    cmd.args(["runtime", "list"]);
+    cmd.args(["workspace", "list"]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("UUID  ID"))
-        .stdout(predicate::str::contains("rt-1"))
+        .stdout(predicate::str::contains("TITLE"))
+        .stdout(predicate::str::contains("My Workspace"))
         .stdout(predicate::str::contains("running"));
 
     runtimes.assert();
 }
 
 #[test]
-fn runtime_list_json_output_regression() {
+fn workspace_list_json_output_regression() {
     let mut server = Server::new();
     mock_auth(&mut server);
 
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer cli-token")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "kind".into(),
+            "workspace".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
             serde_json::json!([{
                 "uuid": "rt-2",
                 "id": "runtime-2",
-                "title": "Runtime Two",
-                "kind": "deployment",
+                "title": "Dev Workspace",
+                "kind": "workspace",
                 "project_uuid": "p-2",
                 "environment_uuid": "e-2",
                 "build_uuid": null,
@@ -106,23 +115,27 @@ fn runtime_list_json_output_regression() {
         .create();
 
     let mut cmd = command_with_auth(&server);
-    cmd.args(["-o", "json", "runtime", "list"]);
+    cmd.args(["-o", "json", "workspace", "list"]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("\"uuid\": \"rt-2\""))
-        .stdout(predicate::str::contains("\"title\": \"Runtime Two\""));
+        .stdout(predicate::str::contains("\"title\": \"Dev Workspace\""));
 
     runtimes.assert();
 }
 
 #[test]
-fn runtime_list_empty_results_go_to_stderr() {
+fn workspace_list_empty_results_go_to_stderr() {
     let mut server = Server::new();
     mock_auth(&mut server);
 
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer cli-token")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "kind".into(),
+            "workspace".into(),
+        ))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body("[]")
@@ -130,7 +143,7 @@ fn runtime_list_empty_results_go_to_stderr() {
         .create();
 
     let mut cmd = command_with_auth(&server);
-    cmd.args(["runtime", "list"]);
+    cmd.args(["workspace", "list"]);
     cmd.assert()
         .success()
         .stdout(predicate::str::is_empty())
@@ -140,13 +153,17 @@ fn runtime_list_empty_results_go_to_stderr() {
 }
 
 #[test]
-fn runtime_list_surfaces_api_errors() {
+fn workspace_list_surfaces_api_errors() {
     let mut server = Server::new();
     mock_auth(&mut server);
 
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer cli-token")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "kind".into(),
+            "workspace".into(),
+        ))
         .with_status(400)
         .with_header("content-type", "application/json")
         .with_body(r#"{"detail":"bad filter"}"#)
@@ -154,10 +171,54 @@ fn runtime_list_surfaces_api_errors() {
         .create();
 
     let mut cmd = command_with_auth(&server);
-    cmd.args(["runtime", "list"]);
+    cmd.args(["workspace", "list"]);
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("API error (HTTP 400): bad filter"));
+
+    runtimes.assert();
+}
+
+#[test]
+fn deployment_list_filters_by_kind() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    let runtimes = server
+        .mock("GET", "/api/v1/runtimes")
+        .match_header("authorization", "Bearer cli-token")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "kind".into(),
+            "deployment".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!([{
+                "uuid": "rt-3",
+                "id": "prod-deploy",
+                "title": "Production",
+                "kind": "deployment",
+                "project_uuid": "p-1",
+                "environment_uuid": "e-1",
+                "build_uuid": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "health": "running",
+                "paused": false,
+                "enable_automations": true
+            }])
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args(["deployment", "list"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Production"))
+        .stdout(predicate::str::contains("on"));
 
     runtimes.assert();
 }
@@ -222,10 +283,6 @@ fn skill_install_all_variants() {
         assert!(
             content.contains(marker),
             "{dir}/SKILL.md should contain \"{marker}\""
-        );
-        assert!(
-            content.contains("private preview"),
-            "{dir}/SKILL.md should contain private preview notice"
         );
     }
 }

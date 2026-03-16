@@ -214,14 +214,16 @@ class AscendClient:
                 self.resume_runtime(runtime_uuid)
             else:
                 raise RuntimeError(
-                    "Runtime is paused. Use resume=True to resume before running."
+                    "workspace/deployment is paused, use resume=True to resume before running"
                 )
         else:
             health = runtime.get("health")
             if health and health != "running":
-                raise RuntimeError(f"Runtime health is '{health}', expected 'running'.")
+                raise RuntimeError(
+                    f"workspace/deployment health is '{health}', expected 'running'"
+                )
             if not health:
-                raise RuntimeError("Runtime has no health status yet.")
+                raise RuntimeError("workspace/deployment has no health status yet")
         path = (
             f"/api/v1/runtimes/{_encode(runtime_uuid)}/flows/{_encode(flow_name)}:run"
         )
@@ -233,8 +235,6 @@ class AscendClient:
 
     def list_flow_runs(self, runtime_uuid: str, **filters) -> dict:
         params: dict = {"runtime_uuid": runtime_uuid}
-        if "flow_name" in filters:
-            filters["flow"] = filters.pop("flow_name")
         params.update({k: v for k, v in filters.items() if v is not None})
         return self._get("/api/v1/flow-runs", params=params)
 
@@ -310,7 +310,7 @@ def run_flow_with_retry(
     spec: dict | None = None,
     resume: bool = False,
 ) -> dict:
-    """Run a flow with retries for transient runtime readiness states."""
+    """Run a flow with retries for transient readiness states."""
     last_error: Exception | None = None
     for delay in (0, 5, 10, 15, 15, 15):
         if delay:
@@ -339,7 +339,7 @@ def main():
     parser.add_argument(
         "--runtime-id",
         default="ascend-tools",
-        help="Runtime ID to test against (default: ascend-tools)",
+        help="Workspace/deployment ID to test against (default: ascend-tools)",
     )
     args = parser.parse_args()
 
@@ -376,7 +376,7 @@ def main():
     check(isinstance(runtimes, list), "list_runtimes returns list")
 
     if not runtimes:
-        skip("no runtimes found — skipping runtime get, filters, flows, and flow runs")
+        skip("no runtimes found — skipping get, filters, flows, and flow runs")
         print_summary()
         return
 
@@ -386,7 +386,7 @@ def main():
     if by_id:
         runtime = by_id[0]
     else:
-        print(f"  runtime '{args.runtime_id}' not found, falling back to first runtime")
+        print(f"  id '{args.runtime_id}' not found, falling back to first result")
         runtime = runtimes[0]
 
     runtime_uuid = runtime["uuid"]
@@ -396,7 +396,7 @@ def main():
         f"  using runtime: {runtime_id} ({runtime_uuid}){' [paused]' if is_paused else ''}"
     )
 
-    # get runtime
+    # get by uuid
     got = client.get_runtime(runtime_uuid)
     check(got["uuid"] == runtime_uuid, "get_runtime returns correct uuid")
 
@@ -459,7 +459,7 @@ def main():
 
     print("=== flow runs (before trigger) ===")
 
-    runs_before_result = client.list_flow_runs(runtime_uuid, flow_name=flow_name)
+    runs_before_result = client.list_flow_runs(runtime_uuid, flow=flow_name)
     check(isinstance(runs_before_result, dict), "list_flow_runs returns dict")
     check("items" in runs_before_result, "list_flow_runs has 'items' key")
     check("truncated" in runs_before_result, "list_flow_runs has 'truncated' key")
@@ -492,7 +492,7 @@ def main():
         )
 
     # test pagination
-    limited = client.list_flow_runs(runtime_uuid, flow_name=flow_name, limit=1)["items"]
+    limited = client.list_flow_runs(runtime_uuid, flow=flow_name, limit=1)["items"]
     check(
         len(limited) <= 1,
         "list_flow_runs(limit=1) returns at most 1",
@@ -501,7 +501,7 @@ def main():
 
     if runs_before_count > 1:
         offset_runs = client.list_flow_runs(
-            runtime_uuid, flow_name=flow_name, offset=1, limit=1
+            runtime_uuid, flow=flow_name, offset=1, limit=1
         )["items"]
         check(
             len(offset_runs) <= 1, "list_flow_runs(offset=1, limit=1) returns at most 1"
@@ -516,7 +516,7 @@ def main():
 
     print("=== trigger flow run ===")
 
-    # Runtime may already be paused from previous sessions; use resume=True for baseline trigger.
+    # Workspace may already be paused from previous sessions; use resume=True for baseline trigger.
     trigger = run_flow_with_retry(client, runtime_uuid, flow_name, resume=True)
     check(isinstance(trigger, dict), "run_flow returns dict")
     check(
@@ -535,7 +535,7 @@ def main():
     runs_after_count = runs_before_count
     for delay in (2, 3, 5, 5):
         time.sleep(delay)
-        runs_after = client.list_flow_runs(runtime_uuid, flow_name=flow_name)["items"]
+        runs_after = client.list_flow_runs(runtime_uuid, flow=flow_name)["items"]
         runs_after_count = len(runs_after)
         if runs_after_count > runs_before_count:
             break
@@ -624,12 +624,12 @@ def main():
         "run_flow with multiple spec fields works",
     )
 
-    # ---------- runtime pause/resume ----------
+    # ---------- workspace pause/resume ----------
 
     if runtime["kind"] != "workspace":
-        skip("runtime is not a workspace — skipping pause/resume tests")
+        skip("not a workspace — skipping pause/resume tests")
     else:
-        print("=== runtime pause ===")
+        print("=== workspace pause ===")
 
         paused_rt = client.pause_runtime(runtime_uuid)
         check(paused_rt.get("paused") is True, "pause_runtime sets paused=True")
@@ -637,18 +637,18 @@ def main():
         got_paused = client.get_runtime(runtime_uuid)
         check(got_paused.get("paused") is True, "get_runtime confirms paused")
 
-        # run_flow without resume should fail on a paused runtime
+        # run_flow without resume should fail on a paused workspace
         try:
             client.run_flow(runtime_uuid, flow_name)
-            check(False, "run_flow on paused runtime should raise", "no error raised")
+            check(False, "run_flow on paused workspace should raise", "no error raised")
         except Exception as e:
             check(
                 "paused" in str(e).lower() or "resume" in str(e).lower(),
-                "run_flow on paused runtime raises descriptive error",
+                "run_flow on paused workspace raises descriptive error",
                 str(e),
             )
 
-        print("=== runtime resume via flow run ===")
+        print("=== workspace resume via flow run ===")
 
         trigger3 = run_flow_with_retry(client, runtime_uuid, flow_name, resume=True)
         check(
@@ -656,11 +656,11 @@ def main():
         )
 
         got_resumed = client.get_runtime(runtime_uuid)
-        check(got_resumed.get("paused") is False, "runtime is unpaused after resume")
+        check(got_resumed.get("paused") is False, "workspace is unpaused after resume")
 
-        print("=== runtime resume (explicit) ===")
+        print("=== workspace resume (explicit) ===")
 
-        # Wait for runtime to start coming up, then verify resume is idempotent
+        # Wait for workspace to start coming up, then verify resume is idempotent
         for delay in (2, 3, 5, 5):
             time.sleep(delay)
             rt_health = client.get_runtime(runtime_uuid)
@@ -668,13 +668,11 @@ def main():
                 break
 
         if rt_health.get("health") is not None:
-            check(True, f"runtime health restored: {rt_health['health']}")
+            check(True, f"workspace health restored: {rt_health['health']}")
         else:
-            skip(
-                "runtime health not yet available after 15s (runtime may be slow to start)"
-            )
+            skip("workspace health not yet available after 15s (may be slow to start)")
 
-        # resume on an already-running runtime should be a no-op
+        # resume on an already-running workspace should be a no-op
         resumed_rt = client.resume_runtime(runtime_uuid)
         check(resumed_rt.get("paused") is False, "resume_runtime is idempotent")
 

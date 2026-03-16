@@ -92,6 +92,7 @@ dependencies = [
  "assert_cmd",
  "base64",
  "clap",
+ "libc",
  "mockito",
  "predicates",
  "serde",
@@ -112,6 +113,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]
