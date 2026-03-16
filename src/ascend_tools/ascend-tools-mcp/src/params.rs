@@ -182,10 +182,22 @@ pub struct DeleteDeploymentParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListEnvironmentsParams {}
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetEnvironmentParams {
+    /// Environment title
+    pub title: String,
+}
+
 // -- Project params --
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListProjectsParams {}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetProjectParams {
+    /// Project title
+    pub title: String,
+}
 
 // -- Profile params --
 

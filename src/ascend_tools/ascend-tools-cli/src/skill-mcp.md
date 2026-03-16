@@ -191,9 +191,25 @@ Delete a deployment.
 
 List environments. No parameters.
 
+### get_environment
+
+Get an environment by title.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Environment title |
+
 ### list_projects
 
 List projects. No parameters.
+
+### get_project
+
+Get a project by title.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `title` | yes | Project title |
 
 ### list_profiles
 

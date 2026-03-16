@@ -14,9 +14,10 @@ use ascend_tools::models::{
 
 use crate::params::{
     CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
-    GetDeploymentParams, GetFlowRunParams, GetWorkspaceParams, ListDeploymentsParams,
-    ListEnvironmentsParams, ListFlowRunsParams, ListFlowsParams, ListProfilesParams,
-    ListProjectsParams, ListWorkspacesParams, PauseDeploymentAutomationsParams,
+    GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
+    GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
+    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams,
+    PauseDeploymentAutomationsParams,
     PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
     UpdateDeploymentParams, UpdateWorkspaceParams,
 };
@@ -317,6 +318,15 @@ impl AscendMcpServer {
         blocking(client, |c| c.list_environments()).await
     }
 
+    #[tool(description = "Get an environment by title")]
+    async fn get_environment(
+        &self,
+        Parameters(params): Parameters<GetEnvironmentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| c.get_environment(&params.title)).await
+    }
+
     // -- Project tools --
 
     #[tool(description = "List projects")]
@@ -326,6 +336,15 @@ impl AscendMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.client()?;
         blocking(client, |c| c.list_projects()).await
+    }
+
+    #[tool(description = "Get a project by title")]
+    async fn get_project(
+        &self,
+        Parameters(params): Parameters<GetProjectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| c.get_project(&params.title)).await
     }
 
     // -- Profile tools --

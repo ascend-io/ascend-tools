@@ -1,6 +1,6 @@
 # Set up the MCP server
 
-Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 21 tools for managing workspaces, deployments, environments, projects, profiles, and flows. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
+Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 23 tools for managing workspaces, deployments, environments, projects, profiles, and flows. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
 
 ## Remote MCP server (recommended)
 
@@ -240,9 +240,25 @@ Delete a deployment.
 
 List environments. No parameters.
 
+### get_environment
+
+Get an environment by title.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Environment title |
+
 ### list_projects
 
 List projects. No parameters.
+
+### get_project
+
+Get a project by title.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `title` | yes | string | Project title |
 
 ### list_profiles
 
