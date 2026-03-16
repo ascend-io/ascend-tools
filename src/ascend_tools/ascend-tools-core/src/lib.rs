@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+#![cfg_attr(not(feature = "jsts"), forbid(unsafe_code))]
+#![cfg_attr(feature = "jsts", deny(unsafe_code))]
 
 pub mod auth;
 pub mod client;

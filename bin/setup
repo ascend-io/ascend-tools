@@ -12,4 +12,11 @@ if ! command -v uv &>/dev/null; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
+# Install JS dependencies (napi-rs, ava, typescript)
+if command -v npm &>/dev/null; then
+    cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools/ascend-tools-js"
+    npm install --no-fund --no-audit
+    cd - >/dev/null
+fi
+
 echo "Setup complete!"

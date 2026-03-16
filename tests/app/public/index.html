@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ascend Tools</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    body { padding-top: 0.5rem; }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    header h1 { margin: 0; font-size: 1.4rem; }
+
+    /* Tab bar */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #ddd;
+      padding-bottom: 0;
+    }
+    .tabs button {
+      background: none;
+      border: none;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--pico-muted-color);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tabs button:hover { color: var(--pico-color); }
+    .tabs button.active {
+      color: var(--pico-primary);
+      border-bottom-color: var(--pico-primary);
+    }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Browse tables */
+    #detail { margin-top: 1rem; }
+    tbody tr[data-clickable] { cursor: pointer; transition: background 0.1s; }
+    tbody tr[data-clickable]:hover { background: #f8f8f8; }
+    p.error { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Ascend Tools</h1>
+    </header>
+
+    <div class="tabs">
+      <button class="active" onclick="showPage('workspaces', this)">Workspaces</button>
+      <button onclick="showPage('deployments', this)">Deployments</button>
+    </div>
+
+    <!-- Browse pages -->
+    <section id="page-workspaces" class="page active">
+      <div id="content-workspaces" hx-get="/api/workspaces" hx-trigger="intersect once" hx-swap="innerHTML"></div>
+      <div id="detail"></div>
+    </section>
+    <section id="page-deployments" class="page">
+      <div id="content-deployments" hx-get="/api/deployments" hx-trigger="intersect once" hx-swap="innerHTML"></div>
+    </section>
+  </main>
+
+  <script>
+    function showPage(name, btn) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
+      document.getElementById('page-' + name).classList.add('active')
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+    }
+  </script>
+</body>
+</html>
