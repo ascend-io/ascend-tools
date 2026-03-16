@@ -11,7 +11,7 @@ pub(crate) enum OutputMode {
 
 /// Print help for a subcommand when no sub-subcommand is given.
 ///
-/// Accepts a space-separated path for nested subcommands (e.g. "otto provider").
+/// Accepts a space-separated path for nested subcommands (e.g. "workspace create").
 pub(crate) fn print_subcommand_help(path: &str) -> Result<()> {
     use clap::CommandFactory;
     let mut cmd = crate::cli::CliParser::command();
