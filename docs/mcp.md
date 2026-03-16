@@ -1,6 +1,6 @@
 # Set up the MCP server
 
-Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 19 tools for managing workspaces, deployments, flows, and Otto. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
+Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 23 tools for managing workspaces, deployments, flows, and Otto. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
 
 ## Remote MCP server (recommended)
 
@@ -116,9 +116,9 @@ Create a new workspace.
 | `title` | yes | string | Workspace title |
 | `environment` | yes | string | Environment name (or UUID) |
 | `project` | yes | string | Project name (or UUID) |
-| `profile_name` | yes | string | Configuration profile name |
-| `working_git_branch` | yes | string | Git branch |
-| `base_git_branch` | no | string | Base git branch |
+| `profile` | yes | string | Configuration profile |
+| `git_branch` | yes | string | Git branch |
+| `git_branch_base` | no | string | Base git branch |
 | `size` | no | string | Size (e.g. Small, Medium, Large) |
 | `storage_size` | no | integer | Storage size in GB |
 | `auto_snooze_timeout_minutes` | no | integer | Minutes of inactivity before auto-snooze |
@@ -132,9 +132,9 @@ Update an existing workspace. Only provided fields are changed.
 | `current_title` | yes | string | Current workspace title |
 | `uuid` | no | string | UUID override (skip title lookup) |
 | `title` | no | string | New title |
-| `working_git_branch` | no | string | New git branch |
-| `base_git_branch` | no | string | New base git branch |
-| `profile_name` | no | string | New profile name |
+| `git_branch` | no | string | New git branch |
+| `git_branch_base` | no | string | New base git branch |
+| `profile` | no | string | New profile |
 | `size` | no | string | New size |
 | `storage_size` | no | integer | New storage size in GB |
 | `auto_snooze_timeout_minutes` | no | integer | New auto-snooze timeout in minutes |
@@ -189,9 +189,9 @@ Create a new deployment.
 | `title` | yes | string | Deployment title |
 | `environment` | yes | string | Environment name (or UUID) |
 | `project` | yes | string | Project name (or UUID) |
-| `profile_name` | yes | string | Configuration profile name |
-| `working_git_branch` | yes | string | Git branch |
-| `base_git_branch` | no | string | Base git branch |
+| `profile` | yes | string | Configuration profile |
+| `git_branch` | yes | string | Git branch |
+| `git_branch_base` | no | string | Base git branch |
 | `size` | no | string | Size (e.g. Small, Medium, Large) |
 | `storage_size` | no | integer | Storage size in GB |
 | `enable_automations` | no | boolean | Enable automations |
@@ -205,9 +205,9 @@ Update an existing deployment. Only provided fields are changed.
 | `current_title` | yes | string | Current deployment title |
 | `uuid` | no | string | UUID override (skip title lookup) |
 | `title` | no | string | New title |
-| `working_git_branch` | no | string | New git branch |
-| `base_git_branch` | no | string | New base git branch |
-| `profile_name` | no | string | New profile name |
+| `git_branch` | no | string | New git branch |
+| `git_branch_base` | no | string | New base git branch |
+| `profile` | no | string | New profile |
 | `size` | no | string | New size |
 | `storage_size` | no | integer | New storage size in GB |
 | `enable_automations` | no | boolean | Enable or disable automations |

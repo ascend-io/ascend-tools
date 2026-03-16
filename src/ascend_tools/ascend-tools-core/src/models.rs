@@ -243,6 +243,20 @@ pub struct RuntimeUpdate {
     pub auto_snooze_timeout_minutes: Option<u32>,
 }
 
+impl RuntimeUpdate {
+    /// Returns `true` if no fields are set (i.e., the update is a no-op).
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.git_branch.is_none()
+            && self.git_branch_base.is_none()
+            && self.profile.is_none()
+            && self.size.is_none()
+            && self.storage_size.is_none()
+            && self.enable_automations.is_none()
+            && self.auto_snooze_timeout_minutes.is_none()
+    }
+}
+
 /// Request for Otto chat.
 #[derive(Debug, Clone, Serialize)]
 pub struct OttoChatRequest {

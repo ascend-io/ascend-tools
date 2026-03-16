@@ -17,7 +17,7 @@ pub(crate) enum ProfileCommands {
         #[arg(long, group = "source")]
         deployment: Option<String>,
         /// Project name (or UUID) — requires --git-branch
-        #[arg(long, group = "source")]
+        #[arg(long, group = "source", requires = "branch")]
         project: Option<String>,
         /// Git branch (required with --project)
         #[arg(long = "git-branch")]

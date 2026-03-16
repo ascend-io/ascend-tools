@@ -18,7 +18,7 @@ pub(crate) fn print_subcommand_help(path: &str) -> Result<()> {
     for part in path.split_whitespace() {
         cmd = cmd
             .find_subcommand_mut(part)
-            .expect("subcommand exists")
+            .unwrap_or_else(|| unreachable!("unknown subcommand: {part}"))
             .clone();
     }
     cmd.print_help()?;
@@ -102,6 +102,11 @@ pub(crate) fn handle_runtime_update(
     update: RuntimeUpdate,
     output: &OutputMode,
 ) -> Result<()> {
+    if update.is_empty() {
+        anyhow::bail!(
+            "no fields to update — provide at least one of --title, --git-branch, --profile, --size, etc."
+        );
+    }
     let runtime_uuid = client.resolve_runtime_uuid(current_title, kind, uuid)?;
     let r = client.update_runtime(&runtime_uuid, &update)?;
     match output {

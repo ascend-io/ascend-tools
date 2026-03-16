@@ -23,13 +23,13 @@ src/ascend_tools/
 │       ├── client.rs        # AscendClient — typed HTTP methods for /api/v1
 │       ├── config.rs        # env var + CLI flag resolution
 │       ├── error.rs         # public typed Error enum + Result alias for SDK consumers
-│       └── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       ├── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       └── sse.rs           # minimal SSE (Server-Sent Events) line parser for Otto streaming
 │
 ├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
 │       ├── server.rs        # AscendMcpServer — 23 tools via rmcp #[tool_router]
-│       ├── sse.rs           # SSE streaming support for otto tool
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-tui/          # Interactive TUI crate (depends on ascend-tools-core)
@@ -55,7 +55,7 @@ src/ascend_tools/
 The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.
 Integration tests live under `ascend-tools-core/tests/` and `ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
 
-PyPI: `ascend-tools`. Crates.io: `ascend-tools-core` (SDK), `ascend-tools-cli` (binary). Installed binary: `ascend-tools`.
+PyPI: `ascend-tools`. Crates.io: not yet published. Installed binary: `ascend-tools`.
 
 ## development
 

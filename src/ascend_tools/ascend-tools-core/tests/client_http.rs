@@ -425,8 +425,8 @@ fn run_flow_returns_typed_error_for_starting_runtime() {
 
 #[test]
 fn otto_streaming_retries_on_409_thread_busy() {
-    use std::ops::ControlFlow;
     use ascend_tools::models::OttoChatRequest;
+    use std::ops::ControlFlow;
 
     let mut server = Server::new();
     let now = SystemTime::now()

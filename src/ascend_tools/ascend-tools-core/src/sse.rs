@@ -11,13 +11,13 @@ const MAX_DATA_LINES: usize = 100_000;
 
 /// A single SSE event.
 #[derive(Debug, Clone)]
-pub struct SseEvent {
+pub(crate) struct SseEvent {
     pub event_type: Option<String>,
     pub data: String,
 }
 
 /// Iterator over SSE events from a buffered reader.
-pub struct SseReader<R> {
+pub(crate) struct SseReader<R> {
     reader: R,
     /// Accumulated event type for the current event block.
     current_event_type: Option<String>,
@@ -78,9 +78,11 @@ impl<R: BufRead> Iterator for SseReader<R> {
                     }
 
                     if let Some(value) = line.strip_prefix("event:") {
-                        self.current_event_type = Some(value.trim_start().to_string());
+                        self.current_event_type =
+                            Some(value.strip_prefix(' ').unwrap_or(value).to_string());
                     } else if let Some(value) = line.strip_prefix("data:") {
-                        self.current_data.push(value.trim_start().to_string());
+                        self.current_data
+                            .push(value.strip_prefix(' ').unwrap_or(value).to_string());
                         if self.current_data.len() > MAX_DATA_LINES {
                             self.done = true;
                             return Some(Err(Error::SseParseError {

@@ -127,9 +127,9 @@ impl Error {
         self.http_status() == Some(403)
     }
 
-    /// Returns `true` if this is an HTTP 404 Not Found error.
+    /// Returns `true` if this is an HTTP 404 Not Found error or a title-based `NotFound`.
     pub fn is_not_found(&self) -> bool {
-        self.http_status() == Some(404)
+        matches!(self, Self::NotFound { .. }) || self.http_status() == Some(404)
     }
 
     /// Returns `true` if this error is transient and the request should be retried.

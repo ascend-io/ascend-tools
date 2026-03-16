@@ -2,8 +2,6 @@
 
 CLI, SDK, TUI, and MCP server for the Ascend REST API.
 
-> Private preview: `ascend-tools` is currently in private preview. Contact your Ascend representative to request access via Service Accounts on your Instance.
-
 ## Install
 
 Pre-built binaries are available for Linux and macOS. Windows users should use Linux/macOS.

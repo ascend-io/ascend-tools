@@ -9,6 +9,7 @@ use crate::common::{OutputMode, parse_spec, print_json, print_subcommand_help, p
 pub(crate) enum FlowCommands {
     /// List flows
     #[command(arg_required_else_help = true)]
+    #[command(group = clap::ArgGroup::new("target").required(true))]
     List {
         /// Workspace title
         #[arg(long, group = "target")]
@@ -17,11 +18,12 @@ pub(crate) enum FlowCommands {
         #[arg(long, group = "target")]
         deployment: Option<String>,
         /// Use UUID instead of title
-        #[arg(long)]
+        #[arg(long, group = "target")]
         uuid: Option<String>,
     },
     /// Run a flow
     #[command(arg_required_else_help = true)]
+    #[command(group = clap::ArgGroup::new("target").required(true))]
     Run {
         /// Flow name
         flow: String,
@@ -32,7 +34,7 @@ pub(crate) enum FlowCommands {
         #[arg(long, group = "target")]
         deployment: Option<String>,
         /// Use UUID instead of title
-        #[arg(long)]
+        #[arg(long, group = "target")]
         uuid: Option<String>,
         /// Optional spec as JSON
         #[arg(long)]
@@ -43,6 +45,7 @@ pub(crate) enum FlowCommands {
     },
     /// List flow runs
     #[command(arg_required_else_help = true)]
+    #[command(group = clap::ArgGroup::new("target").required(true))]
     ListRuns {
         /// Workspace title
         #[arg(long, group = "target")]
@@ -51,7 +54,7 @@ pub(crate) enum FlowCommands {
         #[arg(long, group = "target")]
         deployment: Option<String>,
         /// Use UUID instead of title
-        #[arg(long)]
+        #[arg(long, group = "target")]
         uuid: Option<String>,
         /// Filter by status (e.g. running, succeeded, failed)
         #[arg(long)]
@@ -74,6 +77,7 @@ pub(crate) enum FlowCommands {
     },
     /// Get a flow run
     #[command(arg_required_else_help = true)]
+    #[command(group = clap::ArgGroup::new("target").required(true))]
     GetRun {
         /// Flow run name
         name: String,
@@ -84,7 +88,7 @@ pub(crate) enum FlowCommands {
         #[arg(long, group = "target")]
         deployment: Option<String>,
         /// Use UUID instead of title
-        #[arg(long)]
+        #[arg(long, group = "target")]
         uuid: Option<String>,
     },
 }

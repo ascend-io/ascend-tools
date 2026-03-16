@@ -525,10 +525,7 @@ impl AscendClient {
                     .with_request_context(context.clone())?;
                 let status = resp.status().as_u16();
                 if status == 409 && is_follow_up {
-                    let body_str = resp
-                        .into_body()
-                        .read_to_string()
-                        .unwrap_or_default();
+                    let body_str = resp.into_body().read_to_string().unwrap_or_default();
                     last_err = Some(api_error(status, &body_str));
                     continue;
                 }
@@ -650,11 +647,15 @@ impl AscendClient {
     /// Stop a running Otto thread. Returns the thread ID and status
     /// ("stopping", "not_processing", or "not_found").
     pub fn stop_thread(&self, thread_id: &str) -> Result<Value> {
-        self.post_empty(&format!("/api/v1/otto/threads/{thread_id}/stop"))
+        self.post_empty(&format!(
+            "/api/v1/otto/threads/{}/stop",
+            encode_path(thread_id)
+        ))
     }
 
     /// Stop a running Otto thread and wait until processing has fully stopped.
     /// Polls the stop endpoint until the backend reports "not_processing".
+    /// Returns an error if the thread does not stop within ~5 seconds.
     pub fn stop_thread_and_wait(&self, thread_id: &str) -> Result<()> {
         let resp: Value = self.stop_thread(thread_id)?;
         let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -670,7 +671,10 @@ impl AscendClient {
                 return Ok(());
             }
         }
-        Ok(())
+        Err(Error::ApiError {
+            status: 408,
+            message: format!("thread {thread_id} did not stop within 5 seconds"),
+        })
     }
 
     // -- HTTP helpers --
@@ -789,7 +793,7 @@ fn resolve_one<T>(
             kind: kind.to_string(),
             title: title.to_string(),
         }),
-        1 => Ok(items.into_iter().next().expect("checked len == 1")),
+        1 => Ok(items.into_iter().next().unwrap_or_else(|| unreachable!())),
         _ => Err(Error::AmbiguousTitle {
             kind: kind.to_string(),
             title: title.to_string(),

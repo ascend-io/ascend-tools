@@ -6,7 +6,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod models;
-pub mod sse;
+pub(crate) mod sse;
 
 use ureq::Agent;
 
@@ -34,12 +34,13 @@ pub(crate) fn new_agent() -> Agent {
     )
 }
 
-/// Agent for SSE streaming requests (no global timeout).
+/// Agent for SSE streaming requests (no global timeout, 30s connect timeout).
 pub(crate) fn new_streaming_agent() -> Agent {
     Agent::new_with_config(
         ureq::config::Config::builder()
             .tls_config(tls_config())
             .http_status_as_error(false)
+            .timeout_connect(Some(std::time::Duration::from_secs(30)))
             .user_agent(user_agent())
             .build(),
     )

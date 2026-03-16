@@ -12,6 +12,6 @@ def main() -> None:
         run_cli(sys.argv)
     except KeyboardInterrupt:
         sys.exit(130)
-    except (RuntimeError, ValueError) as e:
+    except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

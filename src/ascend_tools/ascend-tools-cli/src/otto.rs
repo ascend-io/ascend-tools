@@ -177,8 +177,8 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         uuid: Option<String>,
 
-        /// LLM provider to use
-        #[arg(long)]
+        /// LLM provider to use (requires --model)
+        #[arg(long, requires = "model")]
         provider: Option<String>,
 
         /// LLM model to use
@@ -213,8 +213,8 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         uuid: Option<String>,
 
-        /// LLM provider to use
-        #[arg(long)]
+        /// LLM provider to use (requires --model)
+        #[arg(long, requires = "model")]
         provider: Option<String>,
 
         /// LLM model to use

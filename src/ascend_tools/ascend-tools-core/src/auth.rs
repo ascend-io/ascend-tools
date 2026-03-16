@@ -234,7 +234,7 @@ impl std::fmt::Debug for Auth {
 ///     SEQUENCE { OID 1.3.101.112 }       -- algorithm (Ed25519)
 ///     OCTET STRING { OCTET STRING seed } -- privateKey (CurvePrivateKey)
 ///   }
-fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
+fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     if seed.len() != 32 {
         return Err(Error::InvalidEd25519SeedLength { got: seed.len() });
     }
@@ -246,7 +246,7 @@ fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
         0x04, 0x22, // OCTET STRING (34 bytes)
         0x04, 0x20, // OCTET STRING (32 bytes) — the seed
     ];
-    let mut der = Vec::with_capacity(prefix.len() + 32);
+    let mut der = Zeroizing::new(Vec::with_capacity(prefix.len() + 32));
     der.extend_from_slice(prefix);
     der.extend_from_slice(seed);
     Ok(der)

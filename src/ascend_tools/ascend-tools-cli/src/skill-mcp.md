@@ -64,22 +64,31 @@ Create a new workspace.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `environment` | yes | Environment title |
-| `project` | yes | Project title |
-| `build_uuid` | yes | Build UUID |
-| `title` | no | Workspace title |
-| `paused` | no | Create in paused state |
+| `title` | yes | Workspace title |
+| `environment` | yes | Environment name (or UUID) |
+| `project` | yes | Project name (or UUID) |
+| `profile` | yes | Configuration profile |
+| `git_branch` | yes | Git branch |
+| `git_branch_base` | no | Base git branch |
+| `size` | no | Size (e.g. Small, Medium, Large) |
+| `storage_size` | no | Storage size in GB |
+| `auto_snooze_timeout_minutes` | no | Minutes of inactivity before auto-snooze |
 
 ### update_workspace
 
-Update an existing workspace.
+Update an existing workspace. Only provided fields are changed.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `title` | yes | Current workspace title |
-| `new_title` | no | New workspace title |
-| `build_uuid` | no | New build UUID |
-| `paused` | no | Paused state |
+| `current_title` | yes | Current workspace title |
+| `uuid` | no | UUID override (skip title lookup) |
+| `title` | no | New title |
+| `git_branch` | no | New git branch |
+| `git_branch_base` | no | New base git branch |
+| `profile` | no | New profile |
+| `size` | no | New size |
+| `storage_size` | no | New storage size in GB |
+| `auto_snooze_timeout_minutes` | no | New auto-snooze timeout in minutes |
 
 ### pause_workspace
 
@@ -128,22 +137,31 @@ Create a new deployment.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `environment` | yes | Environment title |
-| `project` | yes | Project title |
-| `build_uuid` | yes | Build UUID |
-| `title` | no | Deployment title |
-| `paused` | no | Create in paused state |
+| `title` | yes | Deployment title |
+| `environment` | yes | Environment name (or UUID) |
+| `project` | yes | Project name (or UUID) |
+| `profile` | yes | Configuration profile |
+| `git_branch` | yes | Git branch |
+| `git_branch_base` | no | Base git branch |
+| `size` | no | Size (e.g. Small, Medium, Large) |
+| `storage_size` | no | Storage size in GB |
+| `enable_automations` | no | Enable automations |
 
 ### update_deployment
 
-Update an existing deployment.
+Update an existing deployment. Only provided fields are changed.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `title` | yes | Current deployment title |
-| `new_title` | no | New deployment title |
-| `build_uuid` | no | New build UUID |
-| `paused` | no | Paused state |
+| `current_title` | yes | Current deployment title |
+| `uuid` | no | UUID override (skip title lookup) |
+| `title` | no | New title |
+| `git_branch` | no | New git branch |
+| `git_branch_base` | no | New base git branch |
+| `profile` | no | New profile |
+| `size` | no | New size |
+| `storage_size` | no | New storage size in GB |
+| `enable_automations` | no | Enable or disable automations |
 
 ### pause_deployment_automations
 
