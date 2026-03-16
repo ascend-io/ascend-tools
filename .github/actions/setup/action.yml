@@ -1,5 +1,5 @@
 name: Setup
-description: Checkout, install Python, restore cache, and run bin/setup
+description: Checkout, install Python + Node, restore cache, and run bin/setup
 
 inputs:
   cache-prefix:
@@ -13,6 +13,9 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.13"
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
     - uses: actions/cache@v4
       with:
         path: |
