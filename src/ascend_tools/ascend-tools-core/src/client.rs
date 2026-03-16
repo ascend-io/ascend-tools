@@ -1,4 +1,6 @@
 use std::fmt;
+use std::io::BufReader;
+use std::ops::ControlFlow;
 
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
@@ -8,9 +10,11 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Project,
-    Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
+    Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
+    OttoChatRequest, OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate,
+    RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
 };
+use crate::sse::SseReader;
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
 
@@ -57,6 +61,7 @@ impl QueryString {
 /// Client for the Ascend Instance API v1.
 pub struct AscendClient {
     agent: Agent,
+    streaming_agent: Agent,
     instance_api_url: String,
     auth: Auth,
 }
@@ -74,6 +79,7 @@ impl AscendClient {
 
     pub fn new(config: Config) -> Result<Self> {
         let agent = crate::new_agent();
+        let streaming_agent = crate::new_streaming_agent();
         let auth = Auth::new(
             config.service_account_id,
             &config.service_account_key,
@@ -82,6 +88,7 @@ impl AscendClient {
         )?;
         Ok(Self {
             agent,
+            streaming_agent,
             instance_api_url: config.instance_api_url,
             auth,
         })
@@ -428,6 +435,246 @@ impl AscendClient {
             encode_path(name),
             encode_query_value(runtime_uuid)
         ))
+    }
+
+    // -- Otto --
+
+    /// List available Otto providers and their enabled models.
+    pub fn list_otto_providers(&self) -> Result<Vec<OttoProvider>> {
+        self.get("/api/v1/otto/providers")
+    }
+
+    /// Send a message to Otto via the threads API.
+    ///
+    /// Collects the full response before returning. For real-time streaming,
+    /// use [`otto_streaming`] instead.
+    pub fn otto(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
+        let mut full_message = String::new();
+        let response = self.otto_streaming(
+            request,
+            |event| {
+                if let StreamEvent::TextDelta(delta) = event {
+                    full_message.push_str(&delta);
+                }
+                ControlFlow::Continue(())
+            },
+            |_| {},
+        )?;
+        Ok(OttoChatResponse {
+            message: full_message,
+            thread_id: response.thread_id,
+        })
+    }
+
+    /// Send a message to Otto, streaming events to `on_event` as they arrive.
+    ///
+    /// `on_thread_id` is called with the thread ID as soon as the thread is
+    /// created (before any events arrive). `on_event` receives each stream
+    /// event (text deltas, tool calls) and returns `ControlFlow::Continue(())`
+    /// to keep streaming or `ControlFlow::Break(())` to cancel early. The
+    /// returned `OttoChatResponse` has an empty `message` — the caller is
+    /// expected to have accumulated the text via the callback.
+    pub fn otto_streaming(
+        &self,
+        request: &OttoChatRequest,
+        mut on_event: impl FnMut(StreamEvent) -> ControlFlow<()>,
+        on_thread_id: impl FnOnce(&str),
+    ) -> Result<OttoChatResponse> {
+        let body =
+            serde_json::to_value(request).with_json_serialize_context("OttoChatRequest body")?;
+        let token = self.auth.get_token()?;
+
+        // Step 1: Create thread or send message to existing thread
+        let (path, context) = if let Some(ref tid) = request.thread_id {
+            (
+                format!("/api/v1/otto/threads/{tid}/messages"),
+                format!("POST /api/v1/otto/threads/{tid}/messages"),
+            )
+        } else {
+            (
+                "/api/v1/otto/threads".to_string(),
+                "POST /api/v1/otto/threads".to_string(),
+            )
+        };
+
+        let url = format!("{}{path}", self.instance_api_url);
+        let json_body = serde_json::to_string(&body)
+            .with_json_serialize_context(format!("{context} request body"))?;
+        let is_follow_up = request.thread_id.is_some();
+        let create_resp: Value = {
+            let mut last_err = None;
+            let mut resp_val = None;
+            // Retry on 409 (thread still processing from a cancelled run).
+            // The stop request is async, so the thread may not have fully
+            // wound down yet when the user sends a follow-up message.
+            let attempts = if is_follow_up { 30 } else { 1 };
+            for attempt in 0..attempts {
+                if attempt > 0 {
+                    // Call stop to nudge the backend, then wait before retrying
+                    if let Some(ref tid) = request.thread_id {
+                        let _ = self.stop_thread(tid);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                let resp = self
+                    .agent
+                    .post(&url)
+                    .header("Authorization", &format!("Bearer {token}"))
+                    .header("Content-Type", "application/json")
+                    .send(json_body.as_bytes())
+                    .with_request_context(context.clone())?;
+                let status = resp.status().as_u16();
+                if status == 409 && is_follow_up {
+                    let body_str = resp.into_body().read_to_string().unwrap_or_default();
+                    last_err = Some(api_error(status, &body_str));
+                    continue;
+                }
+                resp_val = Some(handle_response(resp, &context)?);
+                break;
+            }
+            match resp_val {
+                Some(v) => v,
+                None => return Err(last_err.unwrap()),
+            }
+        };
+
+        let thread_id = create_resp
+            .get("thread_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::ApiError {
+                status: 500,
+                message: "missing thread_id in response".to_string(),
+            })?
+            .to_string();
+
+        on_thread_id(&thread_id);
+
+        // Step 2: Stream SSE events from the thread updates endpoint (no global timeout)
+        let updates_path = format!("/api/v1/otto/threads/{thread_id}/updates");
+        let updates_url = format!("{}{updates_path}", self.instance_api_url);
+        let updates_context = format!("GET {updates_path}");
+        let updates_resp = self
+            .streaming_agent
+            .get(&updates_url)
+            .header("Authorization", &format!("Bearer {token}"))
+            .header("Accept", "text/event-stream")
+            .call()
+            .with_request_context(updates_context.clone())?;
+
+        if !(200..300).contains(&updates_resp.status().as_u16()) {
+            return check_error_status(updates_resp, &updates_context).map(|()| OttoChatResponse {
+                message: String::new(),
+                thread_id: Some(thread_id),
+            });
+        }
+
+        // Parse SSE stream, dispatching events to the caller
+        let reader = BufReader::new(updates_resp.into_body().into_reader());
+
+        for event_result in SseReader::new(reader) {
+            let event = event_result?;
+            let event_type = event.event_type.as_deref();
+
+            if event_type == Some("thread.done") || event_type == Some("thread.stopped") {
+                break;
+            }
+
+            let Ok(data) = serde_json::from_str::<Value>(&event.data) else {
+                continue;
+            };
+
+            let stream_event = match event_type {
+                Some("response.output_text.delta") => data
+                    .get("delta")
+                    .and_then(|v| v.as_str())
+                    .map(|d| StreamEvent::TextDelta(d.to_string())),
+                Some("response.output_item.added") => {
+                    let Some(item) = data.get("item") else {
+                        continue;
+                    };
+                    if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                        Some(StreamEvent::ToolCallStart {
+                            call_id: item
+                                .get("call_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            name: item
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string(),
+                            arguments: item
+                                .get("arguments")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("{}")
+                                .to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                Some("response.run_item_stream_event.tool_call_output_item") => {
+                    Some(StreamEvent::ToolCallOutput {
+                        call_id: data
+                            .get("call_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        output: data
+                            .get("output")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                }
+                _ => None,
+            };
+
+            if let Some(se) = stream_event
+                && on_event(se).is_break()
+            {
+                break;
+            }
+        }
+
+        Ok(OttoChatResponse {
+            message: String::new(),
+            thread_id: Some(thread_id),
+        })
+    }
+
+    /// Stop a running Otto thread. Returns the thread ID and status
+    /// ("stopping", "not_processing", or "not_found").
+    pub fn stop_thread(&self, thread_id: &str) -> Result<Value> {
+        self.post_empty(&format!(
+            "/api/v1/otto/threads/{}/stop",
+            encode_path(thread_id)
+        ))
+    }
+
+    /// Stop a running Otto thread and wait until processing has fully stopped.
+    /// Polls the stop endpoint until the backend reports "not_processing".
+    /// Returns an error if the thread does not stop within ~5 seconds.
+    pub fn stop_thread_and_wait(&self, thread_id: &str) -> Result<()> {
+        let resp: Value = self.stop_thread(thread_id)?;
+        let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if status != "stopping" {
+            return Ok(());
+        }
+        // Poll until the backend confirms the thread is no longer processing
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let resp: Value = self.stop_thread(thread_id)?;
+            let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            if status != "stopping" {
+                return Ok(());
+            }
+        }
+        Err(Error::ApiError {
+            status: 408,
+            message: format!("thread {thread_id} did not stop within 5 seconds"),
+        })
     }
 
     // -- HTTP helpers --

@@ -450,6 +450,49 @@ impl Client {
             .map_err(to_py_err)?;
         to_python(py, &run)
     }
+
+    #[pyo3(signature = ())]
+    fn list_otto_providers(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let providers = py
+            .detach(|| self.inner.list_otto_providers())
+            .map_err(to_py_err)?;
+        to_python(py, &providers)
+    }
+
+    #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, model=None, provider=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn otto(
+        &self,
+        py: Python<'_>,
+        prompt: &str,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+        thread_id: Option<&str>,
+        model: Option<&str>,
+        provider: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let otto_model = models::OttoModel::from_options(provider, model);
+        let response = py
+            .detach(|| {
+                let runtime_uuid = self
+                    .inner
+                    .resolve_optional_runtime_target(workspace, deployment, uuid)?;
+                let request = models::OttoChatRequest {
+                    prompt: prompt.to_string(),
+                    runtime_uuid,
+                    thread_id: thread_id.map(String::from),
+                    model: otto_model,
+                };
+                self.inner.otto(&request)
+            })
+            .map_err(to_py_err)?;
+        let result = serde_json::json!({
+            "message": response.message,
+            "thread_id": response.thread_id,
+        });
+        to_python(py, &result)
+    }
 }
 
 #[pyfunction]

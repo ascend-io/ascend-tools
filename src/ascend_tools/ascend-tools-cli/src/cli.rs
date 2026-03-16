@@ -8,6 +8,7 @@ use crate::common::OutputMode;
 use crate::deployment::DeploymentCommands;
 use crate::environment::EnvironmentCommands;
 use crate::flow::FlowCommands;
+use crate::otto::OttoCommands;
 use crate::profile::ProfileCommands;
 use crate::project::ProjectCommands;
 use crate::skill::SkillCommands;
@@ -109,6 +110,19 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ProfileCommands>,
     },
+    /// Chat with Otto AI assistant
+    #[command(long_about = "Chat with Otto AI assistant.\n\n\
+            Examples:\n  \
+            ascend-tools otto \"What tables are in my project?\"\n  \
+            ascend-tools otto \"Describe the sales flow\" --workspace my-ws\n  \
+            ascend-tools otto \"Hello\" --model gpt-4o\n  \
+            ascend-tools otto \"Hello\" --provider openai --model gpt-4o\n  \
+            ascend-tools otto provider list\n  \
+            ascend-tools otto model list")]
+    Otto {
+        #[command(subcommand)]
+        command: Option<OttoCommands>,
+    },
     /// Start an MCP server
     Mcp {
         /// Use HTTP transport instead of stdio
@@ -181,6 +195,7 @@ where
             crate::profile::handle_profile(&client, command, &cli.output)
         }
         Commands::Flow { command } => crate::flow::handle_flow(&client, command, &cli.output),
+        Commands::Otto { command } => crate::otto::handle_otto_cmd(&client, command, &cli.output),
         Commands::Mcp { .. } | Commands::Skill { .. } => unreachable!(),
     }
 }
@@ -189,6 +204,7 @@ where
 mod tests {
     use super::*;
     use crate::common;
+    use crate::otto;
 
     #[test]
     fn test_cli_parses_workspace_list() {
@@ -623,6 +639,72 @@ mod tests {
                 assert_eq!(branch.as_deref(), Some("main"));
             }
             _ => panic!("expected Profile List command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_otto_run() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "otto",
+            "run",
+            "send me an email",
+            "--workspace",
+            "my-ws",
+            "--model",
+            "gpt-4o",
+        ]);
+        match cli.command {
+            Some(Commands::Otto {
+                command:
+                    Some(OttoCommands::Run {
+                        prompt,
+                        workspace,
+                        model,
+                        ..
+                    }),
+            }) => {
+                assert_eq!(prompt, "send me an email");
+                assert_eq!(workspace.as_deref(), Some("my-ws"));
+                assert_eq!(model.as_deref(), Some("gpt-4o"));
+            }
+            _ => panic!("expected Otto Run command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_otto_provider() {
+        let cli = CliParser::parse_from(["ascend-tools", "otto", "provider", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Otto {
+                command: Some(OttoCommands::Provider {
+                    command: Some(otto::ProviderCommands::List)
+                })
+            })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_otto_model() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "otto",
+            "model",
+            "list",
+            "--provider",
+            "openai",
+        ]);
+        match cli.command {
+            Some(Commands::Otto {
+                command:
+                    Some(OttoCommands::Model {
+                        command: Some(otto::ModelCommands::List { provider }),
+                    }),
+            }) => {
+                assert_eq!(provider.as_deref(), Some("openai"));
+            }
+            _ => panic!("expected Otto Model List command"),
         }
     }
 }

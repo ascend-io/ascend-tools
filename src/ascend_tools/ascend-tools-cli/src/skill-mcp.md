@@ -269,6 +269,24 @@ Get a flow run by name.
 | `deployment` | no | Deployment title (provide one of workspace or deployment) |
 | `name` | yes | Flow run name |
 
+### list_otto_providers
+
+List available Otto providers and their enabled models. No parameters.
+
+### otto
+
+Chat with Otto, the Ascend AI assistant.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `prompt` | yes | Message to send to Otto |
+| `workspace` | no | Workspace title for context |
+| `deployment` | no | Deployment title for context |
+| `uuid` | no | UUID (direct override) |
+| `provider` | no | LLM provider ID |
+| `model` | no | LLM model ID |
+| `thread_id` | no | Thread ID to continue a conversation |
+
 ## Flow run spec
 
 Pass `spec` to `run_flow` to control flow run behavior. All fields are optional:

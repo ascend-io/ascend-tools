@@ -92,6 +92,14 @@ ascend-tools flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status
 ascend-tools flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 ```
 
+### Otto
+
+```bash
+ascend-tools otto run "<PROMPT>" [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
+ascend-tools otto provider list
+ascend-tools otto model list [--provider <ID>]
+```
+
 ### Flow run spec
 
 Pass `--spec` as JSON to control flow run behavior:

@@ -248,3 +248,82 @@ impl RuntimeUpdate {
             && self.auto_snooze_timeout_minutes.is_none()
     }
 }
+
+/// Request for Otto chat.
+#[derive(Debug, Clone, Serialize)]
+pub struct OttoChatRequest {
+    pub prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_uuid: Option<String>,
+    #[serde(skip)]
+    pub thread_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<OttoModel>,
+}
+
+/// Model specification for Otto — either a plain model name or a provider+model pair.
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum OttoModel {
+    /// Use default provider for this model name.
+    Name(String),
+    /// Use a specific provider and model.
+    ProviderModel {
+        provider_id: String,
+        model_id: String,
+    },
+}
+
+impl OttoModel {
+    /// Build an `OttoModel` from optional provider and model strings.
+    ///
+    /// Returns `None` if `model` is `None`.
+    pub fn from_options(provider: Option<&str>, model: Option<&str>) -> Option<Self> {
+        match (provider, model) {
+            (Some(p), Some(m)) => Some(Self::ProviderModel {
+                provider_id: p.to_string(),
+                model_id: m.to_string(),
+            }),
+            (None, Some(m)) => Some(Self::Name(m.to_string())),
+            _ => None,
+        }
+    }
+}
+
+/// Response from Otto chat.
+#[derive(Debug, Clone, Serialize)]
+pub struct OttoChatResponse {
+    pub message: String,
+    pub thread_id: Option<String>,
+}
+
+/// A streaming event from Otto.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// A text delta from Otto's response.
+    TextDelta(String),
+    /// A tool call has started.
+    ToolCallStart {
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    /// A tool call has completed with output.
+    ToolCallOutput { call_id: String, output: String },
+}
+
+/// An Otto provider with its enabled models.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OttoProvider {
+    pub id: String,
+    pub name: String,
+    pub default_model: String,
+    pub models: Vec<OttoProviderModel>,
+}
+
+/// A model available on an Otto provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OttoProviderModel {
+    pub id: String,
+    pub name: String,
+}

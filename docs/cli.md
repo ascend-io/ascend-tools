@@ -225,6 +225,20 @@ ascend-tools -o json flow list-runs --workspace "My Workspace"
 
 Empty results print "No results." to stderr.
 
+## Otto (AI assistant)
+
+```bash
+# One-shot message
+ascend-tools otto run "What flows are running?"
+ascend-tools otto run "Describe the sales flow" --workspace "My Workspace"
+ascend-tools otto run "Help me debug this pipeline" --provider openai --model gpt-4o
+
+# List providers and models
+ascend-tools otto provider list
+ascend-tools otto model list
+ascend-tools otto model list --provider openai
+```
+
 ## Install AI assistant skills
 
 Install reference skills for AI coding assistants (Claude Code, Codex, etc.):

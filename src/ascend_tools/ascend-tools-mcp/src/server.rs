@@ -9,14 +9,15 @@ use rmcp::{
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
-    FlowRunFilters, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate,
+    FlowRunFilters, OttoChatRequest, OttoModel, RuntimeCreate, RuntimeFilters, RuntimeKind,
+    RuntimeUpdate,
 };
 
 use crate::params::{
     CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
     GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
     GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
-    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams,
+    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams, OttoParams,
     PauseDeploymentAutomationsParams, PauseWorkspaceParams, ResumeDeploymentAutomationsParams,
     ResumeWorkspaceParams, RunFlowParams, UpdateDeploymentParams, UpdateWorkspaceParams,
 };
@@ -457,6 +458,36 @@ impl AscendMcpServer {
         })
         .await
     }
+
+    // -- Otto --
+
+    #[tool(description = "List Otto providers and their enabled models")]
+    async fn list_otto_providers(&self) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, |c| c.list_otto_providers()).await
+    }
+
+    #[tool(description = "Chat with Otto, the Ascend AI assistant")]
+    async fn otto(
+        &self,
+        Parameters(params): Parameters<OttoParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let runtime_uuid = c.resolve_optional_runtime_target(
+                params.workspace.as_deref(),
+                params.deployment.as_deref(),
+                params.uuid.as_deref(),
+            )?;
+            c.otto(&OttoChatRequest {
+                prompt: params.prompt,
+                runtime_uuid,
+                thread_id: params.thread_id,
+                model: OttoModel::from_options(params.provider.as_deref(), params.model.as_deref()),
+            })
+        })
+        .await
+    }
 }
 
 #[tool_handler]
@@ -464,7 +495,7 @@ impl ServerHandler for AscendMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "Ascend MCP server. Provides tools to manage workspaces, deployments, and flows."
+                "Ascend MCP server. Provides tools to manage workspaces, deployments, flows, and chat with Otto."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

@@ -1,6 +1,6 @@
 # Set up the MCP server
 
-Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 23 tools for managing workspaces, deployments, environments, projects, profiles, and flows. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
+Connect AI assistants to Ascend using the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server. Exposes 25 tools for managing workspaces, deployments, environments, projects, profiles, flows, and Otto. Works with Claude Code, Claude Desktop, Codex CLI, Cursor, and other MCP-compatible clients.
 
 ## Remote MCP server (recommended)
 
@@ -317,6 +317,24 @@ Get a flow run by name.
 | `workspace` | no | string | Workspace title (provide one of workspace or deployment) |
 | `deployment` | no | string | Deployment title (provide one of workspace or deployment) |
 | `name` | yes | string | Flow run name |
+
+### list_otto_providers
+
+List available Otto providers and their enabled models. No parameters.
+
+### otto
+
+Chat with Otto, the Ascend AI assistant.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `prompt` | yes | string | Message to send to Otto |
+| `workspace` | no | string | Workspace title for context |
+| `deployment` | no | string | Deployment title for context |
+| `uuid` | no | string | UUID (direct override) |
+| `provider` | no | string | LLM provider ID |
+| `model` | no | string | LLM model ID |
+| `thread_id` | no | string | Thread ID to continue a conversation |
 
 ## Flow run spec
 
