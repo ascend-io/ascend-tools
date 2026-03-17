@@ -1086,9 +1086,15 @@ impl App {
             let pad = (area.width as usize).saturating_sub(display_width) / 2;
             let padded = format!("{:>width$}{}", "", line, width = pad);
             if line.contains("/help") {
-                lines.push(Line::from(Span::styled(padded, Style::default().fg(DIM_COLOR))));
+                lines.push(Line::from(Span::styled(
+                    padded,
+                    Style::default().fg(DIM_COLOR),
+                )));
             } else {
-                lines.push(Line::from(Span::styled(padded, Style::default().fg(OTTO_COLOR))));
+                lines.push(Line::from(Span::styled(
+                    padded,
+                    Style::default().fg(OTTO_COLOR),
+                )));
             }
         }
 
@@ -1548,7 +1554,11 @@ pub fn run_tui(
             // Spawns a background thread so the TUI stays responsive.
             if app.stop_pending {
                 app.stop_pending = false;
-                if let Some(tid) = active_thread_id.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+                if let Some(tid) = active_thread_id
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
+                {
                     scope.spawn(move || {
                         let _ = client.stop_thread_and_wait(&tid);
                     });
@@ -1593,7 +1603,8 @@ pub fn run_tui(
                             ControlFlow::Continue(())
                         },
                         |tid: &str| {
-                            *active_tid.lock().unwrap_or_else(|e| e.into_inner()) = Some(tid.to_string());
+                            *active_tid.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(tid.to_string());
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),
