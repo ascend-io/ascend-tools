@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// The kind of runtime (workspace or deployment).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(string_enum = "lowercase"))]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeKind {
     Workspace,
@@ -47,6 +48,7 @@ pub struct Project {
 /// A workspace or deployment. Use the [`Workspace`] or [`Deployment`] type aliases
 /// for clarity when the kind is known.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct Runtime {
     pub uuid: String,
     pub id: String,
@@ -109,11 +111,13 @@ impl From<Runtime> for Deployment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct Flow {
     pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct FlowRun {
     pub name: String,
     pub flow: String,
@@ -126,6 +130,7 @@ pub struct FlowRun {
 
 /// Wrapper returned by the list flow runs endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct FlowRunList {
     pub items: Vec<FlowRun>,
     #[serde(default)]
@@ -133,6 +138,7 @@ pub struct FlowRunList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct FlowRunTrigger {
     pub event_uuid: String,
     pub event_type: String,
