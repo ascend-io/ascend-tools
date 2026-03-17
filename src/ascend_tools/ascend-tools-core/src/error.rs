@@ -131,16 +131,6 @@ impl Error {
     pub fn is_not_found(&self) -> bool {
         matches!(self, Self::NotFound { .. }) || self.http_status() == Some(404)
     }
-
-    /// Returns `true` if this error is transient and the request should be retried.
-    /// Covers rate limiting (429), server errors (502/503/504), and network failures.
-    pub fn is_retryable(&self) -> bool {
-        match self {
-            Self::ApiError { status, .. } => matches!(status, 429 | 502 | 503 | 504),
-            Self::RequestFailed { .. } => true,
-            _ => false,
-        }
-    }
 }
 
 pub(crate) trait UreqResultExt<T> {

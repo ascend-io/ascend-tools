@@ -100,46 +100,6 @@ fn api_error_uses_raw_body_for_non_json_errors() {
 }
 
 #[test]
-fn retries_on_transient_errors() {
-    let mut server = Server::new();
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    mock_auth(&mut server, "token-r", now + 3600, 3);
-
-    // First two calls return 502/503, third succeeds
-    let fail1 = server
-        .mock("GET", "/api/v1/runtimes")
-        .match_header("authorization", "Bearer token-r")
-        .with_status(502)
-        .with_body("bad gateway")
-        .expect(1)
-        .create();
-    let fail2 = server
-        .mock("GET", "/api/v1/runtimes")
-        .match_header("authorization", "Bearer token-r")
-        .with_status(503)
-        .with_body("unavailable")
-        .expect(1)
-        .create();
-    let success = server
-        .mock("GET", "/api/v1/runtimes")
-        .match_header("authorization", "Bearer token-r")
-        .with_status(200)
-        .with_body(r#"[]"#)
-        .expect(1)
-        .create();
-
-    let client = test_client(&server);
-    let runtimes = client.list_runtimes(Default::default()).unwrap();
-    fail1.assert();
-    fail2.assert();
-    success.assert();
-    assert_eq!(runtimes.len(), 0);
-}
-
-#[test]
 fn encodes_query_values_and_path_segments() {
     let mut server = Server::new();
     let now = SystemTime::now()
