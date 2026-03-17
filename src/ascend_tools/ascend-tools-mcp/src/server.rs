@@ -17,9 +17,8 @@ use crate::params::{
     GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
     GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
     ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams,
-    PauseDeploymentAutomationsParams,
-    PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
-    UpdateDeploymentParams, UpdateWorkspaceParams,
+    PauseDeploymentAutomationsParams, PauseWorkspaceParams, ResumeDeploymentAutomationsParams,
+    ResumeWorkspaceParams, RunFlowParams, UpdateDeploymentParams, UpdateWorkspaceParams,
 };
 
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
