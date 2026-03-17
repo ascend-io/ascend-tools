@@ -1,0 +1,22 @@
+[package]
+name = "ascend-tools-tui"
+version = "0.5.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+description = "Interactive TUI for the Ascend REST API"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+name = "ascend_tools_tui"
+path = "src/lib.rs"
+
+[dependencies]
+ascend-tools-core = { path = "../ascend-tools-core" }
+anyhow = "1"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+crossterm = "0.29"
+arboard = "3"

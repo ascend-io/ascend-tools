@@ -199,6 +199,28 @@ pub(crate) enum OttoCommands {
         #[command(subcommand)]
         command: Option<ModelCommands>,
     },
+    /// Interactive multi-turn conversation with Otto (Ctrl+C to exit)
+    Tui {
+        /// Workspace to use for context
+        #[arg(long)]
+        workspace: Option<String>,
+
+        /// Deployment to use for context
+        #[arg(long)]
+        deployment: Option<String>,
+
+        /// Use UUID instead of title
+        #[arg(long)]
+        uuid: Option<String>,
+
+        /// LLM provider to use (requires --model)
+        #[arg(long, requires = "model")]
+        provider: Option<String>,
+
+        /// LLM model to use
+        #[arg(long)]
+        model: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -369,6 +391,25 @@ pub(crate) fn handle_otto_cmd(
                 }
             }
             Ok(())
+        }
+        OttoCommands::Tui {
+            workspace,
+            deployment,
+            uuid,
+            provider,
+            model,
+        } => {
+            let runtime_uuid = client.resolve_optional_runtime_target(
+                workspace.as_deref(),
+                deployment.as_deref(),
+                uuid.as_deref(),
+            )?;
+            let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
+            let context_label = workspace
+                .as_deref()
+                .map(|w| format!("workspace:{w}"))
+                .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
+            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label)
         }
     }
 }

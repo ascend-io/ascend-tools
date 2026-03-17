@@ -237,6 +237,9 @@ ascend-tools otto run "Help me debug this pipeline" --provider "OpenAI" --model 
 ascend-tools otto provider list
 ascend-tools otto model list
 ascend-tools otto model list --provider "OpenAI"
+
+# Interactive chat (Ctrl+C to exit)
+ascend-tools otto tui --workspace "My Workspace"
 ```
 
 ## Install AI assistant skills
