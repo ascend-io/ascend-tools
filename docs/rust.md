@@ -2,7 +2,7 @@
 
 > The Rust SDK (`ascend-tools-core`) is not yet published on crates.io. Contact your Ascend representative if you're interested in using the Rust SDK directly.
 
-Manage Ascend runtimes, flows, and flow runs from Rust.
+Manage Ascend workspaces, deployments, flows, and flow runs from Rust.
 
 ## Install
 
@@ -43,36 +43,73 @@ let client = AscendClient::new(config)?;
 
 `with_overrides` falls back to environment variables for any `None` fields.
 
-## Manage runtimes
+## Manage workspaces and deployments
 
-### List runtimes
+### List workspaces
+
+```rust
+let workspaces = client.list_workspaces(Default::default())?;
+```
+
+### Filter by environment or project
 
 ```rust
 use ascend_tools::models::RuntimeFilters;
 
-let runtimes = client.list_runtimes(Default::default())?;
-
-// With filters
-let runtimes = client.list_runtimes(RuntimeFilters {
-    kind: Some("deployment".into()),
+let workspaces = client.list_workspaces(RuntimeFilters {
+    environment: Some("Production".into()),
     ..Default::default()
 })?;
 ```
 
-Returns `Vec<Runtime>`.
-
-### Get a runtime
+### Get a workspace
 
 ```rust
-let runtime = client.get_runtime("<RUNTIME_UUID>")?;
-println!("{} ({})", runtime.id, runtime.uuid);
+let ws = client.get_workspace("My Workspace", None)?;
+println!("{} ({})", ws.title, ws.uuid);
+```
+
+### Create a workspace
+
+```rust
+use ascend_tools::models::RuntimeCreate;
+
+let create = RuntimeCreate::new("My WS", "Production", "MyProject", "default", "main");
+let ws = client.create_workspace(&create)?;
+```
+
+### Update a workspace
+
+```rust
+use ascend_tools::models::RuntimeUpdate;
+
+let mut update = RuntimeUpdate::default();
+update.git_branch = Some("feature/abc".into());
+let ws = client.update_workspace("My WS", None, &update)?;
 ```
 
 ### Pause and resume
 
 ```rust
-client.pause_runtime("<RUNTIME_UUID>")?;
-client.resume_runtime("<RUNTIME_UUID>")?;
+client.pause_workspace("My Workspace", None)?;
+client.resume_workspace("My Workspace", None)?;
+```
+
+### Delete a workspace
+
+```rust
+client.delete_workspace("My Workspace", None)?;
+```
+
+### Deployments
+
+```rust
+let deployments = client.list_deployments(Default::default())?;
+let dep = client.get_deployment("My Deployment", None)?;
+
+// Pause/resume automations
+client.pause_deployment_automations("My Deployment", None)?;
+client.resume_deployment_automations("My Deployment", None)?;
 ```
 
 ## Manage flows
@@ -80,7 +117,10 @@ client.resume_runtime("<RUNTIME_UUID>")?;
 ### List flows
 
 ```rust
-let flows = client.list_flows("<RUNTIME_UUID>")?;
+let runtime_uuid = client.resolve_runtime_target(
+    Some("My Workspace"), None, None,
+)?;
+let flows = client.list_flows(&runtime_uuid)?;
 for flow in &flows {
     println!("{}", flow.name);
 }
@@ -93,22 +133,26 @@ Returns `Vec<Flow>`.
 ```rust
 use serde_json::json;
 
-// Basic
-let trigger = client.run_flow("<RUNTIME_UUID>", "<FLOW_NAME>", None, false)?;
+let runtime_uuid = client.resolve_runtime_target(
+    Some("My Workspace"), None, None,
+)?;
 
-// With resume
-let trigger = client.run_flow("<RUNTIME_UUID>", "<FLOW_NAME>", None, true)?;
+// Basic
+let trigger = client.run_flow(&runtime_uuid, "sales", None, false)?;
+
+// With resume (resumes workspace/deployment if paused)
+let trigger = client.run_flow(&runtime_uuid, "sales", None, true)?;
 
 // With spec
 let spec = json!({"full_refresh": true});
-let trigger = client.run_flow("<RUNTIME_UUID>", "<FLOW_NAME>", Some(spec), true)?;
+let trigger = client.run_flow(&runtime_uuid, "sales", Some(spec), true)?;
 
 println!("event_uuid: {}", trigger.event_uuid);
 ```
 
 The `spec` parameter is `Option<serde_json::Value>`. See [CLI guide](cli.md#flow-run-spec-options) for the full spec options reference.
 
-The SDK automatically checks runtime health before submitting and returns typed errors for paused, starting, or error states.
+The SDK automatically checks health before submitting and returns typed errors for paused, starting, or error states.
 
 ## Monitor flow runs
 
@@ -117,13 +161,16 @@ The SDK automatically checks runtime health before submitting and returns typed 
 ```rust
 use ascend_tools::models::FlowRunFilters;
 
-let result = client.list_flow_runs("<RUNTIME_UUID>", Default::default())?;
+let runtime_uuid = client.resolve_runtime_target(
+    Some("My Workspace"), None, None,
+)?;
+let result = client.list_flow_runs(&runtime_uuid, Default::default())?;
 for run in &result.items {
     println!("{}: {}", run.name, run.status);
 }
 
 // With filters
-let result = client.list_flow_runs("<RUNTIME_UUID>", FlowRunFilters {
+let result = client.list_flow_runs(&runtime_uuid, FlowRunFilters {
     status: Some("running".into()),
     limit: Some(10),
     ..Default::default()
@@ -135,7 +182,7 @@ Returns `FlowRunList` with `items: Vec<FlowRun>` and `truncated: bool`.
 ### Get a flow run
 
 ```rust
-let run = client.get_flow_run("<RUNTIME_UUID>", "fr-...")?;
+let run = client.get_flow_run(&runtime_uuid, "fr-...")?;
 println!("{}: {} ({})", run.name, run.status, run.flow);
 ```
 
@@ -143,12 +190,17 @@ println!("{}: {} ({})", run.name, run.status, run.flow);
 
 | Type | Fields |
 |------|--------|
-| `Runtime` | `uuid`, `id`, `title`, `kind`, `project_uuid`, `environment_uuid`, `build_uuid`, `created_at`, `updated_at`, `health`, `paused` |
+| `Runtime` | `uuid`, `id`, `title`, `kind`, `project_uuid`, `environment_uuid`, `build_uuid`, `created_at`, `updated_at`, `health`, `paused`, `profile`, `git_branch_base`, `git_branch`, `enable_automations`, `auto_snooze_timeout_minutes` |
+| `Workspace` | newtype over `Runtime` (derefs to `Runtime`) |
+| `Deployment` | newtype over `Runtime` (derefs to `Runtime`) |
+| `RuntimeKind` | `Workspace`, `Deployment` |
+| `RuntimeCreate` | `title`, `environment`, `project`, `profile`, `git_branch`, `git_branch_base`, `size`, `storage_size`, `enable_automations`, `auto_snooze_timeout_minutes` |
+| `RuntimeUpdate` | `title`, `git_branch`, `git_branch_base`, `profile`, `size`, `storage_size`, `enable_automations`, `auto_snooze_timeout_minutes` |
+| `RuntimeFilters` | `id`, `title`, `kind`, `project`, `environment` |
 | `Flow` | `name` |
 | `FlowRun` | `name`, `flow`, `build_uuid`, `runtime_uuid`, `status`, `created_at`, `error` |
 | `FlowRunList` | `items`, `truncated` |
 | `FlowRunTrigger` | `event_uuid`, `event_type` |
-| `RuntimeFilters` | `id`, `kind`, `project_uuid`, `environment_uuid` |
 | `FlowRunFilters` | `status`, `flow`, `since`, `until`, `offset`, `limit` |
 
 All filter structs are `#[non_exhaustive]` and implement `Default`. Use `..Default::default()` when constructing.
@@ -160,10 +212,11 @@ All methods return `ascend_tools::Result<T>`. The error type is a typed enum:
 ```rust
 use ascend_tools::Error;
 
-match client.run_flow(uuid, flow, None, false) {
+match client.run_flow(&runtime_uuid, "sales", None, false) {
     Ok(trigger) => println!("triggered: {}", trigger.event_uuid),
-    Err(Error::RuntimePaused) => println!("runtime is paused, use resume=true"),
-    Err(Error::RuntimeStarting) => println!("runtime is still starting"),
+    Err(Error::RuntimePaused) => println!("paused, use resume=true"),
+    Err(Error::RuntimeStarting) => println!("still starting, try again shortly"),
+    Err(Error::NotFound { kind, title }) => println!("no {kind} named '{title}'"),
     Err(Error::ApiError { status, message }) => println!("API error {status}: {message}"),
     Err(e) => println!("error: {e}"),
 }
@@ -175,7 +228,9 @@ Key error variants:
 |---------|-------------|
 | `MissingConfig` | Required env var or flag not set |
 | `ApiError` | HTTP error from the Ascend API |
-| `RuntimePaused` | Runtime is paused; use `resume=true` |
-| `RuntimeStarting` | Runtime is starting, not yet ready |
-| `RuntimeInErrorState` | Runtime is in error state |
-| `RuntimeHealthMissing` | Runtime has no health status (may be initializing) |
+| `NotFound` | No workspace/deployment found with that title |
+| `AmbiguousTitle` | Multiple matches for a title; use `--uuid` to disambiguate |
+| `RuntimePaused` | Workspace/deployment is paused; use `resume=true` |
+| `RuntimeStarting` | Workspace/deployment is starting, not yet ready |
+| `RuntimeInErrorState` | Workspace/deployment is in error state |
+| `RuntimeHealthMissing` | Workspace/deployment has no health status (may be initializing) |

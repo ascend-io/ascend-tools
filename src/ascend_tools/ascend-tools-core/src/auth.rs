@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use ureq::Agent;
+use zeroize::Zeroizing;
 
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 
@@ -13,7 +14,7 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 /// via the Instance API's /api/v1/auth/token endpoint.
 pub struct Auth {
     service_account_id: String,
-    key_bytes: Vec<u8>,
+    key_bytes: Zeroizing<Vec<u8>>,
     instance_api_url: String,
     agent: Agent,
     cloud_api_domain: Mutex<Option<String>>,
@@ -35,10 +36,12 @@ impl Auth {
         instance_api_url: String,
         agent: Agent,
     ) -> Result<Self> {
-        let key_bytes = URL_SAFE_NO_PAD
-            .decode(key_b64.trim())
-            .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
-            .map_err(|_| Error::InvalidServiceAccountKeyEncoding)?;
+        let key_bytes = Zeroizing::new(
+            URL_SAFE_NO_PAD
+                .decode(key_b64.trim())
+                .or_else(|_| base64::engine::general_purpose::STANDARD.decode(key_b64.trim()))
+                .map_err(|_| Error::InvalidServiceAccountKeyEncoding)?,
+        );
 
         if key_bytes.len() != 32 {
             return Err(Error::InvalidServiceAccountKeyLength {
@@ -54,6 +57,11 @@ impl Auth {
             cloud_api_domain: Mutex::new(None),
             cached_token: Mutex::new(None),
         })
+    }
+
+    /// Returns the service account ID.
+    pub fn service_account_id(&self) -> &str {
+        &self.service_account_id
     }
 
     /// Get a valid instance token, refreshing if needed.
@@ -188,14 +196,13 @@ impl Auth {
             })?
             .to_string();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|source| Error::SystemClockBeforeUnixEpoch { source })?
-            .as_secs();
         let expires_at = json
             .get("expiration")
             .and_then(|v| v.as_u64())
-            .unwrap_or(now + 3600);
+            .ok_or_else(|| Error::MissingField {
+                context: "token exchange response",
+                field: "expiration",
+            })?;
 
         Ok((token, expires_at))
     }
@@ -225,7 +232,7 @@ impl std::fmt::Debug for Auth {
 ///     SEQUENCE { OID 1.3.101.112 }       -- algorithm (Ed25519)
 ///     OCTET STRING { OCTET STRING seed } -- privateKey (CurvePrivateKey)
 ///   }
-fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
+fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
     if seed.len() != 32 {
         return Err(Error::InvalidEd25519SeedLength { got: seed.len() });
     }
@@ -237,7 +244,7 @@ fn ed25519_seed_to_pkcs8_der(seed: &[u8]) -> Result<Vec<u8>> {
         0x04, 0x22, // OCTET STRING (34 bytes)
         0x04, 0x20, // OCTET STRING (32 bytes) — the seed
     ];
-    let mut der = Vec::with_capacity(prefix.len() + 32);
+    let mut der = Zeroizing::new(Vec::with_capacity(prefix.len() + 32));
     der.extend_from_slice(prefix);
     der.extend_from_slice(seed);
     Ok(der)

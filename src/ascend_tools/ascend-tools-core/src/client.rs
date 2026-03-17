@@ -1,3 +1,5 @@
+use std::fmt;
+
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 use ureq::Agent;
@@ -6,7 +8,8 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Runtime, RuntimeFilters,
+    Deployment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger, Runtime, RuntimeCreate,
+    RuntimeFilters, RuntimeKind, RuntimeUpdate, Workspace,
 };
 
 const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/').add(b'?');
@@ -59,6 +62,16 @@ pub struct AscendClient {
 }
 
 impl AscendClient {
+    /// Returns the Instance API URL.
+    pub fn instance_api_url(&self) -> &str {
+        &self.instance_api_url
+    }
+
+    /// Returns the service account ID.
+    pub fn service_account_id(&self) -> &str {
+        self.auth.service_account_id()
+    }
+
     pub fn new(config: Config) -> Result<Self> {
         let agent = crate::new_agent();
         let auth = Auth::new(
@@ -79,9 +92,10 @@ impl AscendClient {
     pub fn list_runtimes(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {
         let mut qs = QueryString::new();
         qs.push_opt("id", filters.id.as_deref());
-        qs.push_opt("kind", filters.kind.as_deref());
-        qs.push_opt("project_uuid", filters.project_uuid.as_deref());
-        qs.push_opt("environment_uuid", filters.environment_uuid.as_deref());
+        qs.push_opt("title", filters.title.as_deref());
+        qs.push_opt("kind", filters.kind.map(|k| k.as_str()));
+        qs.push_opt("project", filters.project.as_deref());
+        qs.push_opt("environment", filters.environment.as_deref());
         self.get(&format!("/api/v1/runtimes{}", qs.finish()))
     }
 
@@ -95,6 +109,211 @@ impl AscendClient {
 
     pub fn pause_runtime(&self, uuid: &str) -> Result<Runtime> {
         self.post_empty(&format!("/api/v1/runtimes/{}:pause", encode_path(uuid)))
+    }
+
+    fn create_runtime_at(&self, path: &str, create: &RuntimeCreate) -> Result<Runtime> {
+        let body =
+            serde_json::to_value(create).with_json_serialize_context("RuntimeCreate body")?;
+        self.post_json(path, &body)
+    }
+
+    pub fn update_runtime(&self, uuid: &str, update: &RuntimeUpdate) -> Result<Runtime> {
+        let body =
+            serde_json::to_value(update).with_json_serialize_context("RuntimeUpdate body")?;
+        self.patch_json(&format!("/api/v1/runtimes/{}", encode_path(uuid)), &body)
+    }
+
+    pub fn delete_runtime(&self, uuid: &str) -> Result<()> {
+        self.delete_empty(&format!("/api/v1/runtimes/{}", encode_path(uuid)))
+    }
+
+    /// Resolve a runtime by its title and kind. Returns exactly one match.
+    ///
+    /// Errors if zero or multiple runtimes match.
+    /// Prefer `get_workspace`/`get_deployment` for most use cases.
+    pub fn resolve_runtime_by_title(&self, title: &str, kind: RuntimeKind) -> Result<Runtime> {
+        let runtimes = self.list_runtimes(RuntimeFilters {
+            title: Some(title.to_string()),
+            kind: Some(kind),
+            ..Default::default()
+        })?;
+        resolve_one(runtimes, kind, title, |r| (&r.uuid, &r.title))
+    }
+
+    /// Resolve a runtime UUID from a title or UUID string.
+    ///
+    /// If `uuid_override` is `Some`, uses it directly. Otherwise resolves by title+kind.
+    /// Prefer `get_workspace`/`get_deployment` for most use cases.
+    pub fn resolve_runtime_uuid(
+        &self,
+        title: &str,
+        kind: RuntimeKind,
+        uuid_override: Option<&str>,
+    ) -> Result<String> {
+        if let Some(uuid) = uuid_override {
+            return Ok(uuid.to_string());
+        }
+        self.resolve_runtime_by_title(title, kind).map(|r| r.uuid)
+    }
+
+    // -- Workspaces (convenience wrappers that set kind=workspace) --
+
+    pub fn list_workspaces(&self, mut filters: RuntimeFilters) -> Result<Vec<Workspace>> {
+        filters.kind = Some(RuntimeKind::Workspace);
+        self.list_runtimes(filters)
+            .map(|v| v.into_iter().map(Workspace).collect())
+    }
+
+    /// Get a workspace by title. If `uuid` is provided, it is used directly
+    /// and `title` is ignored.
+    pub fn get_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
+        if let Some(uuid) = uuid {
+            self.get_runtime(uuid).map(Workspace)
+        } else {
+            self.resolve_runtime_by_title(title, RuntimeKind::Workspace)
+                .map(Workspace)
+        }
+    }
+
+    pub fn create_workspace(&self, create: &RuntimeCreate) -> Result<Workspace> {
+        self.create_runtime_at("/api/v1/workspaces", create)
+            .map(Workspace)
+    }
+
+    pub fn update_workspace(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+        update: &RuntimeUpdate,
+    ) -> Result<Workspace> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
+        self.update_runtime(&uuid, update).map(Workspace)
+    }
+
+    pub fn pause_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
+        self.pause_runtime(&uuid).map(Workspace)
+    }
+
+    pub fn resume_workspace(&self, title: &str, uuid: Option<&str>) -> Result<Workspace> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
+        self.resume_runtime(&uuid).map(Workspace)
+    }
+
+    pub fn delete_workspace(&self, title: &str, uuid: Option<&str>) -> Result<()> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Workspace, uuid)?;
+        self.delete_runtime(&uuid)
+    }
+
+    // -- Deployments (convenience wrappers that set kind=deployment) --
+
+    pub fn list_deployments(&self, mut filters: RuntimeFilters) -> Result<Vec<Deployment>> {
+        filters.kind = Some(RuntimeKind::Deployment);
+        self.list_runtimes(filters)
+            .map(|v| v.into_iter().map(Deployment).collect())
+    }
+
+    /// Get a deployment by title. If `uuid` is provided, it is used directly
+    /// and `title` is ignored.
+    pub fn get_deployment(&self, title: &str, uuid: Option<&str>) -> Result<Deployment> {
+        if let Some(uuid) = uuid {
+            self.get_runtime(uuid).map(Deployment)
+        } else {
+            self.resolve_runtime_by_title(title, RuntimeKind::Deployment)
+                .map(Deployment)
+        }
+    }
+
+    pub fn create_deployment(&self, create: &RuntimeCreate) -> Result<Deployment> {
+        self.create_runtime_at("/api/v1/deployments", create)
+            .map(Deployment)
+    }
+
+    pub fn update_deployment(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+        update: &RuntimeUpdate,
+    ) -> Result<Deployment> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.update_runtime(&uuid, update).map(Deployment)
+    }
+
+    pub fn pause_deployment_automations(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> Result<Deployment> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.update_runtime(
+            &uuid,
+            &RuntimeUpdate {
+                enable_automations: Some(false),
+                ..Default::default()
+            },
+        )
+        .map(Deployment)
+    }
+
+    pub fn resume_deployment_automations(
+        &self,
+        title: &str,
+        uuid: Option<&str>,
+    ) -> Result<Deployment> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.update_runtime(
+            &uuid,
+            &RuntimeUpdate {
+                enable_automations: Some(true),
+                ..Default::default()
+            },
+        )
+        .map(Deployment)
+    }
+
+    pub fn delete_deployment(&self, title: &str, uuid: Option<&str>) -> Result<()> {
+        let uuid = self.resolve_runtime_uuid(title, RuntimeKind::Deployment, uuid)?;
+        self.delete_runtime(&uuid)
+    }
+
+    // -- Cross-kind resolution --
+
+    /// Resolve a runtime UUID from workspace title, deployment title, or UUID.
+    ///
+    /// Exactly one of the three must be provided. Returns `MissingField` if none are set.
+    pub fn resolve_runtime_target(
+        &self,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+    ) -> Result<String> {
+        if let Some(uuid) = uuid {
+            return Ok(uuid.to_string());
+        }
+        if let Some(ws) = workspace {
+            return self.resolve_runtime_uuid(ws, RuntimeKind::Workspace, None);
+        }
+        if let Some(dep) = deployment {
+            return self.resolve_runtime_uuid(dep, RuntimeKind::Deployment, None);
+        }
+        Err(Error::MissingField {
+            context: "target",
+            field: "workspace, deployment, or uuid",
+        })
+    }
+
+    /// Like `resolve_runtime_target` but returns `None` when no target is specified.
+    pub fn resolve_optional_runtime_target(
+        &self,
+        workspace: Option<&str>,
+        deployment: Option<&str>,
+        uuid: Option<&str>,
+    ) -> Result<Option<String>> {
+        if uuid.is_none() && workspace.is_none() && deployment.is_none() {
+            return Ok(None);
+        }
+        self.resolve_runtime_target(workspace, deployment, uuid)
+            .map(Some)
     }
 
     // -- Flows --
@@ -173,46 +392,117 @@ impl AscendClient {
     // -- HTTP helpers --
 
     fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let token = self.auth.get_token()?;
-        let url = format!("{}{path}", self.instance_api_url);
-        let context = format!("GET {path}");
-        let resp = self
-            .agent
-            .get(&url)
-            .header("Authorization", &format!("Bearer {token}"))
-            .call()
-            .with_request_context(context.clone())?;
-        handle_response(resp, &context)
+        self.request("GET", path, None)
     }
 
     fn post_empty<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let token = self.auth.get_token()?;
-        let url = format!("{}{path}", self.instance_api_url);
-        let context = format!("POST {path}");
-        let resp = self
-            .agent
-            .post(&url)
-            .header("Authorization", &format!("Bearer {token}"))
-            .send_empty()
-            .with_request_context(context.clone())?;
-        handle_response(resp, &context)
+        self.request("POST", path, None)
     }
 
     fn post_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
+        self.request("POST", path, Some(body))
+    }
+
+    fn patch_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
+        self.request("PATCH", path, Some(body))
+    }
+
+    fn delete_empty(&self, path: &str) -> Result<()> {
         let token = self.auth.get_token()?;
         let url = format!("{}{path}", self.instance_api_url);
-        let json_body = serde_json::to_string(body)
-            .with_json_serialize_context(format!("POST {path} request body"))?;
-        let context = format!("POST {path}");
+        let context = format!("DELETE {path}");
         let resp = self
             .agent
-            .post(&url)
+            .delete(&url)
             .header("Authorization", &format!("Bearer {token}"))
-            .header("Content-Type", "application/json")
-            .send(json_body.as_bytes())
+            .call()
             .with_request_context(context.clone())?;
+        check_error_status(resp, &context)
+    }
+
+    /// Unified request helper for GET, POST, and PATCH.
+    fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<T> {
+        let token = self.auth.get_token()?;
+        let url = format!("{}{path}", self.instance_api_url);
+        let context = format!("{method} {path}");
+
+        let resp = match (method, body) {
+            ("GET", _) => self
+                .agent
+                .get(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .call()
+                .with_request_context(context.clone())?,
+            (m, Some(body)) => {
+                let json_body = serde_json::to_string(body)
+                    .with_json_serialize_context(format!("{context} request body"))?;
+                let req = match m {
+                    "POST" => self.agent.post(&url),
+                    "PATCH" => self.agent.patch(&url),
+                    _ => unreachable!("unsupported method with body: {m}"),
+                };
+                req.header("Authorization", &format!("Bearer {token}"))
+                    .header("Content-Type", "application/json")
+                    .send(json_body.as_bytes())
+                    .with_request_context(context.clone())?
+            }
+            ("POST", None) => self
+                .agent
+                .post(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .send_empty()
+                .with_request_context(context.clone())?,
+            _ => unreachable!("unsupported method without body: {method}"),
+        };
+
         handle_response(resp, &context)
     }
+}
+
+/// Resolve exactly one item from a list, returning its UUID.
+/// Errors with `NotFound` or `AmbiguousTitle` for 0 or >1 matches.
+fn resolve_one<T>(
+    items: Vec<T>,
+    kind: impl fmt::Display,
+    title: &str,
+    extract: impl Fn(&T) -> (&str, &str),
+) -> Result<T> {
+    match items.len() {
+        0 => Err(Error::NotFound {
+            kind: kind.to_string(),
+            title: title.to_string(),
+        }),
+        1 => Ok(items.into_iter().next().unwrap_or_else(|| unreachable!())),
+        _ => Err(Error::AmbiguousTitle {
+            kind: kind.to_string(),
+            title: title.to_string(),
+            matches: items
+                .iter()
+                .map(|item| {
+                    let (uuid, title) = extract(item);
+                    (uuid.to_string(), title.to_string())
+                })
+                .collect(),
+        }),
+    }
+}
+
+/// Check HTTP status and return an error for non-2xx responses. Discards the body on success.
+fn check_error_status(mut resp: ureq::http::Response<ureq::Body>, context: &str) -> Result<()> {
+    let status = resp.status().as_u16();
+    if !(200..300).contains(&status) {
+        let body: String = resp
+            .body_mut()
+            .read_to_string()
+            .with_response_read_context(context.to_string())?;
+        return Err(api_error(status, &body));
+    }
+    Ok(())
 }
 
 fn handle_response<T: serde::de::DeserializeOwned>(
@@ -226,22 +516,26 @@ fn handle_response<T: serde::de::DeserializeOwned>(
         .with_response_read_context(context.to_string())?;
 
     if !(200..300).contains(&status) {
-        // Try to extract error message from JSON response
-        if let Ok(json) = serde_json::from_str::<Value>(&body)
-            && let Some(detail) = json.get("detail").and_then(|v| v.as_str())
-        {
-            return Err(Error::ApiError {
-                status,
-                message: detail.to_string(),
-            });
-        }
-        return Err(Error::ApiError {
-            status,
-            message: body,
-        });
+        return Err(api_error(status, &body));
     }
 
     serde_json::from_str(&body).with_json_parse_context(format!("{context} response"))
+}
+
+/// Build an ApiError, preferring the `detail` field from JSON responses.
+fn api_error(status: u16, body: &str) -> Error {
+    if let Ok(json) = serde_json::from_str::<Value>(body)
+        && let Some(detail) = json.get("detail").and_then(|v| v.as_str())
+    {
+        return Error::ApiError {
+            status,
+            message: detail.to_string(),
+        };
+    }
+    Error::ApiError {
+        status,
+        message: body.to_string(),
+    }
 }
 
 impl std::fmt::Debug for AscendClient {
@@ -249,6 +543,6 @@ impl std::fmt::Debug for AscendClient {
         f.debug_struct("AscendClient")
             .field("instance_api_url", &self.instance_api_url)
             .field("auth", &self.auth)
-            .finish()
+            .finish_non_exhaustive()
     }
 }

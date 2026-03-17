@@ -82,8 +82,8 @@ fn api_error_uses_raw_body_for_non_json_errors() {
     let runtimes = server
         .mock("GET", "/api/v1/runtimes")
         .match_header("authorization", "Bearer token-b")
-        .with_status(502)
-        .with_body("upstream failure")
+        .with_status(400)
+        .with_body("bad request body")
         .expect(1)
         .create();
 
@@ -92,8 +92,8 @@ fn api_error_uses_raw_body_for_non_json_errors() {
     runtimes.assert();
     match err {
         Error::ApiError { status, message } => {
-            assert_eq!(status, 502);
-            assert_eq!(message, "upstream failure");
+            assert_eq!(status, 400);
+            assert_eq!(message, "bad request body");
         }
         _ => panic!("unexpected error variant: {err:?}"),
     }

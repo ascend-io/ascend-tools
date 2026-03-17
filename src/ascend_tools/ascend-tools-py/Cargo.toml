@@ -4,6 +4,7 @@
 name = "ascend-tools-py"
 version = "0.5.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Cody <cody.peterson@ascend.io>"]
 license = "MIT"
 repository = "https://github.com/ascend-io/ascend-tools"
@@ -23,3 +24,8 @@ pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
 pythonize = "0.28"
 serde = "1"
 serde_json = "1"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

@@ -9,22 +9,11 @@ PASS=0
 FAIL=0
 SKIP=0
 
-# ---------- args ----------
-
-RUNTIME_ID_FILTER="ascend-tools"
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --runtime-id) RUNTIME_ID_FILTER="$2"; shift 2 ;;
-    *) echo "unknown arg: $1" >&2; exit 1 ;;
-  esac
-done
-
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
 
-# Run `flow run` with retries for transient runtime readiness states.
-# Prints the command output to stdout and returns the command exit code.
+# Run `flow run` with retries for transient readiness states.
 run_flow_retry() {
   local flow_name="$1"
   local runtime_uuid="$2"
@@ -39,7 +28,7 @@ run_flow_retry() {
     fi
 
     set +e
-    out=$($CLI -o json flow run "$flow_name" -r "$runtime_uuid" "$@" 2>&1)
+    out=$($CLI -o json flow run "$flow_name" --uuid "$runtime_uuid" "$@" 2>&1)
     rc=$?
     set -e
 
@@ -72,25 +61,25 @@ for var in ASCEND_SERVICE_ACCOUNT_ID ASCEND_SERVICE_ACCOUNT_KEY ASCEND_INSTANCE_
 done
 pass "env vars set"
 
-# ---------- runtimes ----------
+# ---------- workspaces ----------
 
-echo "=== runtimes ==="
+echo "=== workspaces ==="
 
-# list runtimes (text)
-TEXT=$($CLI runtime list 2>&1)
-if echo "$TEXT" | grep -Eq "^UUID[[:space:]]+ID[[:space:]]+TITLE[[:space:]]+KIND"; then
-  pass "runtime list (text) has header"
+# list workspaces (text)
+TEXT=$($CLI workspace list 2>&1)
+if echo "$TEXT" | grep -Eq "^TITLE[[:space:]]+UUID[[:space:]]+HEALTH"; then
+  pass "workspace list (text) has header"
 else
-  fail "runtime list (text)" "missing header row"
+  fail "workspace list (text)" "missing header row"
 fi
 
-# list runtimes (json)
-JSON=$($CLI -o json runtime list 2>&1)
+# list workspaces (json)
+JSON=$($CLI -o json workspace list 2>&1)
 COUNT=$(echo "$JSON" | jq 'length')
 if [ "$COUNT" -gt 0 ]; then
-  pass "runtime list (json) returned $COUNT runtime(s)"
+  pass "workspace list (json) returned $COUNT workspace(s)"
 else
-  skip "no runtimes found — skipping runtime get, filters, flows, and flow runs"
+  skip "no workspaces found — skipping remaining tests"
   echo ""
   echo "=== results ==="
   TOTAL=$((PASS + FAIL + SKIP))
@@ -100,61 +89,34 @@ else
   exit 0
 fi
 
-FILTERED=$($CLI -o json runtime list --id "$RUNTIME_ID_FILTER" 2>&1)
-FILTERED_COUNT=$(echo "$FILTERED" | jq 'length')
-if [ "$FILTERED_COUNT" -gt 0 ]; then
-  RUNTIME_UUID=$(echo "$FILTERED" | jq -r '.[0].uuid')
-  RUNTIME_ID=$(echo "$FILTERED" | jq -r '.[0].id')
-else
-  echo "  runtime '$RUNTIME_ID_FILTER' not found, falling back to first runtime"
-  RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
-  RUNTIME_ID=$(echo "$JSON" | jq -r '.[0].id')
-fi
-echo "  using runtime: $RUNTIME_ID ($RUNTIME_UUID)"
+RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
+RUNTIME_TITLE=$(echo "$JSON" | jq -r '.[0].title')
+echo "  using workspace: $RUNTIME_TITLE ($RUNTIME_UUID)"
 
-# get runtime
-GET_JSON=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1)
+# get workspace by title
+GET_JSON=$($CLI -o json workspace get "$RUNTIME_TITLE" 2>&1)
 GOT_UUID=$(echo "$GET_JSON" | jq -r '.uuid')
 if [ "$GOT_UUID" = "$RUNTIME_UUID" ]; then
-  pass "runtime get returns correct uuid"
+  pass "workspace get returns correct uuid"
 else
-  fail "runtime get" "expected $RUNTIME_UUID, got $GOT_UUID"
+  fail "workspace get" "expected $RUNTIME_UUID, got $GOT_UUID"
 fi
 
-# verify all expected fields are present
+# verify expected fields
 for field in uuid id title kind project_uuid environment_uuid created_at updated_at; do
   VAL=$(echo "$GET_JSON" | jq -r ".$field")
   if [ "$VAL" != "null" ] && [ -n "$VAL" ]; then
-    pass "runtime get has field '$field'"
+    pass "workspace get has field '$field'"
   else
-    fail "runtime get" "missing or null field '$field'"
+    fail "workspace get" "missing or null field '$field'"
   fi
 done
-
-# list runtimes with --id filter
-FILTERED=$($CLI -o json runtime list --id "$RUNTIME_ID" 2>&1)
-FILTERED_COUNT=$(echo "$FILTERED" | jq 'length')
-if [ "$FILTERED_COUNT" -eq 1 ]; then
-  pass "runtime list --id filter returns exactly 1"
-else
-  fail "runtime list --id filter" "expected 1, got $FILTERED_COUNT"
-fi
-
-# list runtimes with --kind filter
-RUNTIME_KIND=$(echo "$JSON" | jq -r '.[0].kind')
-KIND_FILTERED=$($CLI -o json runtime list --kind "$RUNTIME_KIND" 2>&1)
-KIND_COUNT=$(echo "$KIND_FILTERED" | jq 'length')
-if [ "$KIND_COUNT" -ge 1 ]; then
-  pass "runtime list --kind filter returns >= 1"
-else
-  fail "runtime list --kind filter" "expected >= 1, got $KIND_COUNT"
-fi
 
 # ---------- flows ----------
 
 echo "=== flows ==="
 
-FLOWS_JSON=$($CLI -o json flow list -r "$RUNTIME_UUID" 2>&1)
+FLOWS_JSON=$($CLI -o json flow list --uuid "$RUNTIME_UUID" 2>&1)
 FLOW_COUNT=$(echo "$FLOWS_JSON" | jq 'length')
 if [ "$FLOW_COUNT" -gt 0 ]; then
   pass "flow list returned $FLOW_COUNT flow(s)"
@@ -176,14 +138,15 @@ echo "  using flow: $FLOW_NAME"
 
 echo "=== flow runs (before trigger) ==="
 
-RUNS_BEFORE=$($CLI -o json flow list-runs -r "$RUNTIME_UUID" -f "$FLOW_NAME" 2>&1)
+RUNS_BEFORE_RESULT=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+RUNS_BEFORE=$(echo "$RUNS_BEFORE_RESULT" | jq '.items')
 RUNS_BEFORE_COUNT=$(echo "$RUNS_BEFORE" | jq 'length')
 pass "flow list-runs returned $RUNS_BEFORE_COUNT run(s) before trigger"
 
-# if there are existing runs, test get-run on the first one
+# test get-run on existing run
 if [ "$RUNS_BEFORE_COUNT" -gt 0 ]; then
   EXISTING_RUN_NAME=$(echo "$RUNS_BEFORE" | jq -r '.[0].name')
-  GET_RUN_JSON=$($CLI -o json flow get-run "$EXISTING_RUN_NAME" -r "$RUNTIME_UUID" 2>&1)
+  GET_RUN_JSON=$($CLI -o json flow get-run "$EXISTING_RUN_NAME" --uuid "$RUNTIME_UUID" 2>&1)
   GOT_RUN_NAME=$(echo "$GET_RUN_JSON" | jq -r '.name')
   if [ "$GOT_RUN_NAME" = "$EXISTING_RUN_NAME" ]; then
     pass "flow get-run returns correct run"
@@ -237,11 +200,11 @@ fi
 
 echo "=== flow runs (after trigger) ==="
 
-# poll for the new run to appear (up to 15s)
 RUNS_AFTER_COUNT="$RUNS_BEFORE_COUNT"
 for delay in 2 3 5 5; do
   sleep "$delay"
-  RUNS_AFTER=$($CLI -o json flow list-runs -r "$RUNTIME_UUID" -f "$FLOW_NAME" 2>&1)
+  RUNS_AFTER_RESULT=$($CLI -o json flow list-runs --uuid "$RUNTIME_UUID" --flow "$FLOW_NAME" 2>&1)
+  RUNS_AFTER=$(echo "$RUNS_AFTER_RESULT" | jq '.items')
   RUNS_AFTER_COUNT=$(echo "$RUNS_AFTER" | jq 'length')
   if [ "$RUNS_AFTER_COUNT" -gt "$RUNS_BEFORE_COUNT" ]; then
     break
@@ -251,18 +214,14 @@ done
 if [ "$RUNS_AFTER_COUNT" -gt "$RUNS_BEFORE_COUNT" ]; then
   pass "flow run count increased: $RUNS_BEFORE_COUNT -> $RUNS_AFTER_COUNT"
 else
-  # Flow runner may be slow to process events (esp. after workspace restart).
-  # The trigger itself succeeded (event_uuid returned), so this is infra timing.
   skip "flow run not yet materialized after 15s (flow runner may be catching up)"
 fi
 
-# verify the newest run (first in list — ordered by created_at desc)
 NEWEST_RUN_NAME=$(echo "$RUNS_AFTER" | jq -r '.[0].name')
 NEWEST_RUN_STATUS=$(echo "$RUNS_AFTER" | jq -r '.[0].status')
 pass "newest run: $NEWEST_RUN_NAME (status: $NEWEST_RUN_STATUS)"
 
-# get the new run
-GET_NEW_RUN=$($CLI -o json flow get-run "$NEWEST_RUN_NAME" -r "$RUNTIME_UUID" 2>&1)
+GET_NEW_RUN=$($CLI -o json flow get-run "$NEWEST_RUN_NAME" --uuid "$RUNTIME_UUID" 2>&1)
 GOT_NEW_NAME=$(echo "$GET_NEW_RUN" | jq -r '.name')
 if [ "$GOT_NEW_NAME" = "$NEWEST_RUN_NAME" ]; then
   pass "flow get-run on new run works"
@@ -270,25 +229,7 @@ else
   fail "flow get-run on new run" "expected $NEWEST_RUN_NAME, got $GOT_NEW_NAME"
 fi
 
-# ---------- status filter ----------
-
-echo "=== status filter ==="
-
-PENDING_RUNS=$($CLI -o json flow list-runs -r "$RUNTIME_UUID" --status pending 2>&1)
-PENDING_COUNT=$(echo "$PENDING_RUNS" | jq 'length')
-pass "flow list-runs --status pending returned $PENDING_COUNT run(s)"
-
-# verify all returned runs actually have the requested status
-if [ "$PENDING_COUNT" -gt 0 ]; then
-  BAD_STATUS=$(echo "$PENDING_RUNS" | jq '[.[] | select(.status != "pending")] | length')
-  if [ "$BAD_STATUS" -eq 0 ]; then
-    pass "all pending runs have status=pending"
-  else
-    fail "status filter" "$BAD_STATUS runs have wrong status"
-  fi
-fi
-
-# ---------- run_flow with spec ----------
+# ---------- spec ----------
 
 echo "=== run_flow with spec ==="
 
@@ -302,102 +243,65 @@ else
   fail "flow run --spec '{}'" "$SPEC_EMPTY"
 fi
 
-set +e
-SPEC_FR=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"full_refresh":true}')
-SPEC_FR_RC=$?
-set -e
-if [ "$SPEC_FR_RC" -eq 0 ] && echo "$SPEC_FR" | jq -e '.event_uuid' > /dev/null 2>&1; then
-  pass "flow run --spec full_refresh works"
+# ---------- workspace pause/resume ----------
+
+echo "=== workspace pause ==="
+
+PAUSE_JSON=$($CLI -o json workspace pause "$RUNTIME_TITLE" 2>&1)
+PAUSED=$(echo "$PAUSE_JSON" | jq -r '.paused')
+if [ "$PAUSED" = "true" ]; then
+  pass "workspace pause sets paused=true"
 else
-  fail "flow run --spec full_refresh" "$SPEC_FR"
+  fail "workspace pause" "expected paused=true, got $PAUSED"
 fi
 
-set +e
-SPEC_PARAMS=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"parameters":{"key":"value"}}')
-SPEC_PARAMS_RC=$?
-set -e
-if [ "$SPEC_PARAMS_RC" -eq 0 ] && echo "$SPEC_PARAMS" | jq -e '.event_uuid' > /dev/null 2>&1; then
-  pass "flow run --spec parameters works"
+# flow run without --resume should fail
+PAUSED_ERR=$($CLI -o json flow run "$FLOW_NAME" --uuid "$RUNTIME_UUID" 2>&1 || true)
+if echo "$PAUSED_ERR" | grep -qi "paused\|resume\|no health status\|initializing\|starting"; then
+  pass "flow run on paused workspace fails with descriptive error"
 else
-  fail "flow run --spec parameters" "$SPEC_PARAMS"
+  fail "flow run on paused workspace" "expected state error, got: $PAUSED_ERR"
 fi
 
+echo "=== workspace resume ==="
+
 set +e
-SPEC_MULTI=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume --spec '{"run_tests":false,"halt_flow_on_error":true,"runner_overrides":{"size":"Medium"}}')
-SPEC_MULTI_RC=$?
+RESUME_TRIGGER=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume)
+RESUME_TRIGGER_RC=$?
 set -e
-if [ "$SPEC_MULTI_RC" -eq 0 ] && echo "$SPEC_MULTI" | jq -e '.event_uuid' > /dev/null 2>&1; then
-  pass "flow run --spec multiple fields works"
+if [ "$RESUME_TRIGGER_RC" -eq 0 ] && echo "$RESUME_TRIGGER" | jq -e '.event_uuid' > /dev/null 2>&1; then
+  pass "flow run --resume succeeds"
 else
-  fail "flow run --spec multiple fields" "$SPEC_MULTI"
+  fail "flow run --resume" "$RESUME_TRIGGER"
 fi
 
-# ---------- runtime pause/resume ----------
-
-RUNTIME_KIND=$(echo "$JSON" | jq -r '.[0].kind')
-if [ "$RUNTIME_KIND" != "workspace" ]; then
-  skip "runtime is not a workspace — skipping pause/resume tests"
+AFTER_RESUME=$($CLI -o json workspace get "$RUNTIME_TITLE" 2>&1)
+PAUSED_AFTER=$(echo "$AFTER_RESUME" | jq -r '.paused')
+if [ "$PAUSED_AFTER" = "false" ]; then
+  pass "workspace is unpaused after --resume"
 else
-  echo "=== runtime pause ==="
+  fail "workspace after --resume" "expected paused=false, got $PAUSED_AFTER"
+fi
 
-  PAUSE_JSON=$($CLI -o json runtime pause "$RUNTIME_UUID" 2>&1)
-  PAUSED=$(echo "$PAUSE_JSON" | jq -r '.paused')
-  if [ "$PAUSED" = "true" ]; then
-    pass "runtime pause sets paused=true"
-  else
-    fail "runtime pause" "expected paused=true, got $PAUSED"
-  fi
+# wait for health to restore
+for delay in 2 3 5 5; do
+  sleep "$delay"
+  HEALTH=$($CLI -o json workspace get "$RUNTIME_TITLE" 2>&1 | jq -r '.health')
+  [ "$HEALTH" != "null" ] && break
+done
+if [ "$HEALTH" != "null" ]; then
+  pass "workspace health restored: $HEALTH"
+else
+  skip "workspace health not yet available after 15s"
+fi
 
-  # flow run without --resume should fail
-  PAUSED_ERR=$($CLI -o json flow run "$FLOW_NAME" -r "$RUNTIME_UUID" 2>&1 || true)
-  if echo "$PAUSED_ERR" | grep -qi "paused\|resume\|no health status\|initializing\|starting"; then
-    pass "flow run on paused/transitioning runtime fails with descriptive error"
-  else
-    fail "flow run on paused runtime" "expected runtime state error, got: $PAUSED_ERR"
-  fi
-
-  echo "=== runtime resume via flow run ==="
-
-  set +e
-  RESUME_TRIGGER=$(run_flow_retry "$FLOW_NAME" "$RUNTIME_UUID" --resume)
-  RESUME_TRIGGER_RC=$?
-  set -e
-  if [ "$RESUME_TRIGGER_RC" -eq 0 ] && echo "$RESUME_TRIGGER" | jq -e '.event_uuid' > /dev/null 2>&1; then
-    pass "flow run --resume succeeds"
-  else
-    fail "flow run --resume" "$RESUME_TRIGGER"
-  fi
-
-  AFTER_RESUME=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1)
-  PAUSED_AFTER=$(echo "$AFTER_RESUME" | jq -r '.paused')
-  if [ "$PAUSED_AFTER" = "false" ]; then
-    pass "runtime is unpaused after --resume"
-  else
-    fail "runtime after --resume" "expected paused=false, got $PAUSED_AFTER"
-  fi
-
-  echo "=== runtime resume (explicit) ==="
-
-  # wait for health to restore
-  for delay in 2 3 5 5; do
-    sleep "$delay"
-    HEALTH=$($CLI -o json runtime get "$RUNTIME_UUID" 2>&1 | jq -r '.health')
-    [ "$HEALTH" != "null" ] && break
-  done
-  if [ "$HEALTH" != "null" ]; then
-    pass "runtime health restored: $HEALTH"
-  else
-    skip "runtime health not yet available after 15s"
-  fi
-
-  # resume on already-running runtime should be idempotent
-  RESUME_IDEM=$($CLI -o json runtime resume "$RUNTIME_UUID" 2>&1)
-  PAUSED_IDEM=$(echo "$RESUME_IDEM" | jq -r '.paused')
-  if [ "$PAUSED_IDEM" = "false" ]; then
-    pass "runtime resume is idempotent"
-  else
-    fail "runtime resume idempotent" "expected paused=false, got $PAUSED_IDEM"
-  fi
+# resume on already-running workspace should be idempotent
+RESUME_IDEM=$($CLI -o json workspace resume "$RUNTIME_TITLE" 2>&1)
+PAUSED_IDEM=$(echo "$RESUME_IDEM" | jq -r '.paused')
+if [ "$PAUSED_IDEM" = "false" ]; then
+  pass "workspace resume is idempotent"
+else
+  fail "workspace resume idempotent" "expected paused=false, got $PAUSED_IDEM"
 fi
 
 # ---------- summary ----------

@@ -1,6 +1,6 @@
 # Use the CLI
 
-Manage Ascend runtimes, flows, and flow runs from the command line.
+Manage Ascend workspaces, deployments, flows, and flow runs from the command line.
 
 ## Install
 
@@ -28,65 +28,130 @@ export ASCEND_INSTANCE_API_URL="<YOUR_INSTANCE_API_URL>"
 
 You can also pass credentials as CLI flags: `--service-account-id`, `--service-account-key`, `--instance-api-url`. Flags override environment variables.
 
-## Manage runtimes
+## Manage workspaces
 
-### List runtimes
+### List workspaces
 
 ```bash
-ascend-tools runtime list
+ascend-tools workspace list
 ```
 
-Filter by ID, kind, project, or environment:
+Filter by environment or project:
 
 ```bash
-ascend-tools runtime list --id my-runtime
-ascend-tools runtime list --kind deployment
-ascend-tools runtime list --project-uuid <UUID>
-ascend-tools runtime list --environment-uuid <UUID>
+ascend-tools workspace list --environment "Production"
+ascend-tools workspace list --project "My Project"
 ```
 
-### Get a runtime
+### Get a workspace
 
 ```bash
-ascend-tools runtime get <RUNTIME_UUID>
+ascend-tools workspace get "My Workspace"
 ```
 
-### Pause a runtime
+### Create a workspace
 
 ```bash
-ascend-tools runtime pause <RUNTIME_UUID>
+ascend-tools workspace create --title "My Workspace" --environment "Production" --project "My Project" --profile default --git-branch main
+ascend-tools workspace create --title "My Workspace" --environment "Production" --project "My Project" --profile default --git-branch main --size Medium
 ```
 
-### Resume a runtime
+### Update a workspace
 
 ```bash
-ascend-tools runtime resume <RUNTIME_UUID>
+ascend-tools workspace update "My Workspace" --title "Renamed Workspace"
+ascend-tools workspace update "My Workspace" --git-branch feature/new
+ascend-tools workspace update "My Workspace" --profile production --size Large
+```
+
+### Pause and resume a workspace
+
+```bash
+ascend-tools workspace pause "My Workspace"
+ascend-tools workspace resume "My Workspace"
+```
+
+### Delete a workspace
+
+```bash
+ascend-tools workspace delete "My Workspace"
+```
+
+## Manage deployments
+
+### List deployments
+
+```bash
+ascend-tools deployment list
+```
+
+Filter by environment or project:
+
+```bash
+ascend-tools deployment list --environment "Production"
+ascend-tools deployment list --project "My Project"
+```
+
+### Get a deployment
+
+```bash
+ascend-tools deployment get "My Deployment"
+```
+
+### Create a deployment
+
+```bash
+ascend-tools deployment create --title "My Deployment" --environment "Production" --project "My Project" --profile default --git-branch main
+ascend-tools deployment create --title "My Deployment" --environment "Production" --project "My Project" --profile default --git-branch main --enable-automations true
+```
+
+### Update a deployment
+
+```bash
+ascend-tools deployment update "My Deployment" --title "Renamed Deployment"
+ascend-tools deployment update "My Deployment" --git-branch release/v2
+ascend-tools deployment update "My Deployment" --enable-automations false
+```
+
+### Pause and resume deployment automations
+
+```bash
+ascend-tools deployment pause-automations "My Deployment"
+ascend-tools deployment resume-automations "My Deployment"
+```
+
+### Delete a deployment
+
+```bash
+ascend-tools deployment delete "My Deployment"
 ```
 
 ## Manage flows
 
-### List flows in a runtime
+### List flows
 
 ```bash
-ascend-tools flow list --runtime <RUNTIME_UUID>
+ascend-tools flow list --workspace "My Workspace"
+ascend-tools flow list --deployment "My Deployment"
 ```
 
 ### Run a flow
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --runtime <RUNTIME_UUID>
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
+ascend-tools flow run <FLOW_NAME> --deployment "My Deployment"
 ```
 
-Resume a paused runtime before running:
+Resume a paused workspace before running:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --runtime <RUNTIME_UUID> --resume
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --resume
 ```
 
 Pass a flow run spec for advanced options:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --runtime <RUNTIME_UUID> \
+ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" \
   --spec '{"full_refresh": true}'
 ```
 
@@ -113,22 +178,24 @@ ascend-tools flow run <FLOW_NAME> --runtime <RUNTIME_UUID> \
 ### List flow runs
 
 ```bash
-ascend-tools flow list-runs --runtime <RUNTIME_UUID>
+ascend-tools flow list-runs --workspace "My Workspace"
+ascend-tools flow list-runs --deployment "My Deployment"
 ```
 
 Filter by status, flow name, time range, or paginate:
 
 ```bash
-ascend-tools flow list-runs --runtime <RUNTIME_UUID> --status running
-ascend-tools flow list-runs --runtime <RUNTIME_UUID> --flow-name sales
-ascend-tools flow list-runs --runtime <RUNTIME_UUID> --since 2025-01-01T00:00:00Z
-ascend-tools flow list-runs --runtime <RUNTIME_UUID> --limit 10 --offset 20
+ascend-tools flow list-runs --workspace "My Workspace" --status running
+ascend-tools flow list-runs --workspace "My Workspace" --flow sales
+ascend-tools flow list-runs --workspace "My Workspace" --since 2025-01-01T00:00:00Z
+ascend-tools flow list-runs --workspace "My Workspace" --limit 10 --offset 20
 ```
 
 ### Get a flow run
 
 ```bash
-ascend-tools flow get-run <RUN_NAME> --runtime <RUNTIME_UUID>
+ascend-tools flow get-run <RUN_NAME> --workspace "My Workspace"
+ascend-tools flow get-run <RUN_NAME> --deployment "My Deployment"
 ```
 
 ## Output formats
@@ -136,8 +203,8 @@ ascend-tools flow get-run <RUN_NAME> --runtime <RUNTIME_UUID>
 Default output is a human-readable table. Use `-o json` for machine-readable output:
 
 ```bash
-ascend-tools -o json runtime list
-ascend-tools -o json flow list-runs --runtime <RUNTIME_UUID>
+ascend-tools -o json workspace list
+ascend-tools -o json flow list-runs --workspace "My Workspace"
 ```
 
 Empty results print "No results." to stderr.

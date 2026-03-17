@@ -1,5 +1,7 @@
 from typing import Any
 
+__version__: str
+
 class Client:
     """Client for the Ascend Instance API.
 
@@ -15,44 +17,151 @@ class Client:
         service_account_key: str | None = None,
         instance_api_url: str | None = None,
     ) -> None: ...
-    def list_runtimes(
+    def __repr__(self) -> str: ...
+    # -- Workspaces --
+    def list_workspaces(
         self,
         *,
-        id: str | None = None,
-        kind: str | None = None,
-        project_uuid: str | None = None,
-        environment_uuid: str | None = None,
+        title: str | None = None,
+        project: str | None = None,
+        environment: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List runtimes, optionally filtered by id, kind, project, or environment."""
+        """List workspaces. Accepts project/environment names or UUIDs."""
         ...
-    def get_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Get a runtime by UUID."""
+    def get_workspace(self, *, title: str, uuid: str | None = None) -> dict[str, Any]:
+        """Get a workspace by title (or UUID)."""
         ...
-    def resume_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Resume a paused runtime."""
+    def create_workspace(
+        self,
+        *,
+        title: str,
+        environment: str,
+        project: str,
+        profile: str,
+        git_branch: str,
+        git_branch_base: str | None = None,
+        size: str | None = None,
+        storage_size: int | None = None,
+        auto_snooze_timeout_minutes: int | None = None,
+    ) -> dict[str, Any]:
+        """Create a workspace. Accepts environment/project names or UUIDs."""
         ...
-    def pause_runtime(self, *, uuid: str) -> dict[str, Any]:
-        """Pause a running runtime."""
+    def update_workspace(
+        self,
+        *,
+        title: str,
+        uuid: str | None = None,
+        new_title: str | None = None,
+        git_branch: str | None = None,
+        git_branch_base: str | None = None,
+        profile: str | None = None,
+        size: str | None = None,
+        storage_size: int | None = None,
+        auto_snooze_timeout_minutes: int | None = None,
+    ) -> dict[str, Any]:
+        """Update a workspace by title. Only provided fields are changed."""
         ...
-    def list_flows(self, *, runtime_uuid: str) -> list[dict[str, Any]]:
-        """List flows in a runtime."""
+    def pause_workspace(self, *, title: str, uuid: str | None = None) -> dict[str, Any]:
+        """Pause a workspace."""
+        ...
+    def resume_workspace(
+        self, *, title: str, uuid: str | None = None
+    ) -> dict[str, Any]:
+        """Resume a paused workspace."""
+        ...
+    def delete_workspace(self, *, title: str, uuid: str | None = None) -> None:
+        """Delete a workspace."""
+        ...
+
+    # -- Deployments --
+
+    def list_deployments(
+        self,
+        *,
+        title: str | None = None,
+        project: str | None = None,
+        environment: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List deployments. Accepts project/environment names or UUIDs."""
+        ...
+    def get_deployment(self, *, title: str, uuid: str | None = None) -> dict[str, Any]:
+        """Get a deployment by title (or UUID)."""
+        ...
+    def create_deployment(
+        self,
+        *,
+        title: str,
+        environment: str,
+        project: str,
+        profile: str,
+        git_branch: str,
+        git_branch_base: str | None = None,
+        size: str | None = None,
+        storage_size: int | None = None,
+        enable_automations: bool | None = None,
+    ) -> dict[str, Any]:
+        """Create a deployment. Accepts environment/project names or UUIDs."""
+        ...
+    def update_deployment(
+        self,
+        *,
+        title: str,
+        uuid: str | None = None,
+        new_title: str | None = None,
+        git_branch: str | None = None,
+        git_branch_base: str | None = None,
+        profile: str | None = None,
+        size: str | None = None,
+        storage_size: int | None = None,
+        enable_automations: bool | None = None,
+    ) -> dict[str, Any]:
+        """Update a deployment by title. Only provided fields are changed."""
+        ...
+    def pause_deployment_automations(
+        self, *, title: str, uuid: str | None = None
+    ) -> dict[str, Any]:
+        """Pause automations on a deployment."""
+        ...
+    def resume_deployment_automations(
+        self, *, title: str, uuid: str | None = None
+    ) -> dict[str, Any]:
+        """Resume automations on a deployment."""
+        ...
+    def delete_deployment(self, *, title: str, uuid: str | None = None) -> None:
+        """Delete a deployment."""
+        ...
+
+    # -- Flows --
+
+    def list_flows(
+        self,
+        *,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List flows in a workspace or deployment."""
         ...
     def run_flow(
         self,
         *,
-        runtime_uuid: str,
-        flow_name: str,
+        flow: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         spec: dict[str, Any] | None = None,
         resume: bool = False,
     ) -> dict[str, Any]:
-        """Trigger a flow run. Set resume=True to resume a paused runtime first."""
+        """Trigger a flow run. Set resume=True to resume a paused workspace first."""
         ...
     def list_flow_runs(
         self,
         *,
-        runtime_uuid: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
         status: str | None = None,
-        flow_name: str | None = None,
+        flow: str | None = None,
         since: str | None = None,
         until: str | None = None,
         offset: int | None = None,
@@ -64,11 +173,18 @@ class Client:
         indicates the server-side row limit was reached and results may be incomplete.
         """
         ...
-    def get_flow_run(self, *, runtime_uuid: str, name: str) -> dict[str, Any]:
+    def get_flow_run(
+        self,
+        *,
+        name: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+    ) -> dict[str, Any]:
         """Get a flow run by name."""
         ...
 
-def run(argv: list[str]) -> None:
+def run_cli(argv: list[str]) -> None:
     """Run the CLI with the given arguments."""
     ...
 
