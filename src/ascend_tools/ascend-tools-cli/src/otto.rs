@@ -177,7 +177,7 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         uuid: Option<String>,
 
-        /// LLM provider to use (requires --model)
+        /// LLM provider name (requires --model)
         #[arg(long, requires = "model")]
         provider: Option<String>,
 
@@ -211,7 +211,7 @@ pub(crate) enum ProviderCommands {
 pub(crate) enum ModelCommands {
     /// List available models
     List {
-        /// Filter by provider ID (e.g. ascend_managed_bedrock, openai)
+        /// Filter by provider name (e.g. "OpenAI", "Ascend Managed Bedrock")
         #[arg(long)]
         provider: Option<String>,
     },
@@ -241,11 +241,16 @@ pub(crate) fn handle_otto_cmd(
                 uuid.as_deref(),
             )?;
 
+            let provider_id = provider
+                .as_deref()
+                .map(|name| client.resolve_otto_provider_id(name))
+                .transpose()?;
+
             let request = OttoChatRequest {
                 prompt,
                 runtime_uuid,
                 thread_id: thread,
-                model: OttoModel::from_options(provider.as_deref(), model.as_deref()),
+                model: OttoModel::from_options(provider_id.as_deref(), model.as_deref()),
             };
 
             match output {
@@ -315,14 +320,20 @@ pub(crate) fn handle_otto_cmd(
             match command {
                 ModelCommands::List { provider: filter } => {
                     let providers = client.list_otto_providers()?;
-                    let filtered: Vec<_> = if let Some(ref id) = filter {
-                        providers.into_iter().filter(|p| p.id == *id).collect()
+                    let filtered: Vec<_> = if let Some(ref name) = filter {
+                        let lower = name.to_lowercase();
+                        providers
+                            .into_iter()
+                            .filter(|p| {
+                                p.name.to_lowercase() == lower || p.id.to_lowercase() == lower
+                            })
+                            .collect()
                     } else {
                         providers
                     };
                     if filtered.is_empty() {
-                        if let Some(id) = filter {
-                            anyhow::bail!("no provider found with id '{id}'");
+                        if let Some(name) = filter {
+                            anyhow::bail!("no provider found matching '{name}'");
                         }
                         eprintln!("No results.");
                         return Ok(());
@@ -348,7 +359,7 @@ pub(crate) fn handle_otto_cmd(
                                 .iter()
                                 .flat_map(|p| {
                                     p.models.iter().map(move |m| {
-                                        vec![m.id.clone(), p.id.clone(), m.name.clone()]
+                                        vec![m.id.clone(), p.name.clone(), m.name.clone()]
                                     })
                                 })
                                 .collect();

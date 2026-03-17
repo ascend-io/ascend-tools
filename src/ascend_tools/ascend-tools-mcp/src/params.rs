@@ -339,7 +339,7 @@ pub struct OttoParams {
     pub deployment: Option<String>,
     /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
-    /// LLM provider (e.g. "openai")
+    /// LLM provider name (e.g. "OpenAI")
     pub provider: Option<String>,
     /// LLM model (e.g. "gpt-4o")
     pub model: Option<String>,

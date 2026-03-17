@@ -479,11 +479,16 @@ impl AscendMcpServer {
                 params.deployment.as_deref(),
                 params.uuid.as_deref(),
             )?;
+            let provider_id = params
+                .provider
+                .as_deref()
+                .map(|name| c.resolve_otto_provider_id(name))
+                .transpose()?;
             c.otto(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_uuid,
                 thread_id: params.thread_id,
-                model: OttoModel::from_options(params.provider.as_deref(), params.model.as_deref()),
+                model: OttoModel::from_options(provider_id.as_deref(), params.model.as_deref()),
             })
         })
         .await

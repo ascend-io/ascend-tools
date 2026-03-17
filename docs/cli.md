@@ -231,12 +231,12 @@ Empty results print "No results." to stderr.
 # One-shot message
 ascend-tools otto run "What flows are running?"
 ascend-tools otto run "Describe the sales flow" --workspace "My Workspace"
-ascend-tools otto run "Help me debug this pipeline" --provider openai --model gpt-4o
+ascend-tools otto run "Help me debug this pipeline" --provider "OpenAI" --model gpt-4o
 
 # List providers and models
 ascend-tools otto provider list
 ascend-tools otto model list
-ascend-tools otto model list --provider openai
+ascend-tools otto model list --provider "OpenAI"
 ```
 
 ## Install AI assistant skills

@@ -444,6 +444,34 @@ impl AscendClient {
         self.get("/api/v1/otto/providers")
     }
 
+    /// Resolve a provider name to its ID.
+    ///
+    /// Fetches the provider list and finds the one matching `name`
+    /// (case-insensitive, matches against both name and ID).
+    pub fn resolve_otto_provider_id(&self, name: &str) -> Result<String> {
+        let providers = self.list_otto_providers()?;
+        let lower = name.to_lowercase();
+        let matches: Vec<_> = providers
+            .into_iter()
+            .filter(|p| p.name.to_lowercase() == lower || p.id.to_lowercase() == lower)
+            .collect();
+        match matches.len() {
+            1 => Ok(matches.into_iter().next().unwrap().id),
+            0 => Err(Error::NotFound {
+                kind: "otto provider".to_string(),
+                title: name.to_string(),
+            }),
+            _ => Err(Error::AmbiguousTitle {
+                kind: "otto provider".to_string(),
+                title: name.to_string(),
+                matches: matches
+                    .iter()
+                    .map(|p| (p.id.clone(), p.name.clone()))
+                    .collect(),
+            }),
+        }
+    }
+
     /// Send a message to Otto via the threads API.
     ///
     /// Collects the full response before returning. For real-time streaming,

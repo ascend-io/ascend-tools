@@ -472,17 +472,19 @@ impl Client {
         model: Option<&str>,
         provider: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
-        let otto_model = models::OttoModel::from_options(provider, model);
         let response = py
             .detach(|| {
                 let runtime_uuid = self
                     .inner
                     .resolve_optional_runtime_target(workspace, deployment, uuid)?;
+                let provider_id = provider
+                    .map(|name| self.inner.resolve_otto_provider_id(name))
+                    .transpose()?;
                 let request = models::OttoChatRequest {
                     prompt: prompt.to_string(),
                     runtime_uuid,
                     thread_id: thread_id.map(String::from),
-                    model: otto_model,
+                    model: models::OttoModel::from_options(provider_id.as_deref(), model),
                 };
                 self.inner.otto(&request)
             })

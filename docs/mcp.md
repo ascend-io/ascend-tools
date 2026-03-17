@@ -332,7 +332,7 @@ Chat with Otto, the Ascend AI assistant.
 | `workspace` | no | string | Workspace title for context |
 | `deployment` | no | string | Deployment title for context |
 | `uuid` | no | string | UUID (direct override) |
-| `provider` | no | string | LLM provider ID |
+| `provider` | no | string | LLM provider name |
 | `model` | no | string | LLM model ID |
 | `thread_id` | no | string | Thread ID to continue a conversation |
 
