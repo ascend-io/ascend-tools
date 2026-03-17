@@ -24,7 +24,11 @@ impl<T: ToNapiValue + TypeName + Send + 'static> Task for TypedTask<T> {
     type JsValue = T;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        (self.0.take().expect("task already consumed"))()
+        let f = self
+            .0
+            .take()
+            .ok_or_else(|| napi::Error::from_reason("task already consumed"))?;
+        f()
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {

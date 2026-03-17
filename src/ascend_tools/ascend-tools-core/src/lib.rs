@@ -1,3 +1,6 @@
+// When jsts feature is enabled, napi-derive macros may generate code with
+// #[allow(unsafe_code)] internally, so we use deny instead of forbid.
+// No unsafe code exists in this crate; all FFI is isolated to ascend-tools-js.
 #![cfg_attr(not(feature = "jsts"), forbid(unsafe_code))]
 #![cfg_attr(feature = "jsts", deny(unsafe_code))]
 

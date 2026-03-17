@@ -151,10 +151,18 @@ app.post('/api/flow/:name/run', async (req, res) => {
 app.get('/api/flow-runs', async (req, res) => {
   try {
     const { workspace, deployment, flow, status, limit } = req.query
+    let parsedLimit = null
+    if (limit) {
+      const num = parseInt(limit, 10)
+      if (!Number.isFinite(num) || num < 0) {
+        return res.status(400).send(`<p class="error">Invalid limit parameter</p>`)
+      }
+      parsedLimit = num
+    }
     const result = await client.listFlowRuns(
       workspace || null, deployment || null, null,
       status || null, flow || null, null, null, null,
-      limit ? parseInt(limit) : null,
+      parsedLimit,
     )
     const runs = result.items || []
     if (!runs.length) return res.send('<p>No flow runs found.</p>')
