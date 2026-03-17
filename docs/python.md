@@ -40,6 +40,46 @@ client = Client(
 
 All parameters are keyword-only.
 
+## Environments and projects
+
+### List environments
+
+```python
+environments = client.list_environments()
+```
+
+### Get an environment by title
+
+```python
+env = client.get_environment(title="Production")
+```
+
+Returns `dict` with the matching environment. Raises an error if not found or ambiguous.
+
+### List projects
+
+```python
+projects = client.list_projects()
+```
+
+### Get a project by title
+
+```python
+project = client.get_project(title="My Project")
+```
+
+Returns `dict` with the matching project. Raises an error if not found or ambiguous.
+
+### List profiles
+
+```python
+profiles = client.list_profiles(workspace="My Workspace")
+profiles = client.list_profiles(deployment="My Deployment")
+profiles = client.list_profiles(project="My Project", branch="main")
+```
+
+Returns `list[str]` of profile names. Provide exactly one of workspace/deployment/uuid, or project+branch.
+
 ## Manage workspaces and deployments
 
 ### Workspaces

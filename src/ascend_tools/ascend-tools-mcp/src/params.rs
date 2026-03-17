@@ -177,6 +177,44 @@ pub struct DeleteDeploymentParams {
     pub uuid: Option<String>,
 }
 
+// -- Environment params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListEnvironmentsParams {}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetEnvironmentParams {
+    /// Environment title
+    pub title: String,
+}
+
+// -- Project params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListProjectsParams {}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetProjectParams {
+    /// Project title
+    pub title: String,
+}
+
+// -- Profile params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListProfilesParams {
+    /// Workspace title (mutually exclusive with deployment/uuid)
+    pub workspace: Option<String>,
+    /// Deployment title (mutually exclusive with workspace/uuid)
+    pub deployment: Option<String>,
+    /// UUID (direct override, bypasses title lookup)
+    pub uuid: Option<String>,
+    /// Project name (or UUID) — use with branch
+    pub project: Option<String>,
+    /// Git branch (required with project)
+    pub branch: Option<String>,
+}
+
 // -- Flow params --
 
 #[derive(Debug, Deserialize, JsonSchema)]

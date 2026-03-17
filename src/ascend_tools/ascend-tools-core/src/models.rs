@@ -26,6 +26,24 @@ impl fmt::Display for RuntimeKind {
     }
 }
 
+/// An Ascend environment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Environment {
+    pub uuid: String,
+    pub id: String,
+    pub title: String,
+}
+
+/// An Ascend project.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Project {
+    pub uuid: String,
+    pub id: String,
+    pub title: String,
+    pub path: Option<String>,
+    pub repository_uuid: String,
+}
+
 /// A workspace or deployment. Use the [`Workspace`] or [`Deployment`] type aliases
 /// for clarity when the kind is known.
 #[derive(Debug, Clone, Serialize, Deserialize)]

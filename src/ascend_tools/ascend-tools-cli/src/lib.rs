@@ -3,7 +3,10 @@
 mod cli;
 mod common;
 mod deployment;
+mod environment;
 mod flow;
+mod profile;
+mod project;
 mod skill;
 mod workspace;
 

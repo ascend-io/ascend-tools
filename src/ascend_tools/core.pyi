@@ -131,6 +131,30 @@ class Client:
         """Delete a deployment."""
         ...
 
+    def list_environments(self) -> list[dict[str, Any]]:
+        """List all environments."""
+        ...
+    def get_environment(self, *, title: str) -> dict[str, Any]:
+        """Get an environment by title. Errors if zero or multiple matches."""
+        ...
+    def list_projects(self) -> list[dict[str, Any]]:
+        """List all projects."""
+        ...
+    def get_project(self, *, title: str) -> dict[str, Any]:
+        """Get a project by title. Errors if zero or multiple matches."""
+        ...
+    def list_profiles(
+        self,
+        *,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+        project: str | None = None,
+        branch: str | None = None,
+    ) -> list[str]:
+        """List available profiles. Provide workspace/deployment title, uuid, or project+branch."""
+        ...
+
     # -- Flows --
 
     def list_flows(

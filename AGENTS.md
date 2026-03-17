@@ -28,7 +28,7 @@ src/ascend_tools/
 ├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 18 tools via rmcp #[tool_router]
+│       ├── server.rs        # AscendMcpServer — 23 tools via rmcp #[tool_router]
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
 ├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
@@ -117,6 +117,14 @@ ascend-tools [-o text|json] [-V]
   deployment resume-automations <TITLE>
   deployment delete <TITLE>
 
+  environment list
+  environment get <TITLE>
+
+  project list
+  project get <TITLE>
+
+  profile list --workspace <TITLE> | --deployment <TITLE> | --project <NAME> --git-branch <BRANCH>
+
   flow list --workspace <TITLE> | --deployment <TITLE>
   flow run <FLOW_NAME> --workspace <TITLE> | --deployment <TITLE> [--spec '{}'] [--resume]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
@@ -147,6 +155,13 @@ client = Client(
     service_account_key="...",
     instance_api_url="https://api.instance.ascend.io",
 )
+
+# Environments & Projects
+client.list_environments()
+client.get_environment(title="Production")
+client.list_projects()
+client.get_project(title="My Project")
+client.list_profiles(workspace="My Workspace")
 
 # Workspaces
 client.list_workspaces()
@@ -200,6 +215,11 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 | `pause_deployment_automations` | Pause automations on a deployment |
 | `resume_deployment_automations` | Resume automations on a deployment |
 | `delete_deployment` | Delete a deployment |
+| `list_environments` | List environments |
+| `get_environment` | Get an environment by title |
+| `list_projects` | List projects |
+| `get_project` | Get a project by title |
+| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
 | `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
@@ -301,6 +321,9 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 | `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
 | `/api/v1/runtimes/{uuid}` | PATCH | Update a runtime |
 | `/api/v1/runtimes/{uuid}` | DELETE | Delete a runtime |
+| `/api/v1/environments` | GET | List environments (filter: title) |
+| `/api/v1/projects` | GET | List projects (filter: title) |
+| `/api/v1/profiles` | GET | List profiles (filters: runtime_uuid, project, branch) |
 | `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
 | `/api/v1/runtimes/{uuid}/flows/{name}:run` | POST | Trigger a flow run |
 | `/api/v1/flow-runs` | GET | List flow runs (requires runtime_uuid, filters: status, flow, since, until) |

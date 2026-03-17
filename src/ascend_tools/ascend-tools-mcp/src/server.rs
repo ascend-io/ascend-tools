@@ -8,14 +8,17 @@ use rmcp::{
 };
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{FlowRunFilters, RuntimeCreate, RuntimeFilters, RuntimeUpdate};
+use ascend_tools::models::{
+    FlowRunFilters, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate,
+};
 
 use crate::params::{
     CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
-    GetDeploymentParams, GetFlowRunParams, GetWorkspaceParams, ListDeploymentsParams,
-    ListFlowRunsParams, ListFlowsParams, ListWorkspacesParams, PauseDeploymentAutomationsParams,
-    PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
-    UpdateDeploymentParams, UpdateWorkspaceParams,
+    GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
+    GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
+    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams,
+    PauseDeploymentAutomationsParams, PauseWorkspaceParams, ResumeDeploymentAutomationsParams,
+    ResumeWorkspaceParams, RunFlowParams, UpdateDeploymentParams, UpdateWorkspaceParams,
 };
 
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
@@ -301,6 +304,86 @@ impl AscendMcpServer {
         })
         .await
         .map(|_| CallToolResult::success(vec![Content::text("Deployment deleted")]))
+    }
+
+    // -- Environment tools --
+
+    #[tool(description = "List environments")]
+    async fn list_environments(
+        &self,
+        Parameters(_params): Parameters<ListEnvironmentsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, |c| c.list_environments()).await
+    }
+
+    #[tool(description = "Get an environment by title")]
+    async fn get_environment(
+        &self,
+        Parameters(params): Parameters<GetEnvironmentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| c.get_environment(&params.title)).await
+    }
+
+    // -- Project tools --
+
+    #[tool(description = "List projects")]
+    async fn list_projects(
+        &self,
+        Parameters(_params): Parameters<ListProjectsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, |c| c.list_projects()).await
+    }
+
+    #[tool(description = "Get a project by title")]
+    async fn get_project(
+        &self,
+        Parameters(params): Parameters<GetProjectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| c.get_project(&params.title)).await
+    }
+
+    // -- Profile tools --
+
+    #[tool(description = "List available profiles for a workspace, deployment, or project+branch")]
+    async fn list_profiles(
+        &self,
+        Parameters(params): Parameters<ListProfilesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let (runtime_uuid, project, branch) = if let Some(uuid) = params.uuid {
+                (Some(uuid), None, None)
+            } else if let Some(ws) = params.workspace {
+                let rt = c.resolve_runtime_by_title(&ws, RuntimeKind::Workspace)?;
+                (Some(rt.uuid), None, None)
+            } else if let Some(dep) = params.deployment {
+                let rt = c.resolve_runtime_by_title(&dep, RuntimeKind::Deployment)?;
+                (Some(rt.uuid), None, None)
+            } else if let Some(proj) = params.project {
+                if params.branch.is_none() {
+                    return Err(ascend_tools::Error::MissingField {
+                        context: "list_profiles",
+                        field: "branch (required with project)",
+                    });
+                }
+                (None, Some(proj), params.branch)
+            } else {
+                return Err(ascend_tools::Error::MissingField {
+                    context: "list_profiles",
+                    field: "workspace, deployment, project, or uuid",
+                });
+            };
+            c.list_profiles(
+                runtime_uuid.as_deref(),
+                project.as_deref(),
+                branch.as_deref(),
+            )
+        })
+        .await
     }
 
     // -- Flow tools --
