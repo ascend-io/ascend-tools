@@ -183,6 +183,17 @@ run = client.get_flow_run(name="fr-...", workspace="My Workspace")
 
 Returns `dict` with fields: `name`, `flow`, `build_uuid`, `runtime_uuid`, `status`, `created_at`, `error`.
 
+## Otto (AI assistant)
+
+```python
+# List providers and models
+providers = client.list_otto_providers()
+
+# Chat
+response = client.otto(prompt="What flows are running?")
+response = client.otto(prompt="Describe the sales flow", workspace="My Workspace")
+```
+
 ## Return types
 
 - All methods return `dict` or `list[dict]`

@@ -129,6 +129,14 @@ client.list_flow_runs(workspace="My Workspace", offset=10, limit=50)
 client.get_flow_run(name="fr-...", workspace="My Workspace")
 ```
 
+### Otto (AI assistant)
+
+```python
+client.list_otto_providers()
+client.otto(prompt="What flows are running?")
+client.otto(prompt="Describe the sales flow", workspace="My Workspace")
+```
+
 ### Flow run spec
 
 Pass `spec` as a dict to `run_flow` to control flow run behavior:

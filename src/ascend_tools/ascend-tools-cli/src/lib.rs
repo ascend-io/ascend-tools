@@ -5,6 +5,7 @@ mod common;
 mod deployment;
 mod environment;
 mod flow;
+mod otto;
 mod profile;
 mod project;
 mod skill;

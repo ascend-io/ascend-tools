@@ -326,3 +326,23 @@ pub struct GetFlowRunParams {
     /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,
 }
+
+// -- Otto params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct OttoParams {
+    /// Message to send to Otto
+    pub prompt: String,
+    /// Workspace title for context (precedence: uuid > workspace > deployment)
+    pub workspace: Option<String>,
+    /// Deployment title for context (precedence: uuid > workspace > deployment)
+    pub deployment: Option<String>,
+    /// UUID (direct override, bypasses title lookup)
+    pub uuid: Option<String>,
+    /// LLM provider name (e.g. "OpenAI")
+    pub provider: Option<String>,
+    /// LLM model (e.g. "gpt-4o")
+    pub model: Option<String>,
+    /// Thread ID to continue a conversation
+    pub thread_id: Option<String>,
+}

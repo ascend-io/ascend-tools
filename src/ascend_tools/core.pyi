@@ -207,6 +207,22 @@ class Client:
     ) -> dict[str, Any]:
         """Get a flow run by name."""
         ...
+    def list_otto_providers(self) -> list[dict[str, Any]]:
+        """List available Otto providers and their enabled models."""
+        ...
+    def otto(
+        self,
+        *,
+        prompt: str,
+        workspace: str | None = None,
+        deployment: str | None = None,
+        uuid: str | None = None,
+        thread_id: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> dict[str, Any]:
+        """Chat with Otto AI assistant. Returns {"message": str, "thread_id": str | None}."""
+        ...
 
 def run_cli(argv: list[str]) -> None:
     """Run the CLI with the given arguments."""
