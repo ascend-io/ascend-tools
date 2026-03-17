@@ -486,9 +486,10 @@ impl AscendClient {
 
         // Step 1: Create thread or send message to existing thread
         let (path, context) = if let Some(ref tid) = request.thread_id {
+            let encoded = encode_path(tid);
             (
-                format!("/api/v1/otto/threads/{tid}/messages"),
-                format!("POST /api/v1/otto/threads/{tid}/messages"),
+                format!("/api/v1/otto/threads/{encoded}/messages"),
+                format!("POST /api/v1/otto/threads/{encoded}/messages"),
             )
         } else {
             (
@@ -550,7 +551,7 @@ impl AscendClient {
         on_thread_id(&thread_id);
 
         // Step 2: Stream SSE events from the thread updates endpoint (no global timeout)
-        let updates_path = format!("/api/v1/otto/threads/{thread_id}/updates");
+        let updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
         let updates_context = format!("GET {updates_path}");
         let updates_resp = self

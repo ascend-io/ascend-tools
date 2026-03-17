@@ -113,10 +113,10 @@ enum Commands {
     /// Chat with Otto AI assistant
     #[command(long_about = "Chat with Otto AI assistant.\n\n\
             Examples:\n  \
-            ascend-tools otto \"What tables are in my project?\"\n  \
-            ascend-tools otto \"Describe the sales flow\" --workspace my-ws\n  \
-            ascend-tools otto \"Hello\" --model gpt-4o\n  \
-            ascend-tools otto \"Hello\" --provider openai --model gpt-4o\n  \
+            ascend-tools otto run \"What tables are in my project?\"\n  \
+            ascend-tools otto run \"Describe the sales flow\" --workspace my-ws\n  \
+            ascend-tools otto run \"Hello\" --model gpt-4o\n  \
+            ascend-tools otto run \"Hello\" --provider openai --model gpt-4o\n  \
             ascend-tools otto provider list\n  \
             ascend-tools otto model list")]
     Otto {

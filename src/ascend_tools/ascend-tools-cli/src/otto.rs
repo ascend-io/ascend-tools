@@ -348,7 +348,7 @@ pub(crate) fn handle_otto_cmd(
                                 .iter()
                                 .flat_map(|p| {
                                     p.models.iter().map(move |m| {
-                                        vec![m.id.clone(), p.name.clone(), m.name.clone()]
+                                        vec![m.id.clone(), p.id.clone(), m.name.clone()]
                                     })
                                 })
                                 .collect();

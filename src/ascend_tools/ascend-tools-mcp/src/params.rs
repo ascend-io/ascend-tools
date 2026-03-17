@@ -333,9 +333,9 @@ pub struct GetFlowRunParams {
 pub struct OttoParams {
     /// Message to send to Otto
     pub prompt: String,
-    /// Workspace title for context (mutually exclusive with deployment/uuid)
+    /// Workspace title for context (precedence: uuid > workspace > deployment)
     pub workspace: Option<String>,
-    /// Deployment title for context (mutually exclusive with workspace/uuid)
+    /// Deployment title for context (precedence: uuid > workspace > deployment)
     pub deployment: Option<String>,
     /// UUID (direct override, bypasses title lookup)
     pub uuid: Option<String>,

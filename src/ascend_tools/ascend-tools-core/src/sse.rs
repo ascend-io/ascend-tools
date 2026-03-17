@@ -51,7 +51,7 @@ impl<R: BufRead> Iterator for SseReader<R> {
                 Ok(0) => {
                     // EOF — dispatch any pending event
                     self.done = true;
-                    if !self.current_data.is_empty() {
+                    if self.current_event_type.is_some() || !self.current_data.is_empty() {
                         let event = SseEvent {
                             event_type: self.current_event_type.take(),
                             data: self.current_data.drain(..).collect::<Vec<_>>().join("\n"),
@@ -65,15 +65,13 @@ impl<R: BufRead> Iterator for SseReader<R> {
 
                     if line.is_empty() {
                         // Blank line dispatches the event
-                        if !self.current_data.is_empty() {
+                        if self.current_event_type.is_some() || !self.current_data.is_empty() {
                             let event = SseEvent {
                                 event_type: self.current_event_type.take(),
                                 data: self.current_data.drain(..).collect::<Vec<_>>().join("\n"),
                             };
                             return Some(Ok(event));
                         }
-                        // No data accumulated, just reset
-                        self.current_event_type = None;
                         continue;
                     }
 
@@ -136,6 +134,26 @@ mod tests {
         let events: Vec<SseEvent> = reader.map(|r| r.unwrap()).collect();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].data, "final");
+    }
+
+    #[test]
+    fn parse_event_type_only() {
+        let input = "event: thread.done\n\n";
+        let reader = SseReader::new(Cursor::new(input));
+        let events: Vec<SseEvent> = reader.map(|r| r.unwrap()).collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type.as_deref(), Some("thread.done"));
+        assert_eq!(events[0].data, "");
+    }
+
+    #[test]
+    fn parse_event_type_only_eof() {
+        let input = "event: thread.stopped";
+        let reader = SseReader::new(Cursor::new(input));
+        let events: Vec<SseEvent> = reader.map(|r| r.unwrap()).collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type.as_deref(), Some("thread.stopped"));
+        assert_eq!(events[0].data, "");
     }
 
     #[test]
