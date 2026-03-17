@@ -74,7 +74,7 @@ const EXPERIMENTAL_BANNER: &[&str] = &[
     "",
     "This feature is under active development.",
     "Expect rough edges, bugs, and breaking changes.",
-    "Logo not finalized.",
+    "Mascot below not finalized.",
 ];
 
 const USER_COLOR: Color = Color::Rgb(80, 120, 200); // dark blue
