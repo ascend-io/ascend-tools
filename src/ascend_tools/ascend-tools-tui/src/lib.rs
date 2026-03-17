@@ -68,12 +68,22 @@ const SPLASH: &[&str] = &[
     "     type /help for commands",
 ];
 
+#[rustfmt::skip]
+const EXPERIMENTAL_BANNER: &[&str] = &[
+    "\u{26a0}  EXPERIMENTAL  \u{26a0}",
+    "",
+    "This feature is under active development.",
+    "Expect rough edges, bugs, and breaking changes.",
+    "Logo not finalized.",
+];
+
 const USER_COLOR: Color = Color::Rgb(80, 120, 200); // dark blue
 const OTTO_COLOR: Color = Color::Rgb(232, 67, 67); // ascend red
 const SYSTEM_COLOR: Color = Color::Rgb(160, 120, 200); // purple
 const VI_NORMAL_COLOR: Color = Color::Rgb(255, 140, 80); // orange
 const CODE_COLOR: Color = Color::Rgb(255, 140, 80); // orange (matches vi normal)
 const DIM_COLOR: Color = Color::Rgb(100, 100, 100);
+const WARNING_COLOR: Color = Color::Rgb(255, 200, 50); // yellow
 const DIM_OTTO_COLOR: Color = Color::Rgb(120, 45, 45); // muted ascend red
 const POPUP_BG: Color = Color::Rgb(50, 50, 50);
 const TEXT_COLOR: Color = Color::White;
@@ -242,6 +252,7 @@ struct App {
     input: Vec<char>,
     cursor: usize,
     input_mode: InputMode,
+    /// Lines scrolled up from the bottom (0 = pinned to newest).
     scroll: usize,
     auto_scroll: bool,
     streaming: bool,
@@ -322,10 +333,10 @@ impl App {
         if self.input_mode == InputMode::ViNormal {
             self.input_mode = InputMode::ViInsert;
         }
-        for (i, ch) in text.chars().enumerate() {
-            self.input.insert(self.cursor + i, ch);
-        }
-        self.cursor += text.chars().count();
+        let chars: Vec<char> = text.chars().collect();
+        let count = chars.len();
+        self.input.splice(self.cursor..self.cursor, chars);
+        self.cursor += count;
         self.completion_index = None;
     }
 
@@ -531,19 +542,19 @@ impl App {
             (KeyModifiers::NONE, KeyCode::Char('p')) => {
                 if !self.yank_register.is_empty() {
                     let pos = (self.cursor + 1).min(self.input.len());
-                    for (i, ch) in self.yank_register.chars().enumerate() {
-                        self.input.insert(pos + i, ch);
-                    }
-                    self.cursor = pos + self.yank_register.len() - 1;
+                    let chars: Vec<char> = self.yank_register.chars().collect();
+                    let count = chars.len();
+                    self.input.splice(pos..pos, chars);
+                    self.cursor = pos + count - 1;
                 }
             }
             // Paste before cursor
             (KeyModifiers::SHIFT, KeyCode::Char('P')) => {
                 if !self.yank_register.is_empty() {
-                    for (i, ch) in self.yank_register.chars().enumerate() {
-                        self.input.insert(self.cursor + i, ch);
-                    }
-                    self.cursor += self.yank_register.len().saturating_sub(1);
+                    let chars: Vec<char> = self.yank_register.chars().collect();
+                    let count = chars.len();
+                    self.input.splice(self.cursor..self.cursor, chars);
+                    self.cursor += count.saturating_sub(1);
                 }
             }
 
@@ -1050,24 +1061,38 @@ impl App {
     }
 
     fn render_splash(&self, frame: &mut Frame, area: Rect) {
+        let banner_height = EXPERIMENTAL_BANNER.len() as u16 + 2; // +2 for blank lines around it
         let splash_height = SPLASH.len() as u16;
-        let y_offset = area.height.saturating_sub(splash_height) / 2;
+        let total_height = splash_height + banner_height;
+        let y_offset = area.height.saturating_sub(total_height) / 2;
 
-        let lines: Vec<Line<'_>> = SPLASH
-            .iter()
-            .map(|&line| {
-                let display_width = line.chars().count();
-                let pad = (area.width as usize).saturating_sub(display_width) / 2;
-                let padded = format!("{:>width$}{}", "", line, width = pad);
-                if line.contains("/help") {
-                    Line::from(Span::styled(padded, Style::default().fg(DIM_COLOR)))
-                } else {
-                    Line::from(Span::styled(padded, Style::default().fg(OTTO_COLOR)))
-                }
-            })
-            .collect();
+        let warning_style = Style::default().fg(WARNING_COLOR).bold();
 
-        let clamped_height = splash_height.min(area.height);
+        let mut lines: Vec<Line<'_>> = Vec::new();
+
+        // Experimental banner
+        lines.push(Line::raw(""));
+        for &line in EXPERIMENTAL_BANNER {
+            let display_width = line.chars().count();
+            let pad = (area.width as usize).saturating_sub(display_width) / 2;
+            let padded = format!("{:>width$}{}", "", line, width = pad);
+            lines.push(Line::from(Span::styled(padded, warning_style)));
+        }
+        lines.push(Line::raw(""));
+
+        // Otto splash
+        for &line in SPLASH {
+            let display_width = line.chars().count();
+            let pad = (area.width as usize).saturating_sub(display_width) / 2;
+            let padded = format!("{:>width$}{}", "", line, width = pad);
+            if line.contains("/help") {
+                lines.push(Line::from(Span::styled(padded, Style::default().fg(DIM_COLOR))));
+            } else {
+                lines.push(Line::from(Span::styled(padded, Style::default().fg(OTTO_COLOR))));
+            }
+        }
+
+        let clamped_height = total_height.min(area.height);
         let splash_area = Rect::new(area.x, area.y + y_offset, area.width, clamped_height);
         frame.render_widget(Paragraph::new(lines), splash_area);
     }
@@ -1523,7 +1548,7 @@ pub fn run_tui(
             // Spawns a background thread so the TUI stays responsive.
             if app.stop_pending {
                 app.stop_pending = false;
-                if let Some(tid) = active_thread_id.lock().unwrap().clone() {
+                if let Some(tid) = active_thread_id.lock().unwrap_or_else(|e| e.into_inner()).clone() {
                     scope.spawn(move || {
                         let _ = client.stop_thread_and_wait(&tid);
                     });
@@ -1535,7 +1560,7 @@ pub fn run_tui(
                 let generation = gen_counter.fetch_add(1, Ordering::Relaxed) + 1;
                 app.stream_generation = generation;
                 cancel.store(false, Ordering::Relaxed);
-                *active_thread_id.lock().unwrap() = None;
+                *active_thread_id.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 let tx = stream_tx.clone();
                 let cancel_ref = &cancel;
                 let active_tid = &active_thread_id;
@@ -1568,7 +1593,7 @@ pub fn run_tui(
                             ControlFlow::Continue(())
                         },
                         |tid: &str| {
-                            *active_tid.lock().unwrap() = Some(tid.to_string());
+                            *active_tid.lock().unwrap_or_else(|e| e.into_inner()) = Some(tid.to_string());
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),
@@ -1583,24 +1608,9 @@ pub fn run_tui(
             }
 
             if app.should_quit {
-                // Restore terminal before exiting the scope, since scope.join
-                // may block if a background SSE read is stuck.
-                terminal::disable_raw_mode()?;
-                crossterm::execute!(
-                    std::io::stderr(),
-                    LeaveAlternateScreen,
-                    DisableMouseCapture,
-                    DisableBracketedPaste,
-                    SetCursorStyle::DefaultUserShape
-                )?;
-                terminal.show_cursor()?;
-                let _ = std::panic::take_hook();
-
-                // If a streaming thread is stuck on a network read, exit
-                // the process cleanly rather than waiting indefinitely.
-                if cancel.load(Ordering::Relaxed) {
-                    std::process::exit(0);
-                }
+                // Signal all spawned threads to stop so thread::scope
+                // can join them without blocking indefinitely.
+                cancel.store(true, Ordering::Relaxed);
                 break;
             }
         }
@@ -1608,7 +1618,7 @@ pub fn run_tui(
         Ok::<(), anyhow::Error>(())
     });
 
-    // Restore terminal (reached when scope completes normally)
+    // Restore terminal after all spawned threads have joined
     let _ = terminal::disable_raw_mode();
     let _ = crossterm::execute!(
         std::io::stderr(),
