@@ -561,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parses_environment_default_is_list() {
+    fn test_cli_parses_environment_bare_is_none() {
         let cli = CliParser::parse_from(["ascend-tools", "environment"]);
         assert!(matches!(
             cli.command,

@@ -364,6 +364,12 @@ impl AscendMcpServer {
                 let rt = c.resolve_runtime_by_title(&dep, RuntimeKind::Deployment)?;
                 (Some(rt.uuid), None, None)
             } else if let Some(proj) = params.project {
+                if params.branch.is_none() {
+                    return Err(ascend_tools::Error::MissingField {
+                        context: "list_profiles",
+                        field: "branch (required with project)",
+                    });
+                }
                 (None, Some(proj), params.branch)
             } else {
                 return Err(ascend_tools::Error::MissingField {

@@ -65,6 +65,10 @@ client.list_projects()
 
 # Get by title
 client.get_project(title="My Project")
+
+# List profiles
+client.list_profiles(workspace="My Workspace")
+client.list_profiles(project="My Project", branch="main")
 ```
 
 ### Workspaces

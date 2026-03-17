@@ -332,6 +332,18 @@ impl Client {
                 let runtime_uuid = self
                     .inner
                     .resolve_optional_runtime_target(workspace, deployment, uuid)?;
+                if project.is_some() && branch.is_none() {
+                    return Err(ascend_tools::Error::MissingField {
+                        context: "list_profiles",
+                        field: "branch (required with project)",
+                    });
+                }
+                if runtime_uuid.is_none() && project.is_none() {
+                    return Err(ascend_tools::Error::MissingField {
+                        context: "list_profiles",
+                        field: "workspace, deployment, uuid, or project",
+                    });
+                }
                 self.inner
                     .list_profiles(runtime_uuid.as_deref(), project, branch)
             })
