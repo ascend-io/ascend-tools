@@ -52,6 +52,7 @@ echo "  node $(node --version)"
 # ---------- JS dependencies ----------
 
 (cd crates/ascend-tools-js && npm install --no-fund --no-audit --silent)
+(cd tests/app && npm install --no-fund --no-audit --silent)
 echo "  npm dependencies installed"
 
 echo ""

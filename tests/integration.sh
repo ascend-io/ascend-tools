@@ -89,8 +89,16 @@ else
   exit 0
 fi
 
-RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
-RUNTIME_TITLE=$(echo "$JSON" | jq -r '.[0].title')
+TARGET_TITLE="${ASCEND_TEST_WORKSPACE:-ascend-tools}"
+MATCH=$(echo "$JSON" | jq -r --arg t "$TARGET_TITLE" '[.[] | select(.title == $t)] | first // empty')
+if [ -n "$MATCH" ]; then
+  RUNTIME_UUID=$(echo "$MATCH" | jq -r '.uuid')
+  RUNTIME_TITLE=$(echo "$MATCH" | jq -r '.title')
+else
+  echo "  workspace '$TARGET_TITLE' not found, falling back to first workspace"
+  RUNTIME_UUID=$(echo "$JSON" | jq -r '.[0].uuid')
+  RUNTIME_TITLE=$(echo "$JSON" | jq -r '.[0].title')
+fi
 echo "  using workspace: $RUNTIME_TITLE ($RUNTIME_UUID)"
 
 # get workspace by title

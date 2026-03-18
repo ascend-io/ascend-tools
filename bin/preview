@@ -2,7 +2,6 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../tests/app"
 
-npm install --silent
 node server.js &
 SERVER_PID=$!
 

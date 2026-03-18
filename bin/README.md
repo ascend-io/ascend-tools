@@ -11,7 +11,7 @@ Development scripts. All are bash, executable, and run from any directory.
 | `check` | Lint + test everything (`check-version`, `check-rs`, `check-py`, `check-js`) |
 | `check-rs` | `cargo fmt --check`, `cargo clippy`, `cargo test` |
 | `check-py` | `ruff check`, `ruff format --check`, `ty check` |
-| `check-js` | `npm install`, `npm run build`, `npm test` |
+| `check-js` | `npm run build`, `npm test` |
 | `check-version` | Verify all crates/packages have the same version |
 | `format` | Auto-format (`format-rs`, `format-py`) |
 | `format-rs` | `cargo fmt --all` |
