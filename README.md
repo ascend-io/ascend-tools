@@ -20,7 +20,7 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 
 ## CLI
 
-Install the CLI:
+Pick one:
 
 ```bash
 uv tool install ascend-tools
@@ -34,7 +34,7 @@ npm install -g ascend-tools
 cargo install ascend-tools-cli
 ```
 
-Or run without installing:
+Or run directly without installing:
 
 ```bash
 uvx ascend-tools workspace list
