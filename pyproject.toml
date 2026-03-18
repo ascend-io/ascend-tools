@@ -39,6 +39,9 @@ cache-keys = [
   { file = "crates/ascend-tools-js/**/*.rs" },
 ]
 
+[tool.ty.environment]
+extra-paths = ["py"]
+
 [tool.ty.src]
 # Exclude self-contained uv scripts — ty can't resolve their inline
 # script dependencies. See https://github.com/astral-sh/ty/issues/691
