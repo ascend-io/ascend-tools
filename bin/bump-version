@@ -87,6 +87,15 @@ for f in "${TOML_FILES[@]}"; do
   echo "  updated $f"
 done
 
+# Update inter-crate dependency versions
+WORKSPACE_CRATES=(ascend-tools-core ascend-tools-tui ascend-tools-mcp ascend-tools-cli)
+for f in "${TOML_FILES[@]}"; do
+  for crate in "${WORKSPACE_CRATES[@]}"; do
+    sed -i '' "s/$crate = { version = \"$CURRENT\"/$crate = { version = \"$NEW\"/" "$f"
+  done
+done
+echo "  updated inter-crate dependency versions"
+
 # ---------- update package.json ----------
 
 sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW\"/" "$JS_PACKAGE_JSON"

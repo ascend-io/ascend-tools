@@ -1,0 +1,39 @@
+name: Release Rust
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: crates-io-${{ hashFiles('Cargo.lock') }}
+          restore-keys: crates-io-
+      - name: Publish crates
+        run: |
+          cargo publish -p ascend-tools-core
+          cargo publish -p ascend-tools-tui
+          cargo publish -p ascend-tools-mcp
+          cargo publish -p ascend-tools-cli
