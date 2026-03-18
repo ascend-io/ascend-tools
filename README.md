@@ -1,6 +1,6 @@
 # ascend-tools
 
-CLI, SDK, TUI, and MCP server for the Ascend REST API.
+CLI, SDK, TUI, and MCP server for the Ascend Instance web API.
 
 ## Install
 

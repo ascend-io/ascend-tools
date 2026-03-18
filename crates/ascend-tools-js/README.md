@@ -1,6 +1,6 @@
 # ascend-tools-js
 
-[napi-rs](https://napi.rs) bindings for the [Ascend](https://www.ascend.io) REST API SDK.
+[napi-rs](https://napi.rs) bindings for the [Ascend](https://www.ascend.io) Instance web API SDK.
 
 This crate produces the `@ascend-io/ascend-tools` native Node.js module. It exposes the `Client` class (from [`ascend-tools-core`](../ascend-tools-core)) to JavaScript/TypeScript via napi-rs, with async methods backed by `spawn_blocking`.
 

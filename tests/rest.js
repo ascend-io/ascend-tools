@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * REST API integration tests for the Ascend Instance API.
+ * Integration tests for the Ascend Instance web API.
  *
  * Self-contained — no ascend-tools dependency. Authenticates using Ed25519
  * JWT signing and exercises the /api/v1 endpoints directly via Node.js

@@ -15,7 +15,7 @@ use crate::skill::SkillCommands;
 use crate::workspace::WorkspaceCommands;
 
 #[derive(Parser)]
-#[command(name = "ascend-tools", version, about = "CLI for the Ascend REST API")]
+#[command(name = "ascend-tools", version, about = "CLI for the Ascend Instance web API")]
 pub(crate) struct CliParser {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,

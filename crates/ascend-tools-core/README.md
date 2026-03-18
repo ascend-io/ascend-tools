@@ -1,6 +1,6 @@
 # ascend-tools-core
 
-Rust SDK for the [Ascend](https://www.ascend.io) REST API.
+Rust SDK for the [Ascend](https://www.ascend.io) Instance web API.
 
 This is the core library used by [`ascend-tools-cli`](../ascend-tools-cli) and [`ascend-tools-mcp`](../ascend-tools-mcp). It can also be used directly as a Rust dependency.
 

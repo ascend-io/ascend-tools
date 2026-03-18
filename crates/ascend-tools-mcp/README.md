@@ -1,6 +1,6 @@
 # ascend-tools-mcp
 
-[MCP](https://modelcontextprotocol.io) server for the [Ascend](https://www.ascend.io) REST API, exposing SDK methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
+[MCP](https://modelcontextprotocol.io) server for the [Ascend](https://www.ascend.io) Instance web API, exposing SDK methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
 
 Built on [`ascend-tools-core`](../ascend-tools-core) and [`rmcp`](https://crates.io/crates/rmcp).
 

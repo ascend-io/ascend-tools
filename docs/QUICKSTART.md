@@ -1,6 +1,6 @@
 # Get started with ascend-tools
 
-ascend-tools provides a CLI, Python SDK, Rust SDK, and MCP server for the Ascend REST API. This guide walks you through authentication and your first commands.
+ascend-tools provides a CLI, Python SDK, Rust SDK, and MCP server for the Ascend Instance web API. This guide walks you through authentication and your first commands.
 
 ## Quick start: remote MCP server
 

@@ -4,7 +4,7 @@ Integration tests and demo applications. Unit tests live in the crates themselve
 
 | Path | Description |
 |------|-------------|
-| `rest.py` | Self-contained REST API test — raw HTTP + Ed25519 JWT, no SDK dependency |
+| `rest.py` | Self-contained Instance web API test — raw HTTP + Ed25519 JWT, no SDK dependency |
 | `rest.js` | Same as `rest.py` in Node.js — zero npm dependencies |
 | `integration.py` | SDK integration tests (Python `ascend_tools.Client`) |
 | `integration.sh` | CLI integration tests (`ascend-tools` binary) |

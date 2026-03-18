@@ -1,6 +1,6 @@
 # ascend-tools-py
 
-[PyO3](https://pyo3.rs) bindings for the [Ascend](https://www.ascend.io) REST API SDK and CLI.
+[PyO3](https://pyo3.rs) bindings for the [Ascend](https://www.ascend.io) Instance web API SDK and CLI.
 
 This crate produces the `ascend_tools.core` native Python module via [maturin](https://www.maturin.rs). It exposes the `Client` class (from [`ascend-tools-core`](../ascend-tools-core)) and the `run()` CLI entry point (from [`ascend-tools-cli`](../ascend-tools-cli)) to Python.
 

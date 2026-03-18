@@ -3,7 +3,7 @@
 # requires-python = ">=3.13"
 # dependencies = ["httpx", "cryptography"]
 # ///
-"""REST API integration tests for the Ascend Instance API.
+"""Integration tests for the Ascend Instance web API.
 
 Self-contained — no ascend-tools dependency. Authenticates using Ed25519
 JWT signing and exercises the /api/v1 endpoints directly via httpx.
@@ -335,7 +335,7 @@ def run_flow_with_retry(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ascend REST API integration tests")
+    parser = argparse.ArgumentParser(description="Ascend Instance web API integration tests")
     parser.add_argument(
         "--runtime-id",
         default="ascend-tools",
