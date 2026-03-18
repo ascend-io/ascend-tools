@@ -10,19 +10,22 @@ Manage Ascend workspaces, deployments, flows, and flow runs via the `ascend-tool
 ## Installation
 
 ```bash
-uvx ascend-tools --help
+uvx ascend-tools --help     # Python
+npx ascend-tools --help     # Node.js
 ```
 
 Or install permanently:
 
 ```bash
-uv tool install ascend-tools
+uv tool install ascend-tools    # Python
+npm install -g ascend-tools     # Node.js
 ```
 
 Upgrade to the latest version:
 
 ```bash
-uv tool install --upgrade ascend-tools
+uv tool install --upgrade ascend-tools    # Python
+npm update -g ascend-tools                # Node.js
 ```
 
 ## Authentication

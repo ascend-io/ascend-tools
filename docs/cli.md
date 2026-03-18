@@ -5,13 +5,15 @@ Manage Ascend workspaces, deployments, flows, and flow runs from the command lin
 ## Install
 
 ```bash
-uv tool install ascend-tools
+uv tool install ascend-tools    # Python
+npm install -g ascend-tools     # Node.js
 ```
 
 Upgrade to the latest version:
 
 ```bash
-uv tool install --upgrade ascend-tools
+uv tool install --upgrade ascend-tools    # Python
+npm update -g ascend-tools                # Node.js
 ```
 
 See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries).
@@ -250,4 +252,4 @@ Install reference skills for AI coding assistants (Claude Code, Codex, etc.):
 ascend-tools skill install --target .claude/skills --all
 ```
 
-Available flags: `--cli` (default), `--python`, `--mcp`, `--all`.
+Available flags: `--cli` (default), `--python`, `--javascript`, `--mcp`, `--all`.

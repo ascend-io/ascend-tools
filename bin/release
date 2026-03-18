@@ -108,6 +108,19 @@ else
   echo "  skipping PyPI check (--force)"
 fi
 
+# ---------- check npm ----------
+
+if [ "$FORCE" = false ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/ascend-tools/$VERSION")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "ERROR: ascend-tools $VERSION already exists on npm. Use --force to override." >&2
+    exit 1
+  fi
+  echo "  ascend-tools $VERSION does not exist on npm"
+else
+  echo "  skipping npm check (--force)"
+fi
+
 # ---------- tag and push ----------
 
 git tag "$TAG"

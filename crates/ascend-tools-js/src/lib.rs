@@ -344,6 +344,14 @@ impl Client {
     }
 }
 
+// --- CLI entry point ---
+
+#[napi]
+pub fn run_cli(args: Option<Vec<String>>) -> napi::Result<()> {
+    let args = args.unwrap_or_else(|| std::env::args().collect());
+    ascend_tools_cli::run_cli(args.iter().map(|s| s.as_str())).map_err(to_napi_err)
+}
+
 fn to_napi_err(e: impl std::fmt::Display) -> napi::Error {
     napi::Error::from_reason(e.to_string())
 }

@@ -32,7 +32,8 @@ For offline development, custom configurations, or when you prefer running tools
 ### Claude Code
 
 ```bash
-claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
 Auth environment variables (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from your shell. See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
@@ -50,7 +51,8 @@ claude mcp add --transport stdio ascend-tools-dev \
 ### Codex CLI
 
 ```bash
-codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
+codex mcp add ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+codex mcp add ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
 If Codex is launched without your shell env, pass them explicitly:
@@ -66,10 +68,10 @@ codex mcp add \
 ### Other transports
 
 ```bash
-# Stdio (default) — communicates over stdin/stdout
+# Stdio (default) -- communicates over stdin/stdout
 ascend-tools mcp
 
-# HTTP — Streamable HTTP on /mcp endpoint
+# HTTP -- Streamable HTTP on /mcp endpoint
 ascend-tools mcp --http --bind 127.0.0.1:8000
 ```
 

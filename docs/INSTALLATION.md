@@ -1,8 +1,8 @@
 # Installation
 
-## Recommended: uv
+## Python (uv)
 
-[uv](https://docs.astral.sh/uv/) is the recommended way to install ascend-tools. It handles Python and dependencies automatically.
+[uv](https://docs.astral.sh/uv/) handles Python and dependencies automatically.
 
 Install uv (if you don't have it):
 
@@ -22,7 +22,7 @@ Upgrade to the latest version:
 uv tool install --upgrade ascend-tools
 ```
 
-You can also run without installing:
+Run without installing:
 
 ```bash
 uvx ascend-tools workspace list
@@ -36,9 +36,37 @@ Add ascend-tools as a dependency in your Python project:
 uv add ascend-tools
 ```
 
+## Node.js (npm)
+
+Install ascend-tools globally:
+
+```bash
+npm install -g ascend-tools
+```
+
+Upgrade to the latest version:
+
+```bash
+npm update -g ascend-tools
+```
+
+Run without installing:
+
+```bash
+npx ascend-tools workspace list
+```
+
+### JavaScript SDK
+
+Add ascend-tools as a dependency in your Node.js project:
+
+```bash
+npm add ascend-tools
+```
+
 ## GitHub releases (pre-built binaries)
 
-Pre-built binaries are available for Linux and macOS. No Python or Rust toolchain required.
+Pre-built binaries are available for Linux and macOS. No Python, Node.js, or Rust toolchain required.
 
 ### Available platforms
 
@@ -66,7 +94,7 @@ mv ascend-tools /usr/local/bin/
 
 ```bash
 # Set version and platform
-VERSION="v1.0.0"
+VERSION="v1.1.0"
 PLATFORM="aarch64-apple-darwin"
 
 # Download and extract

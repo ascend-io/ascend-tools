@@ -1,10 +1,10 @@
 # Get started with ascend-tools
 
-ascend-tools provides a CLI, Python SDK, Rust SDK, and MCP server for the Ascend Instance web API. This guide walks you through authentication and your first commands.
+ascend-tools provides a CLI, Python SDK, JavaScript SDK, Rust SDK, and MCP server for the Ascend Instance web API. This guide walks you through authentication and your first commands.
 
 ## Quick start: remote MCP server
 
-The fastest way to connect an AI assistant to Ascend — no local installation needed:
+The fastest way to connect an AI assistant to Ascend -- no local installation needed:
 
 1. Go to **Settings > Instance > MCP Server** in the Ascend UI
 2. Copy the `ASCEND_MCP_URL`
@@ -29,7 +29,7 @@ The rest of this guide covers the **local** CLI, SDK, and MCP server setup (requ
 ## Prerequisites
 
 - An Ascend Instance with permission to create service accounts
-- [uv](https://docs.astral.sh/uv/) (installed in the next section)
+- [uv](https://docs.astral.sh/uv/) or [Node.js](https://nodejs.org/)
 
 ## Create a service account
 
@@ -47,7 +47,7 @@ Enter a name (e.g., `ascend-tools`) and click **Create service account**.
 
 ### 3. Copy your credentials
 
-The confirmation dialog shows three values. Copy each one and store them securely — the private key is shown only once.
+The confirmation dialog shows three values. Copy each one and store them securely -- the private key is shown only once.
 
 ![Service account created dialog showing credentials and environment variables](https://storage.googleapis.com/docs-ascend-io/images/service-account-details.png)
 
@@ -67,16 +67,17 @@ Add these to your shell profile (`~/.zshrc` or `~/.bashrc`) so they persist acro
 
 ## Install
 
-Install [uv](https://docs.astral.sh/uv/) (if you don't have it):
+Install with uv (Python):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install ascend-tools
 ```
 
-Install ascend-tools:
+Or install with npm (Node.js):
 
 ```bash
-uv tool install ascend-tools
+npm install -g ascend-tools
 ```
 
 See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries).
@@ -98,7 +99,7 @@ ascend-tools flow list --workspace "My Workspace"
 ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
 ```
 
-Or from Python:
+From Python:
 
 ```python
 from ascend_tools import Client
@@ -109,10 +110,22 @@ flows = client.list_flows(workspace=workspaces[0]["title"])
 result = client.run_flow(flow=flows[0]["name"], workspace=workspaces[0]["title"])
 ```
 
+From JavaScript:
+
+```javascript
+import { Client } from "ascend-tools";
+
+const client = new Client();
+const workspaces = await client.listWorkspaces();
+const flows = await client.listFlows(workspaces[0].title);
+const result = await client.runFlow(flows[0].name, workspaces[0].title);
+```
+
 ## Next steps
 
 - [CLI guide](cli.md) -- all commands with examples
 - [Python SDK guide](python.md) -- Client methods, return types, error handling
+- [JavaScript SDK guide](javascript.md) -- async Client, streaming, TypeScript types
 - [Rust SDK guide](rust.md) -- typed client with structs and error handling
 - [MCP server guide](mcp.md) -- set up AI assistants with Ascend tools
-- [Installation](INSTALLATION.md) -- all install methods (Cargo, pre-built binaries)
+- [Installation](INSTALLATION.md) -- all install methods

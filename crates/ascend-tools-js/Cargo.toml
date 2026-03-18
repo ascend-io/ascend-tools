@@ -2,7 +2,7 @@
 
 [package]
 name = "ascend-tools-js"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["Cody <cody.peterson@ascend.io>"]
@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ascend-tools-core = { path = "../ascend-tools-core", features = ["jsts"] }
+ascend-tools-cli = { path = "../ascend-tools-cli" }
 napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
 napi-derive = { version = "3", features = ["type-def"] }
 serde = "1"
