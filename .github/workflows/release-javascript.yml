@@ -79,5 +79,3 @@ jobs:
           npm install --no-fund --no-audit
           npx napi artifacts --package-json-path package.json
           npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
