@@ -72,7 +72,7 @@ List available flows in a workspace, then trigger a flow run:
 
 ```bash
 ascend-tools flow list --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
+ascend-tools flow run "My Flow" --workspace "My Workspace"
 ```
 
 From Python:
@@ -99,9 +99,9 @@ const result = await client.runFlow(flows[0].name, workspaces[0].title);
 
 ## Next steps
 
-- [CLI guide](cli.md):all commands with examples
-- [Python SDK guide](python.md):Client methods, return types, error handling
-- [JavaScript SDK guide](javascript.md):async Client, streaming, TypeScript types
-- [Rust SDK guide](rust.md):typed client with structs and error handling
-- [MCP server guide](mcp.md):set up AI assistants with Ascend tools
-- [Installation](INSTALLATION.md):all install methods
+- [CLI guide](cli.md): all commands with examples
+- [Python SDK guide](python.md): Client methods, return types, error handling
+- [JavaScript SDK guide](javascript.md): async Client, streaming, TypeScript types
+- [Rust SDK guide](rust.md): typed client with structs and error handling
+- [MCP server guide](mcp.md): set up AI assistants with Ascend tools
+- [Installation](INSTALLATION.md): all install methods

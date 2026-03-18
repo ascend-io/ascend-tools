@@ -40,69 +40,73 @@ Rust:
 cargo install ascend-tools-cli
 ```
 
-Or run directly without installing:
+Or run directly without installing via `uvx`:
 
 ```bash
 uvx ascend-tools workspace list
 ```
 
+Or `npx`:
+
 ```bash
 npx ascend-tools workspace list
 ```
 
-### Examples
-
-```bash
-ascend-tools workspace list
-ascend-tools workspace get "My Workspace"
-ascend-tools workspace pause "My Workspace"
-ascend-tools flow list --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
-ascend-tools -o json workspace list
-```
-
 ### Interactive TUI
+
+Run Otto in an interactive terminal user interface (TUI):
 
 ```bash
 ascend-tools otto tui
-ascend-tools otto tui --workspace "My Workspace"
 ```
 
 Vi keybindings by default. Type `/help` for commands, `/emacs` to switch modes.
 
 ## Python SDK
 
+Add `ascend-tools` to your Python project:
+
 ```bash
 uv add ascend-tools
 ```
+
+Then use the `Client` class:
 
 ```python
 from ascend_tools import Client
 
 client = Client()
 client.list_workspaces()
-client.run_flow(flow="sales", workspace="My Workspace")
+client.run_flow(flow="My Flow", workspace="My Workspace")
 ```
 
 ## JavaScript SDK
 
+Add `ascend-tools` to your Node.js project:
+
 ```bash
 npm add ascend-tools
 ```
+
+Then use the `Client` class:
 
 ```javascript
 import { Client } from "ascend-tools";
 
 const client = new Client();
 const workspaces = await client.listWorkspaces();
-await client.runFlow("sales", "My Workspace");
+await client.runFlow("My Flow", "My Workspace");
 ```
 
 ## Rust SDK
 
+Add `ascend-tools-core` to your Rust project:
+
 ```bash
 cargo add ascend-tools-core
 ```
+
+Then use the `AscendClient` struct:
 
 ```rust
 use ascend_tools::client::AscendClient;
@@ -114,11 +118,13 @@ let workspaces = client.list_workspaces(Default::default())?;
 
 ## MCP server
 
-Connect AI assistants (Claude Code, Cursor, etc.) to Ascend:
+Connect AI assistants (Claude Code, Codex CLI, Cursor, etc.) to Ascend via `uvx`:
 
 ```bash
 claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
+
+Or `npx`:
 
 ```bash
 claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp
@@ -145,15 +151,15 @@ bin/build
 bin/format
 ```
 
-See [Development guide](docs/development.md) for the full contributor setup.
+See the [development guide](docs/development.md) for the full contributor setup.
 
 ## Documentation
 
-- [Quickstart](docs/QUICKSTART.md):create a service account, install, and run your first flow
-- [Installation](docs/INSTALLATION.md):all install methods
-- [CLI](docs/cli.md):all commands with examples
-- [Python SDK](docs/python.md):Client methods, return types, error handling
-- [JavaScript SDK](docs/javascript.md):async Client methods, streaming, TypeScript types
-- [Rust SDK](docs/rust.md):typed client with structs and error handling
-- [MCP server](docs/mcp.md):set up AI assistants with Ascend tools
-- [Development](docs/development.md):contributor setup, architecture, release process
+- [Quickstart](docs/QUICKSTART.md): create a service account, install, and run your first flow
+- [Installation](docs/INSTALLATION.md): all install methods
+- [CLI](docs/cli.md): all commands with examples
+- [Python SDK](docs/python.md): Client methods, return types, error handling
+- [JavaScript SDK](docs/javascript.md): async Client methods, streaming, TypeScript types
+- [Rust SDK](docs/rust.md): typed client with structs and error handling
+- [MCP server](docs/mcp.md): set up AI assistants with Ascend tools
+- [Development](docs/development.md): contributor setup, architecture, release process

@@ -158,20 +158,20 @@ ascend-tools flow list --deployment "My Deployment"
 ### Run a flow
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --deployment "My Deployment"
+ascend-tools flow run "My Flow" --workspace "My Workspace"
+ascend-tools flow run "My Flow" --deployment "My Deployment"
 ```
 
 Resume a paused workspace before running:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --resume
+ascend-tools flow run "My Flow" --workspace "My Workspace" --resume
 ```
 
 Pass a flow run spec for advanced options:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" \
+ascend-tools flow run "My Flow" --workspace "My Workspace" \
   --spec '{"full_refresh": true}'
 ```
 

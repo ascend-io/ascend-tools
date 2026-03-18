@@ -20,7 +20,7 @@ The npm package includes the full `ascend-tools` CLI:
 
 ```bash
 npx ascend-tools workspace list
-npx ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
+npx ascend-tools flow run "My Flow" --workspace "My Workspace"
 npx ascend-tools otto tui
 ```
 

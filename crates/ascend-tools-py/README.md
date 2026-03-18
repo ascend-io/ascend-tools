@@ -18,7 +18,7 @@ pip install ascend-tools        # pip
 
 ```bash
 ascend-tools workspace list
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
+ascend-tools flow run "My Flow" --workspace "My Workspace"
 ascend-tools otto tui
 ```
 
