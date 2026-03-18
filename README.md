@@ -2,9 +2,9 @@
 
 CLI, SDK, and MCP server for the Ascend Instance web API.
 
-[![PyPI](https://img.shields.io/pypi/v/ascend-tools?color=8A2BE2)](https://pypi.org/project/ascend-tools/)
-[![npm](https://img.shields.io/npm/v/ascend-tools?color=8A2BE2)](https://www.npmjs.com/package/ascend-tools)
-[![crates.io](https://img.shields.io/crates/v/ascend-tools-core?color=8A2BE2)](https://crates.io/crates/ascend-tools-core)
+[![PyPI](https://img.shields.io/pypi/v/ascend-tools?color=blue)](https://pypi.org/project/ascend-tools/)
+[![npm](https://img.shields.io/npm/v/ascend-tools?color=blue)](https://www.npmjs.com/package/ascend-tools)
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-core?color=blue)](https://crates.io/crates/ascend-tools-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/ascend-io/ascend-tools/ci.yml?branch=main&label=CI)](https://github.com/ascend-io/ascend-tools/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A2BE2.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
 
@@ -143,11 +143,11 @@ See [Development guide](docs/development.md) for the full contributor setup.
 
 ## Documentation
 
-- [Quickstart](docs/QUICKSTART.md) -- create a service account, install, and run your first flow
-- [Installation](docs/INSTALLATION.md) -- all install methods
-- [CLI](docs/cli.md) -- all commands with examples
-- [Python SDK](docs/python.md) -- Client methods, return types, error handling
-- [JavaScript SDK](docs/javascript.md) -- async Client methods, streaming, TypeScript types
-- [Rust SDK](docs/rust.md) -- typed client with structs and error handling
-- [MCP server](docs/mcp.md) -- set up AI assistants with Ascend tools
-- [Development](docs/development.md) -- contributor setup, architecture, release process
+- [Quickstart](docs/QUICKSTART.md):create a service account, install, and run your first flow
+- [Installation](docs/INSTALLATION.md):all install methods
+- [CLI](docs/cli.md):all commands with examples
+- [Python SDK](docs/python.md):Client methods, return types, error handling
+- [JavaScript SDK](docs/javascript.md):async Client methods, streaming, TypeScript types
+- [Rust SDK](docs/rust.md):typed client with structs and error handling
+- [MCP server](docs/mcp.md):set up AI assistants with Ascend tools
+- [Development](docs/development.md):contributor setup, architecture, release process

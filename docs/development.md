@@ -81,7 +81,7 @@ The four workspace crates (`core`, `mcp`, `tui`, `cli`) share the root `Cargo.to
 
 | Crate | Published to | Description |
 |-------|-------------|-------------|
-| `ascend-tools-core` | [crates.io](https://crates.io/crates/ascend-tools-core) | SDK -- typed HTTP client, auth, models, SSE |
+| `ascend-tools-core` | [crates.io](https://crates.io/crates/ascend-tools-core) | SDK: typed HTTP client, auth, models, SSE |
 | `ascend-tools-mcp` | [crates.io](https://crates.io/crates/ascend-tools-mcp) | MCP server (rmcp) |
 | `ascend-tools-tui` | [crates.io](https://crates.io/crates/ascend-tools-tui) | Interactive TUI (ratatui) |
 | `ascend-tools-cli` | [crates.io](https://crates.io/crates/ascend-tools-cli) | CLI binary (clap) |
@@ -116,12 +116,12 @@ Pre-flight checks:
 - Version doesn't exist on PyPI, npm, or crates.io
 
 On tag push, four GitHub Actions workflows run in parallel:
-- `release.yml` -- builds standalone binaries, creates GitHub Release
-- `release-python.yml` -- builds wheels (4 platforms), publishes to PyPI (trusted publisher)
-- `release-javascript.yml` -- builds native modules (4 platforms), publishes to npm (trusted publisher)
-- `release-rust.yml` -- publishes 4 crates to crates.io (trusted publisher)
+- `release.yml`: builds standalone binaries, creates GitHub Release
+- `release-python.yml`: builds wheels (4 platforms), publishes to PyPI (trusted publisher)
+- `release-javascript.yml`: builds native modules (4 platforms), publishes to npm (trusted publisher)
+- `release-rust.yml`: publishes 4 crates to crates.io (trusted publisher)
 
-All registry publishing uses OIDC trusted publishers -- no long-lived tokens.
+All registry publishing uses OIDC trusted publishers — no long-lived tokens.
 
 ## Testing against a live instance
 
