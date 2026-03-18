@@ -21,7 +21,12 @@ pub(crate) struct CliParser {
     output: OutputMode,
 
     /// Service account ID
-    #[arg(long, global = true, env = "ASCEND_SERVICE_ACCOUNT_ID")]
+    #[arg(
+        long,
+        global = true,
+        env = "ASCEND_SERVICE_ACCOUNT_ID",
+        hide_env_values = true
+    )]
     service_account_id: Option<String>,
 
     /// Service account key

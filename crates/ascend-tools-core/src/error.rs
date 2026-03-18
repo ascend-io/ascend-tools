@@ -116,21 +116,6 @@ impl Error {
             _ => None,
         }
     }
-
-    /// Returns `true` if this is an HTTP 401 Unauthorized error.
-    pub fn is_unauthorized(&self) -> bool {
-        self.http_status() == Some(401)
-    }
-
-    /// Returns `true` if this is an HTTP 403 Forbidden error.
-    pub fn is_forbidden(&self) -> bool {
-        self.http_status() == Some(403)
-    }
-
-    /// Returns `true` if this is an HTTP 404 Not Found error or a title-based `NotFound`.
-    pub fn is_not_found(&self) -> bool {
-        matches!(self, Self::NotFound { .. }) || self.http_status() == Some(404)
-    }
 }
 
 pub(crate) trait UreqResultExt<T> {

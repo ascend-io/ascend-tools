@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::path::PathBuf;
 
-pub(crate) const SKILL_CLI: &str = include_str!("skill-cli.md");
-pub(crate) const SKILL_PY: &str = include_str!("skill-py.md");
-pub(crate) const SKILL_MCP: &str = include_str!("skill-mcp.md");
+const SKILL_CLI: &str = include_str!("skill-cli.md");
+const SKILL_PY: &str = include_str!("skill-py.md");
+const SKILL_MCP: &str = include_str!("skill-mcp.md");
 
 #[derive(Subcommand)]
 pub(crate) enum SkillCommands {

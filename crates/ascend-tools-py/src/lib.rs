@@ -489,11 +489,7 @@ impl Client {
                 self.inner.otto(&request)
             })
             .map_err(to_py_err)?;
-        let result = serde_json::json!({
-            "message": response.message,
-            "thread_id": response.thread_id,
-        });
-        to_python(py, &result)
+        to_python(py, &response)
     }
 }
 

@@ -7,6 +7,7 @@ echo "Checking version consistency..."
 TOML_FILES=(
   pyproject.toml
   crates/ascend-tools-core/Cargo.toml
+  crates/ascend-tools-tui/Cargo.toml
   crates/ascend-tools-mcp/Cargo.toml
   crates/ascend-tools-cli/Cargo.toml
   crates/ascend-tools-py/Cargo.toml
@@ -27,6 +28,12 @@ for f in "${TOML_FILES[@]}"; do
     FAIL=1
   fi
 done
+
+JS_VERSION=$(grep -m1 '"version"' crates/ascend-tools-js/package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+if [ "$JS_VERSION" != "$EXPECTED" ]; then
+  echo "  MISMATCH: crates/ascend-tools-js/package.json has $JS_VERSION (expected $EXPECTED)" >&2
+  FAIL=1
+fi
 
 if [ "$FAIL" -ne 0 ]; then
   echo "Version check failed! Run bin/bump-version to fix." >&2

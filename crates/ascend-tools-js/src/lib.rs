@@ -252,6 +252,12 @@ impl Client {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            if project.is_some() && branch.is_none() {
+                return Err(napi::Error::from_reason("list_profiles: missing required field: branch (required with project)"));
+            }
+            if runtime_uuid.is_none() && project.is_none() {
+                return Err(napi::Error::from_reason("list_profiles: missing required field: workspace, deployment, uuid, or project"));
+            }
             client.list_profiles(runtime_uuid.as_deref(), project.as_deref(), branch.as_deref()).map_err(to_napi_err)
         }))
     }

@@ -41,6 +41,7 @@ BUMP="${BUMP:-minor}"
 TOML_FILES=(
   pyproject.toml
   crates/ascend-tools-core/Cargo.toml
+  crates/ascend-tools-tui/Cargo.toml
   crates/ascend-tools-mcp/Cargo.toml
   crates/ascend-tools-cli/Cargo.toml
   crates/ascend-tools-py/Cargo.toml

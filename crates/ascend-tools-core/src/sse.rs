@@ -35,6 +35,19 @@ impl<R: BufRead> SseReader<R> {
             done: false,
         }
     }
+
+    /// Build an `SseEvent` from the accumulated state and reset it.
+    /// Returns `None` if there is no pending event type or data.
+    fn take_event(&mut self) -> Option<SseEvent> {
+        if self.current_event_type.is_some() || !self.current_data.is_empty() {
+            Some(SseEvent {
+                event_type: self.current_event_type.take(),
+                data: self.current_data.drain(..).collect::<Vec<_>>().join("\n"),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl<R: BufRead> Iterator for SseReader<R> {
@@ -51,25 +64,14 @@ impl<R: BufRead> Iterator for SseReader<R> {
                 Ok(0) => {
                     // EOF — dispatch any pending event
                     self.done = true;
-                    if self.current_event_type.is_some() || !self.current_data.is_empty() {
-                        let event = SseEvent {
-                            event_type: self.current_event_type.take(),
-                            data: self.current_data.drain(..).collect::<Vec<_>>().join("\n"),
-                        };
-                        return Some(Ok(event));
-                    }
-                    return None;
+                    return self.take_event().map(Ok);
                 }
                 Ok(_) => {
                     let line = line.trim_end_matches('\n').trim_end_matches('\r');
 
                     if line.is_empty() {
                         // Blank line dispatches the event
-                        if self.current_event_type.is_some() || !self.current_data.is_empty() {
-                            let event = SseEvent {
-                                event_type: self.current_event_type.take(),
-                                data: self.current_data.drain(..).collect::<Vec<_>>().join("\n"),
-                            };
+                        if let Some(event) = self.take_event() {
                             return Some(Ok(event));
                         }
                         continue;
