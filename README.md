@@ -20,15 +20,21 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 
 ## CLI
 
-Pick one:
+Install via [PyPI](https://pypi.org/project/ascend-tools/), [npm](https://www.npmjs.com/package/ascend-tools), [crates.io](https://crates.io/crates/ascend-tools-cli), [GitHub releases](https://github.com/ascend-io/ascend-tools/releases), or [source](docs/development.md).
+
+Python:
 
 ```bash
 uv tool install ascend-tools
 ```
 
+Node.js:
+
 ```bash
 npm install -g ascend-tools
 ```
+
+Rust:
 
 ```bash
 cargo install ascend-tools-cli
