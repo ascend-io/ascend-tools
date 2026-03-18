@@ -1,6 +1,6 @@
 # ascend-tools
 
-SDK, CLI, and MCP server for the Ascend REST API. Rust core with PyO3 Python bindings.
+CLI, SDK, and MCP server for the Ascend Instance web API. Rust core with PyO3 Python bindings and napi-rs JavaScript bindings.
 
 Repo: `ascend-io/ascend-tools`. Internal.
 
@@ -8,51 +8,61 @@ Repo: `ascend-io/ascend-tools`. Internal.
 
 ## architecture
 
-Four Rust crates, one PyO3 bridge. The core/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
+Six Rust crates, two language bridges (PyO3 + napi-rs). The core/tui/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
 
 ```
-src/ascend_tools/
-├── __init__.py              # re-exports Client, CLI entry point (main)
-├── core.pyi                 # type stubs for the PyO3 module (IDE autocomplete)
-├── py.typed                 # PEP 561 marker (package has inline types)
-│
-├── ascend-tools-core/         # Rust SDK crate (core library)
+py/ascend_tools/            # Python package (PyO3 bindings land here)
+├── __init__.py             # re-exports Client, CLI entry point (main)
+├── core.pyi                # type stubs for the PyO3 module (IDE autocomplete)
+└── py.typed                # PEP 561 marker (package has inline types)
+
+crates/
+├── ascend-tools-core/        # Rust SDK crate (core library)
 │   └── src/
 │       ├── lib.rs           # pub exports
 │       ├── auth.rs          # Ed25519 JWT signing, Cloud API token exchange, caching
 │       ├── client.rs        # AscendClient — typed HTTP methods for /api/v1
 │       ├── config.rs        # env var + CLI flag resolution
 │       ├── error.rs         # public typed Error enum + Result alias for SDK consumers
-│       └── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       ├── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
+│       └── sse.rs           # minimal SSE (Server-Sent Events) line parser for Otto streaming
 │
-├── ascend-tools-mcp/          # MCP server crate (depends on ascend-tools-core)
+├── ascend-tools-mcp/         # MCP server crate (depends on ascend-tools-core)
 │   └── src/
 │       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 23 tools via rmcp #[tool_router]
+│       ├── server.rs        # AscendMcpServer — 25 tools via rmcp #[tool_router]
 │       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
 │
-├── ascend-tools-cli/          # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp)
+├── ascend-tools-tui/         # Interactive TUI crate (depends on ascend-tools-core)
+│   └── src/
+│       └── lib.rs           # run_tui() — full-screen ratatui chat interface for Otto
+│
+├── ascend-tools-cli/         # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp, ascend-tools-tui)
 │   └── src/
 │       ├── lib.rs           # pub fn run_cli(args) — testable entry point
 │       ├── main.rs          # binary entry point
 │       ├── cli.rs           # clap commands, table/json output, print_table helper
 │       └── skill-cli.md     # SKILL.md template (embedded via include_str!, installed by `skill install`)
 │
-└── ascend-tools-py/           # PyO3 binding crate (cdylib, built by maturin)
+├── ascend-tools-py/          # PyO3 binding crate (cdylib, built by maturin)
+│   └── src/
+│       └── lib.rs           # exposes Client class + run_cli() to Python via pythonize (direct Rust→Python dict conversion)
+│
+└── ascend-tools-js/          # napi-rs binding crate (cdylib, built by @napi-rs/cli)
     └── src/
-        └── lib.rs           # exposes Client class + run_cli() to Python via pythonize (direct Rust→Python dict conversion)
+        └── lib.rs           # exposes Client class to Node.js via napi-rs (async methods via spawn_blocking)
 ```
 
-The `-py` crate is **not** in the Cargo workspace (cdylib requires maturin). It's built exclusively by `maturin develop` and has its own Cargo.lock. The `-mcp` crate uses `rmcp` for the MCP protocol implementation.
-Integration tests live under `ascend-tools-core/tests/` and `ascend-tools-cli/tests/`.
+The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.
+Integration tests live under `crates/ascend-tools-core/tests/` and `crates/ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
 
 PyPI: `ascend-tools`. Crates.io: not yet published. Installed binary: `ascend-tools`.
 
 ## development
 
 ```bash
-bin/build       # build Rust + Python (bin/build-rs, bin/build-py)
-bin/check       # lint + test (bin/check-version, bin/check-rs, bin/check-py)
+bin/build       # build Rust + Python + JS (bin/build-rs, bin/build-py, bin/build-js)
+bin/check       # lint + test (bin/check-version, bin/check-rs, bin/check-py, bin/check-js)
 bin/format      # auto-format (bin/format-rs, bin/format-py)
 bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)
@@ -130,6 +140,11 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
+  otto run <PROMPT> [--workspace <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
+  otto provider list
+  otto model list [--provider <ID>]
+  otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
+
   skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
 
   mcp [--http] [--bind <ADDR>]
@@ -140,6 +155,37 @@ Default output is table format. Use `-o json` for machine-readable output.
 `--environment` and `--project` accept friendly names (titles), not UUIDs. UUIDs still work for all commands via `--uuid` flag.
 
 No subcommand prints help. Auth params can be passed as `--service-account-id`, `--service-account-key`, etc. or via env vars. Secret values are hidden in `--help` output.
+
+## TUI reference
+
+`ascend-tools otto tui` launches an interactive full-screen chat interface powered by the `ascend-tools-tui` crate.
+
+### features
+
+- **Vi keybindings** (default) — Esc for normal mode, i/a/I/A to insert. `/emacs` to switch.
+- **Multi-line input** — Alt+Enter inserts a newline. Input area grows up to 8 lines.
+- **Input history** — Up/Down recalls previous prompts. Persisted across sessions (`~/.ascend-tools/history`).
+- **Streaming** — Smooth character-by-character output (~200 cps) with spinner while waiting.
+- **Markdown rendering** — Code blocks with borders, `**bold**`, `` `inline code` ``.
+- **Scrollable chat** — PageUp/Down, mouse wheel, Ctrl+U/D in vi normal. Scrollbar on right edge.
+- **Tab completion** — Type `/` and press Tab to cycle through slash commands.
+- **Clipboard** — `/copy` copies last Otto response to clipboard.
+- **Timestamps** — `/timestamps` toggles message timestamps.
+- **Cursor shape** — Block in vi normal, blinking bar in insert/emacs.
+- **Context indicator** — Workspace/deployment name shown in status bar.
+- **Notification bell** — Terminal bell when responses take >3 seconds.
+
+### slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show commands and keybindings |
+| `/vim`, `/vi` | Switch to Vi keybindings |
+| `/emacs` | Switch to Emacs keybindings |
+| `/copy` | Copy last Otto response to clipboard |
+| `/timestamps` | Toggle message timestamps |
+| `/clear` | Clear chat history and start new thread |
+| `/quit`, `/exit` | Exit |
 
 ## Python SDK reference
 
@@ -184,6 +230,10 @@ client.run_flow(flow="sales", workspace="My Workspace")
 client.list_flow_runs(workspace="My Workspace", status="running")
 client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
 client.get_flow_run(name="fr-...", workspace="My Workspace")
+
+# Otto (AI assistant)
+client.list_otto_providers()
+client.otto(prompt="What flows are running?", workspace="My Workspace")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
@@ -224,6 +274,8 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
+| `list_otto_providers` | List Otto providers and their enabled models |
+| `otto` | Chat with Otto, the Ascend AI assistant |
 
 ### usage with Claude Code
 
@@ -347,7 +399,11 @@ The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-ba
 - MCP `FlowRunSpec` uses `#[serde(flatten)]` with a catch-all map for forward compatibility with new backend fields
 - PyO3 `run_cli()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
 - Test coverage includes integration tests with mock servers (`mockito`) for core HTTP/auth behavior, MCP tool behavior, and CLI output regressions
-- When adding or changing CLI commands, update `src/ascend_tools/ascend-tools-cli/src/skill-cli.md` to keep the skill in sync
+- When adding or changing CLI commands, update `crates/ascend-tools-cli/src/skill-cli.md` to keep the skill in sync
+- TUI crate (`ascend-tools-tui`) uses `ratatui` + `crossterm`; single public entry point `run_tui()`
+- TUI uses `std::thread::scope` for streaming (borrows `&AscendClient` from the caller without `Arc`)
+- TUI input defaults to Vi mode; history persisted to `~/.ascend-tools/history`
+- TUI colors are defined as named constants at the top of `lib.rs` — no inline color values
 
 ## related repos
 

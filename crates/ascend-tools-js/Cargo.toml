@@ -1,0 +1,30 @@
+[workspace]
+
+[package]
+name = "ascend-tools-js"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ascend-tools-core = { path = "../ascend-tools-core", features = ["jsts"] }
+napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
+napi-derive = { version = "3", features = ["type-def"] }
+serde = "1"
+serde_json = "1"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+[build-dependencies]
+napi-build = "2"

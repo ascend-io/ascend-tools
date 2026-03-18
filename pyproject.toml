@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ascend-tools"
-version = "0.5.0"
+version = "1.0.0"
 description = "Ascend CLI, SDK, MCP."
 requires-python = ">=3.11"
 readme = "README.md"
@@ -25,18 +25,22 @@ dev = ["maturin>=1.0,<2.0", "ruff>=0.9", "ipython>=9.10.0", "ty>=0.0.19"]
 [tool.maturin]
 module-name = "ascend_tools.core"
 python-packages = ["ascend_tools"]
-python-source = "src"
-manifest-path = "src/ascend_tools/ascend-tools-py/Cargo.toml"
+python-source = "py"
+manifest-path = "crates/ascend-tools-py/Cargo.toml"
 include = [{ path = "LICENSE", format = "sdist" }]
 
 [tool.uv]
 cache-keys = [
   { file = "pyproject.toml" },
-  { file = "src/ascend_tools/ascend-tools-core/**/*.rs" },
-  { file = "src/ascend_tools/ascend-tools-mcp/**/*.rs" },
-  { file = "src/ascend_tools/ascend-tools-cli/**/*.rs" },
-  { file = "src/ascend_tools/ascend-tools-py/**/*.rs" },
+  { file = "crates/ascend-tools-core/**/*.rs" },
+  { file = "crates/ascend-tools-mcp/**/*.rs" },
+  { file = "crates/ascend-tools-cli/**/*.rs" },
+  { file = "crates/ascend-tools-py/**/*.rs" },
+  { file = "crates/ascend-tools-js/**/*.rs" },
 ]
+
+[tool.ty.environment]
+extra-paths = ["py"]
 
 [tool.ty.src]
 # Exclude self-contained uv scripts — ty can't resolve their inline

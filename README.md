@@ -1,6 +1,6 @@
 # ascend-tools
 
-CLI, SDK, and MCP server for the Ascend REST API.
+CLI, SDK, and MCP server for the Ascend Instance web API.
 
 ## Install
 
@@ -63,6 +63,17 @@ JSON output:
 ```bash
 ascend-tools -o json workspace list
 ```
+
+## Interactive TUI
+
+Chat with Otto in a full-screen terminal interface:
+
+```bash
+ascend-tools otto tui
+ascend-tools otto tui --workspace "My Workspace"
+```
+
+Vi keybindings by default. Type `/help` for commands, `/emacs` to switch modes. Alt+Enter for multi-line input. Up/Down for input history.
 
 ## Python SDK
 
@@ -172,10 +183,15 @@ uvx --refresh ascend-tools --version
 | `pause_deployment_automations` | Pause automations on a deployment |
 | `resume_deployment_automations` | Resume automations on a deployment |
 | `delete_deployment` | Delete a deployment |
+| `list_environments` | List environments |
+| `list_projects` | List projects |
+| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
 | `list_flows` | List flows in a workspace or deployment |
 | `run_flow` | Trigger a flow run |
 | `list_flow_runs` | List flow runs with filters |
 | `get_flow_run` | Get a flow run by name |
+| `list_otto_providers` | List Otto providers and models |
+| `otto` | Chat with Otto AI assistant |
 
 ## Skills
 

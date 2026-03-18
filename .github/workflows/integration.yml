@@ -39,7 +39,7 @@ jobs:
           ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
           ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_KEY }}
           ASCEND_INSTANCE_API_URL: ${{ secrets.APP_DEV_ASCEND_INSTANCE_API_URL }}
-      - name: REST API integration tests
+      - name: Instance web API integration tests
         run: ./tests/rest.py
         env:
           ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_DEV_ASCEND_SERVICE_ACCOUNT_ID }}
@@ -67,7 +67,7 @@ jobs:
           ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}
           ASCEND_SERVICE_ACCOUNT_KEY: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_KEY }}
           ASCEND_INSTANCE_API_URL: ${{ secrets.APP_ASCEND_INSTANCE_API_URL }}
-      - name: REST API integration tests
+      - name: Instance web API integration tests
         run: ./tests/rest.py
         env:
           ASCEND_SERVICE_ACCOUNT_ID: ${{ secrets.APP_ASCEND_SERVICE_ACCOUNT_ID }}

@@ -1,0 +1,25 @@
+{
+  "name": "@ascend-io/ascend-tools",
+  "version": "1.0.0",
+  "main": "./index.js",
+  "types": "./index.d.cts",
+  "napi": {
+    "binaryName": "ascend-tools",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "ava"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3",
+    "ava": "^6",
+    "typescript": "^5"
+  }
+}

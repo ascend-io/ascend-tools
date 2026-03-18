@@ -112,6 +112,58 @@ for field in uuid id title kind project_uuid environment_uuid created_at updated
   fi
 done
 
+# ---------- environments ----------
+
+echo "=== environments ==="
+
+ENV_JSON=$($CLI -o json environment list 2>&1)
+ENV_COUNT=$(echo "$ENV_JSON" | jq 'length')
+if [ "$ENV_COUNT" -gt 0 ]; then
+  pass "environment list returned $ENV_COUNT environment(s)"
+  ENV_TITLE=$(echo "$ENV_JSON" | jq -r '.[0].title')
+  ENV_GET=$($CLI -o json environment get "$ENV_TITLE" 2>&1)
+  GOT_ENV_TITLE=$(echo "$ENV_GET" | jq -r '.title')
+  if [ "$GOT_ENV_TITLE" = "$ENV_TITLE" ]; then
+    pass "environment get works"
+  else
+    fail "environment get" "expected $ENV_TITLE, got $GOT_ENV_TITLE"
+  fi
+else
+  skip "no environments found"
+fi
+
+# ---------- projects ----------
+
+echo "=== projects ==="
+
+PROJ_JSON=$($CLI -o json project list 2>&1)
+PROJ_COUNT=$(echo "$PROJ_JSON" | jq 'length')
+if [ "$PROJ_COUNT" -gt 0 ]; then
+  pass "project list returned $PROJ_COUNT project(s)"
+  PROJ_TITLE=$(echo "$PROJ_JSON" | jq -r '.[0].title')
+  PROJ_GET=$($CLI -o json project get "$PROJ_TITLE" 2>&1)
+  GOT_PROJ_TITLE=$(echo "$PROJ_GET" | jq -r '.title')
+  if [ "$GOT_PROJ_TITLE" = "$PROJ_TITLE" ]; then
+    pass "project get works"
+  else
+    fail "project get" "expected $PROJ_TITLE, got $GOT_PROJ_TITLE"
+  fi
+else
+  skip "no projects found"
+fi
+
+# ---------- profiles ----------
+
+echo "=== profiles ==="
+
+PROFILES=$($CLI -o json profile list --workspace "$RUNTIME_TITLE" 2>&1)
+PROFILE_COUNT=$(echo "$PROFILES" | jq 'length')
+if [ "$PROFILE_COUNT" -gt 0 ]; then
+  pass "profile list returned $PROFILE_COUNT profile(s)"
+else
+  skip "no profiles found"
+fi
+
 # ---------- flows ----------
 
 echo "=== flows ==="

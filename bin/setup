@@ -14,7 +14,7 @@ fi
 
 # Install JS dependencies (napi-rs, ava, typescript)
 if command -v npm &>/dev/null; then
-    cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools/ascend-tools-js"
+    cd "$(dirname "${BASH_SOURCE[0]}")/../crates/ascend-tools-js"
     npm install --no-fund --no-audit
     cd - >/dev/null
 fi

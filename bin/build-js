@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../src/ascend_tools/ascend-tools-js"
+cd "$(dirname "${BASH_SOURCE[0]}")/../crates/ascend-tools-js"
 npm run build

@@ -1,9 +1,9 @@
 [workspace]
 members = [
-  "src/ascend_tools/ascend-tools-core",
-  "src/ascend_tools/ascend-tools-mcp",
-  "src/ascend_tools/ascend-tools-cli",
-  "src/ascend_tools/ascend-tools-tui",
+  "crates/ascend-tools-core",
+  "crates/ascend-tools-mcp",
+  "crates/ascend-tools-tui",
+  "crates/ascend-tools-cli",
 ]
 resolver = "3"
 

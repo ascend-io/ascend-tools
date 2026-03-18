@@ -1,0 +1,33 @@
+[package]
+name = "ascend-tools-core"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Cody <cody.peterson@ascend.io>"]
+license = "MIT"
+description = "SDK for the Ascend Instance web API"
+repository = "https://github.com/ascend-io/ascend-tools"
+homepage = "https://github.com/ascend-io/ascend-tools"
+readme = "README.md"
+
+[lib]
+name = "ascend_tools"
+path = "src/lib.rs"
+
+[features]
+jsts = ["dep:napi-derive", "dep:napi"]
+
+[dependencies]
+ureq = { version = "3", features = ["platform-verifier"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+base64 = "0.22"
+percent-encoding = "2"
+thiserror = "2"
+zeroize = "1"
+napi = { version = "3", default-features = false, features = ["napi9", "serde-json"], optional = true }
+napi-derive = { version = "3", features = ["type-def"], optional = true }
+
+[dev-dependencies]
+mockito = "1"
