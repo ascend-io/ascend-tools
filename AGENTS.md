@@ -6,62 +6,7 @@ Repo: `ascend-io/ascend-tools`. Internal.
 
 > `CLAUDE.md` is a symlink to this file (`AGENTS.md`). Edit `AGENTS.md` only.
 
-## architecture
-
-Six Rust crates, two language bridges (PyO3 + napi-rs). The core/tui/mcp/cli crates share a Cargo workspace (`Cargo.toml` at repo root). Dependency chain is one-directional:
-
-```
-py/ascend_tools/            # Python package (PyO3 bindings land here)
-├── __init__.py             # re-exports Client, CLI entry point (main)
-├── core.pyi                # type stubs for the PyO3 module (IDE autocomplete)
-└── py.typed                # PEP 561 marker (package has inline types)
-
-crates/
-├── ascend-tools-core/        # Rust SDK crate (core library)
-│   └── src/
-│       ├── lib.rs           # pub exports
-│       ├── auth.rs          # Ed25519 JWT signing, Cloud API token exchange, caching
-│       ├── client.rs        # AscendClient — typed HTTP methods for /api/v1
-│       ├── config.rs        # env var + CLI flag resolution
-│       ├── error.rs         # public typed Error enum + Result alias for SDK consumers
-│       ├── models.rs        # Environment, Project, Runtime, Flow, FlowRun, FlowRunTrigger, filter structs
-│       └── sse.rs           # minimal SSE (Server-Sent Events) line parser for Otto streaming
-│
-├── ascend-tools-mcp/         # MCP server crate (depends on ascend-tools-core)
-│   └── src/
-│       ├── lib.rs           # run_stdio() and run_http() entry points
-│       ├── server.rs        # AscendMcpServer — 25 tools via rmcp #[tool_router]
-│       └── params.rs        # typed parameter structs with JsonSchema for MCP tool schemas
-│
-├── ascend-tools-tui/         # Interactive TUI crate (depends on ascend-tools-core)
-│   └── src/
-│       └── lib.rs           # run_tui() — full-screen ratatui chat interface for Otto
-│
-├── ascend-tools-cli/         # Rust CLI crate (depends on ascend-tools-core, ascend-tools-mcp, ascend-tools-tui)
-│   └── src/
-│       ├── lib.rs           # pub fn run_cli(args) — testable entry point
-│       ├── main.rs          # binary entry point
-│       ├── cli.rs           # clap commands, table/json output, print_table helper
-│       ├── skill-cli.md     # SKILL.md templates (embedded via include_str!, installed by `skill install`)
-│       ├── skill-py.md
-│       ├── skill-js.md
-│       ├── skill-rs.md
-│       └── skill-mcp.md
-│
-├── ascend-tools-py/          # PyO3 binding crate (cdylib, built by maturin)
-│   └── src/
-│       └── lib.rs           # exposes Client class + run_cli() to Python via pythonize (direct Rust→Python dict conversion)
-│
-└── ascend-tools-js/          # napi-rs binding crate (cdylib, built by @napi-rs/cli)
-    ├── cli.js               # CLI entry point for `npx ascend-tools`
-    └── src/
-        └── lib.rs           # exposes Client class + run_cli() to Node.js via napi-rs (async methods via libuv thread pool)
-```
-
-The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.
-Integration tests live under `crates/ascend-tools-core/tests/` and `crates/ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
-
-PyPI: `ascend-tools`. npm: `ascend-tools`. Crates.io: `ascend-tools-core`, `ascend-tools-cli`, `ascend-tools-mcp`, `ascend-tools-tui`. Installed binary: `ascend-tools`.
+For crate structure, design decisions, packaging, and backend API surface, see @ARCHITECTURE.md.
 
 ## development
 
@@ -83,27 +28,17 @@ After code changes, always run `bin/check` before committing.
 
 ## authentication
 
-The SDK/CLI authenticates via Ascend service accounts. The flow is handled transparently:
+Three env vars are required:
 
-1. User provides service account ID + key (from Ascend UI → Settings → Users → Create Service Account)
-2. SDK signs an Ed25519 JWT with the key
-3. SDK exchanges the JWT at the Instance API (`POST /api/v1/auth/token`) for an instance access token
-4. SDK uses the instance token as Bearer auth against the Instance API `/api/v1/*`
-5. Token is cached and refreshed automatically before expiry
+| Variable | Description |
+|----------|-------------|
+| `ASCEND_SERVICE_ACCOUNT_ID` | Service account ID (`asc-sa-...`) |
+| `ASCEND_SERVICE_ACCOUNT_KEY` | Ed25519 private key (base64url, shown once at creation) |
+| `ASCEND_INSTANCE_API_URL` | Instance API URL (e.g. `https://api.instance.ascend.io`) |
 
-All SDK calls go through `/api/v1/` — no direct Cloud API calls.
+All three SDKs read these automatically — `Config::from_env()` (Rust), `ascend_tools.Client()` (Python), `new Client()` (JavaScript).
 
-### env vars
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ASCEND_SERVICE_ACCOUNT_ID` | yes | Service account ID (`asc-sa-...`) |
-| `ASCEND_SERVICE_ACCOUNT_KEY` | yes | Ed25519 private key (base64url, shown once at creation) |
-| `ASCEND_INSTANCE_API_URL` | yes | Instance API URL (e.g. `https://api.instance.ascend.io`) |
-
-That's it — 3 env vars. The SDK automatically discovers the JWT audience domain from the Instance API via `GET /api/v1/auth/config`.
-
-All three SDKs read these automatically — `Config::from_env()` (Rust), `ascend_tools.Client()` (Python), and `new Client()` (JavaScript) with no args work if env vars are set.
+Auth params can also be passed as CLI flags (`--service-account-id`, `--service-account-key`, etc.). Secret values are hidden in `--help` output.
 
 ### local dev
 
@@ -159,7 +94,7 @@ Default output is table format. Use `-o json` for machine-readable output.
 
 `--environment` and `--project` accept friendly names (titles), not UUIDs. UUIDs still work for all commands via `--uuid` flag.
 
-No subcommand prints help. Auth params can be passed as `--service-account-id`, `--service-account-key`, etc. or via env vars. Secret values are hidden in `--help` output.
+No subcommand prints help.
 
 ## TUI reference
 
@@ -294,11 +229,11 @@ All methods are async (return Promises). All methods return plain objects/arrays
 
 ## MCP server
 
-The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing AscendClient methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
+The `mcp` subcommand starts an MCP server exposing AscendClient methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
 
 ### transports
 
-- **stdio** (default): `ascend-tools mcp` — communicates over stdin/stdout. Used by Claude Code and most MCP clients.
+- **stdio** (default): `ascend-tools mcp` — communicates over stdin/stdout.
 - **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`.
 
 ### tools
@@ -338,8 +273,7 @@ claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # v
 claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
-Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
-If Claude is launched without your shell env, set them explicitly:
+Auth env vars are inherited from the shell. If Claude is launched without your shell env, set them explicitly:
 
 ```bash
 claude mcp add --transport stdio ascend-tools-dev \
@@ -373,85 +307,24 @@ codex mcp add \
 
 ```bash
 codex mcp get ascend-tools-dev --json
-```
-
-```bash
 codex mcp list
-```
-
-```bash
 codex mcp remove ascend-tools
 codex mcp remove ascend-tools-dev
 ```
 
-Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
-If stale behavior appears after code updates, run one refresh manually:
+If stale behavior appears after code updates, or Codex MCP startup fails with `connection closed: initialize response`, refresh once:
 
 ```bash
 uvx --refresh ascend-tools --version
 ```
-
-If Codex MCP startup fails with `connection closed: initialize response`, refresh once and re-add:
-
-```bash
-uvx --refresh ascend-tools --version
-```
-
-### architecture notes
-
-- Uses `rmcp` SDK for MCP protocol
-- `AscendClient` is sync (ureq); tools use `tokio::task::spawn_blocking` to bridge to async
-- `AscendClient` wrapped in `Arc` for the `Clone` requirement (contains `Mutex` in Auth)
-- Tracing writes to stderr only (stdout is the MCP protocol channel for stdio transport)
-- `reset_sigint()` clears Python's SIGINT handler so Ctrl+C works when running through PyO3
-- HTTP mode creates a fresh `AscendClient` per session via `StreamableHttpService` factory
-
-## backend API
-
-The SDK/CLI calls the Instance API's `/api/v1/` endpoints, defined in `ascend-backend/src/ascend_backend/instance/api/v1/`. These return plain JSON (not JSON:API).
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/auth/config` | GET | Get JWT audience domain for SA authentication |
-| `/api/v1/auth/token` | POST | Exchange SA JWT for instance token (no pre-existing token required) |
-| `/api/v1/runtimes` | GET | List runtimes (filters: id, kind, title, project_uuid, environment_uuid) |
-| `/api/v1/runtimes` | POST | Create a runtime |
-| `/api/v1/runtimes/{uuid}` | GET | Get a runtime |
-| `/api/v1/runtimes/{uuid}` | PATCH | Update a runtime |
-| `/api/v1/runtimes/{uuid}` | DELETE | Delete a runtime |
-| `/api/v1/environments` | GET | List environments (filter: title) |
-| `/api/v1/projects` | GET | List projects (filter: title) |
-| `/api/v1/profiles` | GET | List profiles (filters: runtime_uuid, project, branch) |
-| `/api/v1/runtimes/{uuid}/flows` | GET | List flows in a runtime |
-| `/api/v1/runtimes/{uuid}/flows/{name}:run` | POST | Trigger a flow run |
-| `/api/v1/flow-runs` | GET | List flow runs (requires runtime_uuid, filters: status, flow, since, until) |
-| `/api/v1/flow-runs/{name}` | GET | Get a flow run (requires runtime_uuid query param) |
 
 ## conventions
 
 - Rust stable toolchain (edition 2024, requires 1.85+)
 - Commits and PR titles use Conventional Commits (`type(scope): summary` when scoped, otherwise `type: summary`); use `refactor:` for internal quality improvements without behavior changes
-- `ascend-tools-core` exposes typed errors via `ascend_tools::Error` / `ascend_tools::Result` (`thiserror`); `anyhow` is kept at app boundaries (CLI/MCP)
 - API methods return typed structs in Rust (`serde_json::Value` used only for dynamic fields like `FlowRun.error`)
-- HTTP response handling reads body as text first, then tries JSON parse (robust against non-JSON errors) and maps failures to typed error variants
-- HTTP client uses `ureq` (synchronous) with platform TLS verifier (trusts system CA store)
-- `http_status_as_error(false)` — we handle HTTP status codes ourselves, not ureq
-- Token caching holds the mutex during refresh to prevent thundering herd
-- Core library code avoids panic paths in runtime operations (no `expect`/`unwrap` in non-test control flow)
-- Clap args for secrets use `hide_env_values = true` (SA ID, SA key)
-- PyO3 binding uses `pythonize` to convert Rust structs directly to Python dicts (no JSON string intermediary)
 - CLI prints tables by default, JSON with `-o json`; empty results print "No results." to stderr
-- MCP tool parameters use `schemars` `JsonSchema` derive for automatic JSON Schema generation; doc comments on fields become schema descriptions
-- MCP `FlowRunSpec` uses `#[serde(flatten)]` with a catch-all map for forward compatibility with new backend fields
+- Clap args for secrets use `hide_env_values = true` (SA ID, SA key)
 - PyO3 `run_cli()` uses `py.detach()` to release the GIL during long-running Rust calls (MCP server)
 - Test coverage includes integration tests with mock servers (`mockito`) for core HTTP/auth behavior, MCP tool behavior, and CLI output regressions
 - When adding or changing CLI commands, update `crates/ascend-tools-cli/src/skill-cli.md` to keep the skill in sync
-- TUI crate (`ascend-tools-tui`) uses `ratatui` + `crossterm`; single public entry point `run_tui()`
-- TUI uses `std::thread::scope` for streaming (borrows `&AscendClient` from the caller without `Arc`)
-- TUI input defaults to Vi mode; history persisted to `~/.ascend-tools/history`
-- TUI colors are defined as named constants at the top of `lib.rs` — no inline color values
-
-## related repos
-
-- **ascend-backend** — Instance API v1 endpoints (`src/ascend_backend/instance/api/v1/`), Auth0 service account fixes (`src/ascend_backend/cloud/authn/manager.py`), cache invalidation on SA create/delete
-- **ascend-ui** — Service account creation dialog with env var display (`src/lib/components/forms/CreateServiceAccountDialog.svelte`)
