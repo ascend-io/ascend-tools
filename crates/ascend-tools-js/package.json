@@ -1,5 +1,5 @@
 {
-  "name": "@ascend-io/ascend-tools",
+  "name": "ascend-tools",
   "version": "1.0.0",
   "main": "./index.js",
   "types": "./index.d.cts",
