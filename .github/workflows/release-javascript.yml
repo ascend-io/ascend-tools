@@ -25,7 +25,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
     steps:
@@ -44,10 +44,11 @@ jobs:
           key: js-${{ matrix.target }}-${{ hashFiles('crates/ascend-tools-js/Cargo.lock') }}
           restore-keys: js-${{ matrix.target }}-
       - run: bin/setup
+      - run: rustup target add ${{ matrix.target }}
       - working-directory: crates/ascend-tools-js
         run: |
           npm install --no-fund --no-audit
-          npm run build
+          npm run build -- --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
