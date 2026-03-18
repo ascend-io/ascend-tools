@@ -7,7 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@ascend-io/ascend-tools": "file:../../src/ascend_tools/ascend-tools-js",
+    "@ascend-io/ascend-tools": "file:../../crates/ascend-tools-js",
     "express": "^5"
   }
 }

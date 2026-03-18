@@ -6,11 +6,11 @@ echo "Checking version consistency..."
 
 TOML_FILES=(
   pyproject.toml
-  src/ascend_tools/ascend-tools-core/Cargo.toml
-  src/ascend_tools/ascend-tools-mcp/Cargo.toml
-  src/ascend_tools/ascend-tools-cli/Cargo.toml
-  src/ascend_tools/ascend-tools-py/Cargo.toml
-  src/ascend_tools/ascend-tools-js/Cargo.toml
+  crates/ascend-tools-core/Cargo.toml
+  crates/ascend-tools-mcp/Cargo.toml
+  crates/ascend-tools-cli/Cargo.toml
+  crates/ascend-tools-py/Cargo.toml
+  crates/ascend-tools-js/Cargo.toml
 )
 
 EXPECTED=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
