@@ -41,9 +41,9 @@ echo "  uv $(uv --version | awk '{print $2}')"
 if ! command -v node &>/dev/null; then
     echo ""
     echo "ERROR: node is not on PATH."
-    echo "Install Node.js 22+ via fnm, nvm, or https://nodejs.org"
-    echo "  fnm:  fnm install 22 && fnm use 22"
-    echo "  nvm:  nvm install 22 && nvm use 22"
+    echo "Install Node.js 24+ via fnm, nvm, or https://nodejs.org"
+    echo "  fnm:  fnm install 24 && fnm use 24"
+    echo "  nvm:  nvm install 24 && nvm use 24"
     echo "Then re-run bin/setup."
     exit 1
 fi

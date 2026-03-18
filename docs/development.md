@@ -6,7 +6,7 @@ Guide for contributors working on ascend-tools.
 
 - **Rust** stable toolchain (1.85+, edition 2024)
 - **Python** 3.11+ (for PyO3 bindings and linting)
-- **Node.js** 22+ (for napi-rs bindings and JS tests)
+- **Node.js** 24+ (for napi-rs bindings and JS tests)
 - **uv** (Python package manager)
 
 ## Setup
