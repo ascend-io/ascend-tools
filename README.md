@@ -2,13 +2,11 @@
 
 CLI, SDK, and MCP server for the Ascend Instance web API.
 
-## Install
-
-Pre-built binaries are available for Linux and macOS. Windows users should use Linux/macOS.
-
-```bash
-uv tool install ascend-tools
-```
+[![PyPI](https://img.shields.io/pypi/v/ascend-tools?color=blue)](https://pypi.org/project/ascend-tools/)
+[![npm](https://img.shields.io/npm/v/ascend-tools?color=blue)](https://www.npmjs.com/package/ascend-tools)
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-core?color=blue)](https://crates.io/crates/ascend-tools-core)
+[![CI](https://img.shields.io/github/actions/workflow/status/ascend-io/ascend-tools/ci.yml?branch=main&label=CI)](https://github.com/ascend-io/ascend-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8A2BE2.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
 
 ## Authentication
 
@@ -22,183 +20,146 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 
 ## CLI
 
-List workspaces:
+Install via [PyPI](https://pypi.org/project/ascend-tools/), [npm](https://www.npmjs.com/package/ascend-tools), [crates.io](https://crates.io/crates/ascend-tools-cli), [GitHub releases](https://github.com/ascend-io/ascend-tools/releases), or [source](docs/development.md).
+
+Python:
 
 ```bash
-ascend-tools workspace list
+uv tool install ascend-tools
 ```
 
-Get a workspace:
+Node.js:
 
 ```bash
-ascend-tools workspace get "My Workspace"
+npm install -g ascend-tools
 ```
 
-Pause / resume a workspace:
+Rust:
 
 ```bash
-ascend-tools workspace pause "My Workspace"
-ascend-tools workspace resume "My Workspace"
+cargo install ascend-tools-cli
 ```
 
-List and run flows:
+Or run directly without installing via `uvx`:
 
 ```bash
-ascend-tools flow list --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --resume
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --spec '{"full_refresh": true}'
+uvx ascend-tools workspace list
 ```
 
-Deployments work the same way:
+Or `npx`:
 
 ```bash
-ascend-tools deployment list
-ascend-tools deployment get "My Deployment"
-ascend-tools flow list --deployment "My Deployment"
+npx ascend-tools workspace list
 ```
 
-JSON output:
+### Interactive TUI
 
-```bash
-ascend-tools -o json workspace list
-```
-
-## Interactive TUI
-
-Chat with Otto in a full-screen terminal interface:
+Run Otto in an interactive terminal user interface (TUI):
 
 ```bash
 ascend-tools otto tui
-ascend-tools otto tui --workspace "My Workspace"
 ```
 
-Vi keybindings by default. Type `/help` for commands, `/emacs` to switch modes. Alt+Enter for multi-line input. Up/Down for input history.
+Vi keybindings by default. Type `/help` for commands, `/emacs` to switch modes.
 
 ## Python SDK
+
+Add `ascend-tools` to your Python project:
+
+```bash
+uv add ascend-tools
+```
+
+Then use the `Client` class:
 
 ```python
 from ascend_tools import Client
 
-client = Client()  # reads from env vars
+client = Client()
 client.list_workspaces()
-client.run_flow(flow="sales", workspace="My Workspace")
+client.run_flow(flow="My Flow", workspace="My Workspace")
+```
+
+## JavaScript SDK
+
+Add `ascend-tools` to your Node.js project:
+
+```bash
+npm add ascend-tools
+```
+
+Then use the `Client` class:
+
+```javascript
+import { Client } from "ascend-tools";
+
+const client = new Client();
+const workspaces = await client.listWorkspaces();
+await client.runFlow("My Flow", "My Workspace");
+```
+
+## Rust SDK
+
+Add `ascend-tools-core` to your Rust project:
+
+```bash
+cargo add ascend-tools-core
+```
+
+Then use the `AscendClient` struct:
+
+```rust
+use ascend_tools::client::AscendClient;
+use ascend_tools::config::Config;
+
+let client = AscendClient::new(Config::from_env()?)?;
+let workspaces = client.list_workspaces(Default::default())?;
 ```
 
 ## MCP server
 
-Start an MCP server for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
-
-Stdio transport (default):
-
-```bash
-ascend-tools mcp
-```
-
-HTTP transport:
-
-```bash
-ascend-tools mcp --http --bind 127.0.0.1:8000
-```
-
-### Claude Code setup
+Connect AI assistants (Claude Code, Codex CLI, Cursor, etc.) to Ascend via `uvx`:
 
 ```bash
 claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
-The Ascend auth env vars are inherited from your shell. Verify with `/mcp` inside Claude Code.
-If Claude is launched without your shell env, add vars explicitly:
+Or `npx`:
 
 ```bash
-claude mcp add --transport stdio ascend-tools-dev \
-  -e ASCEND_SERVICE_ACCOUNT_ID="$ASCEND_SERVICE_ACCOUNT_ID" \
-  -e ASCEND_SERVICE_ACCOUNT_KEY="$ASCEND_SERVICE_ACCOUNT_KEY" \
-  -e ASCEND_INSTANCE_API_URL="$ASCEND_INSTANCE_API_URL" \
-  -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp
 ```
 
-### Codex CLI setup
-
-```bash
-codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
-```
-
-If Codex is launched without your shell env, add vars explicitly:
-
-```bash
-codex mcp add \
-  --env "ASCEND_SERVICE_ACCOUNT_ID=$ASCEND_SERVICE_ACCOUNT_ID" \
-  --env "ASCEND_SERVICE_ACCOUNT_KEY=$ASCEND_SERVICE_ACCOUNT_KEY" \
-  --env "ASCEND_INSTANCE_API_URL=$ASCEND_INSTANCE_API_URL" \
-  ascend-tools-dev -- uvx ascend-tools mcp
-```
-
-Inspect the MCP server config:
-
-```bash
-codex mcp get ascend-tools-dev --json
-```
-
-List all configured MCP servers:
-
-```bash
-codex mcp list
-```
-
-Remove the config:
-
-```bash
-codex mcp remove ascend-tools-dev
-```
-
-The Ascend auth env vars are inherited from your shell when Codex launches the server.
-If you have stale MCP behavior after updating code, run this once to refresh the uvx cache:
-
-```bash
-uvx --refresh ascend-tools --version
-```
-
-If Codex MCP startup fails with `connection closed: initialize response`, refresh once and re-add:
-
-```bash
-uvx --refresh ascend-tools --version
-```
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| `list_workspaces` | List workspaces with optional filters |
-| `get_workspace` | Get a workspace by title |
-| `create_workspace` | Create a new workspace |
-| `update_workspace` | Update a workspace |
-| `pause_workspace` | Pause a workspace |
-| `resume_workspace` | Resume a paused workspace |
-| `delete_workspace` | Delete a workspace |
-| `list_deployments` | List deployments with optional filters |
-| `get_deployment` | Get a deployment by title |
-| `create_deployment` | Create a new deployment |
-| `update_deployment` | Update a deployment |
-| `pause_deployment_automations` | Pause automations on a deployment |
-| `resume_deployment_automations` | Resume automations on a deployment |
-| `delete_deployment` | Delete a deployment |
-| `list_environments` | List environments |
-| `list_projects` | List projects |
-| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
-| `list_flows` | List flows in a workspace or deployment |
-| `run_flow` | Trigger a flow run |
-| `list_flow_runs` | List flow runs with filters |
-| `get_flow_run` | Get a flow run by name |
-| `list_otto_providers` | List Otto providers and models |
-| `otto` | Chat with Otto AI assistant |
+See [MCP server guide](docs/mcp.md) for Codex CLI setup and the full tools reference.
 
 ## Skills
 
-Install reference skills for AI coding assistants (Claude Code, Codex, etc.):
+Install reference skills for AI coding assistants:
 
 ```bash
 ascend-tools skill install --target .claude/skills --all
 ```
 
-Available skills: `--cli` (default), `--python`, `--mcp`, `--all`.
+Available flags: `--cli` (default), `--python`, `--javascript`, `--rust`, `--mcp`, `--all`.
+
+## Development
+
+```bash
+bin/setup
+bin/check
+bin/build
+bin/format
+```
+
+See the [development guide](docs/development.md) for the full contributor setup.
+
+## Documentation
+
+- [Quickstart](docs/QUICKSTART.md): create a service account, install, and run your first flow
+- [Installation](docs/INSTALLATION.md): all install methods
+- [CLI](docs/cli.md): all commands with examples
+- [Python SDK](docs/python.md): Client methods, return types, error handling
+- [JavaScript SDK](docs/javascript.md): async Client methods, streaming, TypeScript types
+- [Rust SDK](docs/rust.md): typed client with structs and error handling
+- [MCP server](docs/mcp.md): set up AI assistants with Ascend tools
+- [Development](docs/development.md): contributor setup, architecture, release process

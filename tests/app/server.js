@@ -1,4 +1,4 @@
-import { Client } from '@ascend-io/ascend-tools'
+import { Client } from 'ascend-tools'
 import express from 'express'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'

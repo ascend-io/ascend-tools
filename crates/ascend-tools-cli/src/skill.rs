@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 const SKILL_CLI: &str = include_str!("skill-cli.md");
 const SKILL_PY: &str = include_str!("skill-py.md");
+const SKILL_JS: &str = include_str!("skill-js.md");
+const SKILL_RS: &str = include_str!("skill-rs.md");
 const SKILL_MCP: &str = include_str!("skill-mcp.md");
 
 #[derive(Subcommand)]
@@ -22,6 +24,12 @@ pub(crate) enum SkillCommands {
         /// Install the Python SDK skill
         #[arg(long)]
         python: bool,
+        /// Install the JavaScript SDK skill
+        #[arg(long)]
+        javascript: bool,
+        /// Install the Rust SDK skill
+        #[arg(long)]
+        rust: bool,
         /// Install the MCP server skill
         #[arg(long)]
         mcp: bool,
@@ -40,6 +48,8 @@ pub(crate) fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
             target,
             cli,
             python,
+            javascript,
+            rust,
             mcp,
             all,
         } => {
@@ -51,13 +61,17 @@ pub(crate) fn handle_skill(cmd: Option<SkillCommands>) -> Result<()> {
             };
 
             // --all enables everything; default to --cli when no flags are given
-            let cli = all || cli || (!python && !mcp);
+            let cli = all || cli || (!python && !javascript && !rust && !mcp);
             let python = all || python;
+            let javascript = all || javascript;
+            let rust = all || rust;
             let mcp = all || mcp;
 
             for (dir_name, content, enabled) in [
                 ("ascend-tools-cli", SKILL_CLI, cli),
                 ("ascend-tools-python", SKILL_PY, python),
+                ("ascend-tools-javascript", SKILL_JS, javascript),
+                ("ascend-tools-rust", SKILL_RS, rust),
                 ("ascend-tools-mcp", SKILL_MCP, mcp),
             ] {
                 if !enabled {

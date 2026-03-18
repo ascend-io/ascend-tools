@@ -1,17 +1,28 @@
-# ascend-tools-py
+# ascend-tools
 
-[PyO3](https://pyo3.rs) bindings for the [Ascend](https://www.ascend.io) Instance web API SDK and CLI.
+[![PyPI](https://img.shields.io/pypi/v/ascend-tools.svg)](https://pypi.org/project/ascend-tools/)
 
-This crate produces the `ascend_tools.core` native Python module via [maturin](https://www.maturin.rs). It exposes the `Client` class (from [`ascend-tools-core`](../ascend-tools-core)) and the `run()` CLI entry point (from [`ascend-tools-cli`](../ascend-tools-cli)) to Python.
+CLI, SDK, and MCP server for the [Ascend](https://www.ascend.io) Instance web API.
+
+Rust core with [PyO3](https://pyo3.rs) bindings, built by [maturin](https://www.maturin.rs). Exposes the `Client` class and the full `ascend-tools` CLI.
 
 ## Install
 
 ```bash
 uv tool install ascend-tools    # CLI
-uv pip install ascend-tools     # library
+uv add ascend-tools             # library dependency
+pip install ascend-tools        # pip
 ```
 
-## Usage
+## CLI
+
+```bash
+ascend-tools workspace list
+ascend-tools flow run "My Flow" --workspace "My Workspace"
+ascend-tools otto tui
+```
+
+## SDK
 
 ```python
 from ascend_tools import Client
@@ -23,4 +34,22 @@ client.run_flow(flow="sales", workspace="My Workspace")
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
 
-See the [top-level README](../../../README.md) for full documentation.
+## Authentication
+
+Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
+
+```bash
+export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+export ASCEND_INSTANCE_API_URL="https://api.instance.ascend.io"
+```
+
+## MCP server
+
+Start an MCP server for AI assistants:
+
+```bash
+ascend-tools mcp
+```
+
+See the [full documentation](https://github.com/ascend-io/ascend-tools) for more details.

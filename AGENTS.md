@@ -42,21 +42,26 @@ crates/
 │       ├── lib.rs           # pub fn run_cli(args) — testable entry point
 │       ├── main.rs          # binary entry point
 │       ├── cli.rs           # clap commands, table/json output, print_table helper
-│       └── skill-cli.md     # SKILL.md template (embedded via include_str!, installed by `skill install`)
+│       ├── skill-cli.md     # SKILL.md templates (embedded via include_str!, installed by `skill install`)
+│       ├── skill-py.md
+│       ├── skill-js.md
+│       ├── skill-rs.md
+│       └── skill-mcp.md
 │
 ├── ascend-tools-py/          # PyO3 binding crate (cdylib, built by maturin)
 │   └── src/
 │       └── lib.rs           # exposes Client class + run_cli() to Python via pythonize (direct Rust→Python dict conversion)
 │
 └── ascend-tools-js/          # napi-rs binding crate (cdylib, built by @napi-rs/cli)
+    ├── cli.js               # CLI entry point for `npx ascend-tools`
     └── src/
-        └── lib.rs           # exposes Client class to Node.js via napi-rs (async methods via spawn_blocking)
+        └── lib.rs           # exposes Client class + run_cli() to Node.js via napi-rs (async methods via libuv thread pool)
 ```
 
 The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.
 Integration tests live under `crates/ascend-tools-core/tests/` and `crates/ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
 
-PyPI: `ascend-tools`. Crates.io: not yet published. Installed binary: `ascend-tools`.
+PyPI: `ascend-tools`. npm: `ascend-tools`. Crates.io: `ascend-tools-core`, `ascend-tools-cli`, `ascend-tools-mcp`, `ascend-tools-tui`. Installed binary: `ascend-tools`.
 
 ## development
 
@@ -67,7 +72,7 @@ bin/format      # auto-format (bin/format-rs, bin/format-py)
 bin/test        # run tests (bin/test-rs)
 bin/install     # install locally (bin/install-rs, bin/install-py)
 bin/bump-version  # bump version (--patch, --minor (default), --major)
-bin/release       # tag + push release (runs check, validates GitHub/PyPI)
+bin/release       # tag + push release (runs check, validates GitHub/PyPI/npm)
 ```
 
 Cargo workspace is at the repo root:
@@ -98,7 +103,7 @@ All SDK calls go through `/api/v1/` — no direct Cloud API calls.
 
 That's it — 3 env vars. The SDK automatically discovers the JWT audience domain from the Instance API via `GET /api/v1/auth/config`.
 
-The Python SDK reads these automatically — `ascend_tools.Client()` with no args works if env vars are set.
+All three SDKs read these automatically — `Config::from_env()` (Rust), `ascend_tools.Client()` (Python), and `new Client()` (JavaScript) with no args work if env vars are set.
 
 ### local dev
 
@@ -145,7 +150,7 @@ ascend-tools [-o text|json] [-V]
   otto model list [--provider <ID>]
   otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
 
-  skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
+  skill install --target <PATH> [--cli] [--python] [--javascript] [--rust] [--mcp] [--all]
 
   mcp [--http] [--bind <ADDR>]
 ```
@@ -238,6 +243,55 @@ client.otto(prompt="What flows are running?", workspace="My Workspace")
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
 
+## JavaScript SDK reference
+
+```javascript
+import { Client } from "ascend-tools";
+
+// All params optional — resolved from env vars if not provided
+const client = new Client();
+
+// Or explicit
+const client = new Client(
+  "asc-sa-...",                      // serviceAccountId
+  "...",                              // serviceAccountKey
+  "https://api.instance.ascend.io",   // instanceApiUrl
+);
+
+// Environments & Projects
+await client.listEnvironments();
+await client.getEnvironment("Production");
+await client.listProjects();
+await client.getProject("My Project");
+await client.listProfiles("My Workspace");
+
+// Workspaces
+await client.listWorkspaces();
+await client.getWorkspace("My Workspace");
+await client.pauseWorkspace("My Workspace");
+await client.resumeWorkspace("My Workspace");
+await client.deleteWorkspace("My Workspace");
+
+// Deployments
+await client.listDeployments();
+await client.getDeployment("My Deployment");
+await client.deleteDeployment("My Deployment");
+
+// Flows
+await client.listFlows("My Workspace");
+await client.runFlow("sales", "My Workspace");
+
+// Flow runs
+await client.listFlowRuns("My Workspace", null, null, "running");
+await client.getFlowRun("fr-...", "My Workspace");
+
+// Otto (AI assistant)
+await client.listOttoProviders();
+await client.otto("What flows are running?", "My Workspace");
+```
+
+All methods are async (return Promises). All methods return plain objects/arrays. TypeScript type definitions are included (`index.d.cts`).
+
 ## MCP server
 
 The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing AscendClient methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
@@ -245,7 +299,7 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 ### transports
 
 - **stdio** (default): `ascend-tools mcp` — communicates over stdin/stdout. Used by Claude Code and most MCP clients.
-- **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`. Used for remote/shared deployments.
+- **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`.
 
 ### tools
 
@@ -279,18 +333,9 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 
 ### usage with Claude Code
 
-**Remote (recommended)** — copy `ASCEND_MCP_URL` from Settings > Instance > MCP Server:
-
 ```bash
-claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
-```
-
-Auth is handled automatically via OAuth (browser login). No service account or env vars needed.
-
-**Local (alternative)** — for offline or custom setups:
-
-```bash
-claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
 Auth env vars (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from the shell.
@@ -312,7 +357,8 @@ claude mcp remove ascend-tools-dev
 ### usage with Codex CLI
 
 ```bash
-codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
+codex mcp add ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+codex mcp add ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
 If Codex is launched without your shell env, set them explicitly:

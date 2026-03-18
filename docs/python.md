@@ -4,8 +4,6 @@ Manage Ascend workspaces, deployments, flows, and flow runs from Python.
 
 ## Install
 
-Requires [uv](https://docs.astral.sh/uv/) (see [Installation](INSTALLATION.md) for setup).
-
 ```bash
 uv add ascend-tools
 ```
@@ -15,6 +13,8 @@ Upgrade to the latest version:
 ```bash
 uv add --upgrade ascend-tools
 ```
+
+See [Installation](INSTALLATION.md) for all install methods.
 
 ## Authenticate
 

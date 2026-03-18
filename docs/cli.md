@@ -5,16 +5,20 @@ Manage Ascend workspaces, deployments, flows, and flow runs from the command lin
 ## Install
 
 ```bash
-uv tool install ascend-tools
+uv tool install ascend-tools      # Python
+npm install -g ascend-tools       # Node.js
+cargo install ascend-tools-cli    # Rust
 ```
 
 Upgrade to the latest version:
 
 ```bash
-uv tool install --upgrade ascend-tools
+uv tool install --upgrade ascend-tools    # Python
+npm update -g ascend-tools                # Node.js
+cargo install ascend-tools-cli            # Rust (reinstalls latest)
 ```
 
-See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries).
+See [Installation](INSTALLATION.md) for other methods (pre-built binaries, `uvx`, `npx`).
 
 ## Authenticate
 
@@ -154,20 +158,20 @@ ascend-tools flow list --deployment "My Deployment"
 ### Run a flow
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
-ascend-tools flow run <FLOW_NAME> --deployment "My Deployment"
+ascend-tools flow run "My Flow" --workspace "My Workspace"
+ascend-tools flow run "My Flow" --deployment "My Deployment"
 ```
 
 Resume a paused workspace before running:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" --resume
+ascend-tools flow run "My Flow" --workspace "My Workspace" --resume
 ```
 
 Pass a flow run spec for advanced options:
 
 ```bash
-ascend-tools flow run <FLOW_NAME> --workspace "My Workspace" \
+ascend-tools flow run "My Flow" --workspace "My Workspace" \
   --spec '{"full_refresh": true}'
 ```
 
@@ -250,4 +254,4 @@ Install reference skills for AI coding assistants (Claude Code, Codex, etc.):
 ascend-tools skill install --target .claude/skills --all
 ```
 
-Available flags: `--cli` (default), `--python`, `--mcp`, `--all`.
+Available flags: `--cli` (default), `--python`, `--javascript`, `--rust`, `--mcp`, `--all`.

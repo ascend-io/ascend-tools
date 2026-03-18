@@ -1,19 +1,34 @@
-# ascend-tools-js
+# ascend-tools
 
-[napi-rs](https://napi.rs) bindings for the [Ascend](https://www.ascend.io) Instance web API SDK.
+CLI, SDK, and MCP server for the [Ascend](https://www.ascend.io) Instance web API.
 
-This crate produces the `@ascend-io/ascend-tools` native Node.js module. It exposes the `Client` class (from [`ascend-tools-core`](../ascend-tools-core)) to JavaScript/TypeScript via napi-rs, with async methods backed by `spawn_blocking`.
+Rust core with [napi-rs](https://napi.rs) bindings for Node.js. Exposes the `Client` class and the full `ascend-tools` CLI.
 
 ## Install
 
 ```bash
-npm install @ascend-io/ascend-tools
+npm install ascend-tools
 ```
 
-## Usage
+## CLI
+
+```bash
+npx ascend-tools workspace list
+npx ascend-tools flow run "My Flow" --workspace "My Workspace"
+npx ascend-tools otto tui
+```
+
+Or install globally:
+
+```bash
+npm install -g ascend-tools
+ascend-tools workspace list
+```
+
+## SDK
 
 ```javascript
-import { Client } from "@ascend-io/ascend-tools";
+import { Client } from "ascend-tools";
 
 const client = new Client(); // reads from env vars
 const workspaces = await client.listWorkspaces();
@@ -22,7 +37,35 @@ const run = await client.runFlow("sales", "My Workspace");
 
 All methods are async and return plain objects/arrays. See the [demo app](../../tests/app/) for a full example.
 
-## Build
+## Authentication
+
+Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
+
+```bash
+export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
+```
+
+Or pass them directly:
+
+```javascript
+const client = new Client(
+  "asc-sa-...",                      // serviceAccountId
+  "...",                              // serviceAccountKey
+  "https://api.instance.ascend.io",   // instanceApiUrl
+);
+```
+
+## MCP server
+
+Start an MCP server for AI assistants:
+
+```bash
+npx ascend-tools mcp
+```
+
+## Build from source
 
 ```bash
 npm install
@@ -40,4 +83,4 @@ Requires Rust toolchain and `@napi-rs/cli`.
 | macOS | x86_64, aarch64 |
 | Linux | x86_64, aarch64 |
 
-See the [top-level README](../../README.md) for full documentation.
+See the [full documentation](https://github.com/ascend-io/ascend-tools) for more details.

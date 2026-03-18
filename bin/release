@@ -14,10 +14,10 @@ usage() {
   echo "  - Working tree is clean (override with --allow-dirty)"
   echo "  - bin/check passes"
   echo "  - Git tag does not already exist on GitHub"
-  echo "  - Package version does not already exist on PyPI or crates.io"
+  echo "  - Package version does not already exist on PyPI, npm, or crates.io"
   echo ""
   echo "Options:"
-  echo "  --force        Skip GitHub tag, PyPI, crates.io, and origin/main checks"
+  echo "  --force        Skip GitHub tag, PyPI, npm, crates.io, and origin/main checks"
   echo "  --allow-dirty  Skip clean working tree check"
   exit "${1:-0}"
 }
@@ -106,6 +106,19 @@ if [ "$FORCE" = false ]; then
   echo "  ascend-tools $VERSION does not exist on PyPI"
 else
   echo "  skipping PyPI check (--force)"
+fi
+
+# ---------- check npm ----------
+
+if [ "$FORCE" = false ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/ascend-tools/$VERSION")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "ERROR: ascend-tools $VERSION already exists on npm. Use --force to override." >&2
+    exit 1
+  fi
+  echo "  ascend-tools $VERSION does not exist on npm"
+else
+  echo "  skipping npm check (--force)"
 fi
 
 # ---------- check crates.io ----------
