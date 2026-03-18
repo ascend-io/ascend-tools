@@ -154,9 +154,6 @@ class Client:
     ) -> list[str]:
         """List available profiles. Provide workspace/deployment title, uuid, or project+branch."""
         ...
-
-    # -- Flows --
-
     def list_flows(
         self,
         *,

@@ -26,8 +26,12 @@ test('Client has all expected methods', (t) => {
     'createWorkspace', 'updateWorkspace', 'deleteWorkspace',
     'listDeployments', 'getDeployment', 'createDeployment', 'updateDeployment',
     'pauseDeploymentAutomations', 'resumeDeploymentAutomations', 'deleteDeployment',
+    'listEnvironments', 'getEnvironment',
+    'listProjects', 'getProject',
+    'listProfiles',
     'listFlows', 'runFlow',
     'listFlowRuns', 'getFlowRun',
+    'listOttoProviders', 'otto', 'ottoStreaming',
   ]
   for (const method of methods) {
     t.is(typeof Client.prototype[method], 'function', `Client.prototype.${method} should be a function`)

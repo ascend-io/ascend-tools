@@ -48,7 +48,7 @@ app.get('/api/workspaces', async (req, res) => {
         <td>${escapeHtml(ws.title)}</td>
         <td>${statusBadge(ws.health)}</td>
         <td>${escapeHtml(ws.environmentUuid)}</td>
-        <td>${escapeHtml(ws.profile)}</td>
+        <td>${escapeHtml(ws.profileName)}</td>
       </tr>`).join('')
     res.send(`
       <table role="grid">
@@ -81,7 +81,7 @@ app.get('/api/deployments', async (req, res) => {
         <td>${escapeHtml(d.title)}</td>
         <td>${statusBadge(d.health)}</td>
         <td>${escapeHtml(d.environmentUuid)}</td>
-        <td>${escapeHtml(d.profile)}</td>
+        <td>${escapeHtml(d.profileName)}</td>
       </tr>`).join('')
     res.send(`
       <table role="grid">
@@ -100,6 +100,36 @@ app.get('/api/deployment/:title', async (req, res) => {
       <h3>${escapeHtml(d.title)}</h3>
       ${detailTable(d)}
       <div hx-get="/api/flows?deployment=${encodeURIComponent(d.title)}" hx-trigger="load" hx-swap="innerHTML"></div>`)
+  } catch (e) {
+    res.send(`<p class="error">Error: ${escapeHtml(e.message)}</p>`)
+  }
+})
+
+app.get('/api/environments', async (req, res) => {
+  try {
+    const envs = await client.listEnvironments()
+    if (!envs.length) return res.send('<p>No environments found.</p>')
+    const rows = envs.map(e => `<tr><td>${escapeHtml(e.title)}</td><td>${escapeHtml(e.id)}</td><td>${escapeHtml(e.uuid)}</td></tr>`).join('')
+    res.send(`
+      <table role="grid">
+        <thead><tr><th>Title</th><th>ID</th><th>UUID</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`)
+  } catch (e) {
+    res.send(`<p class="error">Error: ${escapeHtml(e.message)}</p>`)
+  }
+})
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    const projects = await client.listProjects()
+    if (!projects.length) return res.send('<p>No projects found.</p>')
+    const rows = projects.map(p => `<tr><td>${escapeHtml(p.title)}</td><td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.path)}</td></tr>`).join('')
+    res.send(`
+      <table role="grid">
+        <thead><tr><th>Title</th><th>ID</th><th>Path</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`)
   } catch (e) {
     res.send(`<p class="error">Error: ${escapeHtml(e.message)}</p>`)
   }
@@ -151,18 +181,10 @@ app.post('/api/flow/:name/run', async (req, res) => {
 app.get('/api/flow-runs', async (req, res) => {
   try {
     const { workspace, deployment, flow, status, limit } = req.query
-    let parsedLimit = null
-    if (limit) {
-      const num = parseInt(limit, 10)
-      if (!Number.isFinite(num) || num < 0) {
-        return res.status(400).send(`<p class="error">Invalid limit parameter</p>`)
-      }
-      parsedLimit = num
-    }
     const result = await client.listFlowRuns(
       workspace || null, deployment || null, null,
       status || null, flow || null, null, null, null,
-      parsedLimit,
+      limit ? parseInt(limit) : null,
     )
     const runs = result.items || []
     if (!runs.length) return res.send('<p>No flow runs found.</p>')
@@ -196,6 +218,60 @@ app.get('/api/flow-run/:name', async (req, res) => {
       </div>`)
   } catch (e) {
     res.send(`<p class="error">Error: ${escapeHtml(e.message)}</p>`)
+  }
+})
+
+// --- Otto routes ---
+
+app.get('/api/otto/providers', async (req, res) => {
+  try {
+    const providers = await client.listOttoProviders()
+    res.json(providers)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get('/api/otto/workspaces', async (req, res) => {
+  try {
+    const workspaces = await client.listWorkspaces()
+    res.json(workspaces.map(ws => ({ title: ws.title, uuid: ws.uuid })))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/otto/chat', async (req, res) => {
+  const { prompt, workspace, threadId, provider, model } = req.body
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  })
+
+  try {
+    const result = await client.ottoStreaming(
+      prompt,
+      (err, delta) => {
+        if (err) {
+          res.write(`event: error\ndata: ${JSON.stringify(err.message)}\n\n`)
+          return
+        }
+        res.write(`event: delta\ndata: ${JSON.stringify(delta)}\n\n`)
+      },
+      workspace || null,  // workspace
+      null,               // deployment
+      null,               // uuid
+      threadId || null,    // thread_id
+      model || null,       // model
+      provider || null,    // provider
+    )
+    res.write(`event: done\ndata: ${JSON.stringify({ thread_id: result.threadId })}\n\n`)
+    res.end()
+  } catch (e) {
+    res.write(`event: error\ndata: ${JSON.stringify(e.message)}\n\n`)
+    res.end()
   }
 })
 

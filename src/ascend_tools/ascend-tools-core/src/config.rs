@@ -7,10 +7,11 @@ const SA_KEY_ENV: &str = "ASCEND_SERVICE_ACCOUNT_KEY";
 const INSTANCE_API_URL_ENV: &str = "ASCEND_INSTANCE_API_URL";
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct Config {
-    pub service_account_id: String,
-    pub service_account_key: String,
-    pub instance_api_url: String,
+    pub(crate) service_account_id: String,
+    pub(crate) service_account_key: String,
+    pub(crate) instance_api_url: String,
 }
 
 impl std::fmt::Debug for Config {

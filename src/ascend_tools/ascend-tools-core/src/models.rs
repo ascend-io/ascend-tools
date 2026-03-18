@@ -29,6 +29,7 @@ impl fmt::Display for RuntimeKind {
 
 /// An Ascend environment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct Environment {
     pub uuid: String,
     pub id: String,
@@ -37,6 +38,7 @@ pub struct Environment {
 
 /// An Ascend project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct Project {
     pub uuid: String,
     pub id: String,
@@ -298,6 +300,7 @@ impl OttoModel {
 
 /// Response from Otto chat.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct OttoChatResponse {
     pub message: String,
     pub thread_id: Option<String>,
@@ -320,6 +323,7 @@ pub enum StreamEvent {
 
 /// An Otto provider with its enabled models.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct OttoProvider {
     pub id: String,
     pub name: String,
@@ -329,6 +333,7 @@ pub struct OttoProvider {
 
 /// A model available on an Otto provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
 pub struct OttoProviderModel {
     pub id: String,
     pub name: String,

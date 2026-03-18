@@ -6,6 +6,9 @@ use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::models;
 use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{
+    ThreadsafeFunction, ThreadsafeFunctionCallMode, UnknownReturnValue,
+};
 use napi::Task;
 use napi_derive::napi;
 
@@ -214,6 +217,45 @@ impl Client {
         AsyncTask::new(TypedTask::new(move || client.delete_deployment(&title, uuid.as_deref()).map_err(to_napi_err)))
     }
 
+    // -- Environment methods --
+
+    #[napi(ts_return_type = "Promise<Environment[]>")]
+    pub fn list_environments(&self) -> AsyncTask<TypedTask<Vec<models::Environment>>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || client.list_environments().map_err(to_napi_err)))
+    }
+
+    #[napi(ts_return_type = "Promise<Environment>")]
+    pub fn get_environment(&self, title: String) -> AsyncTask<TypedTask<models::Environment>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || client.get_environment(&title).map_err(to_napi_err)))
+    }
+
+    // -- Project methods --
+
+    #[napi(ts_return_type = "Promise<Project[]>")]
+    pub fn list_projects(&self) -> AsyncTask<TypedTask<Vec<models::Project>>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || client.list_projects().map_err(to_napi_err)))
+    }
+
+    #[napi(ts_return_type = "Promise<Project>")]
+    pub fn get_project(&self, title: String) -> AsyncTask<TypedTask<models::Project>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || client.get_project(&title).map_err(to_napi_err)))
+    }
+
+    // -- Profile methods --
+
+    #[napi(ts_return_type = "Promise<string[]>")]
+    pub fn list_profiles(&self, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, project: Option<String>, branch: Option<String>) -> AsyncTask<TypedTask<Vec<String>>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            client.list_profiles(runtime_uuid.as_deref(), project.as_deref(), branch.as_deref()).map_err(to_napi_err)
+        }))
+    }
+
     // -- Flow methods --
 
     #[napi(ts_return_type = "Promise<Flow[]>")]
@@ -260,6 +302,38 @@ impl Client {
         AsyncTask::new(TypedTask::new(move || {
             let runtime_uuid = client.resolve_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             client.get_flow_run(&runtime_uuid, &name).map_err(to_napi_err)
+        }))
+    }
+
+    // -- Otto methods --
+
+    #[napi(ts_return_type = "Promise<OttoProvider[]>")]
+    pub fn list_otto_providers(&self) -> AsyncTask<TypedTask<Vec<models::OttoProvider>>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || client.list_otto_providers().map_err(to_napi_err)))
+    }
+
+    #[napi(ts_return_type = "Promise<OttoChatResponse>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
+            let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            client.otto(&request).map_err(to_napi_err)
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<OttoChatResponse>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let otto_model = models::OttoModel::from_options(provider.as_deref(), model.as_deref());
+            let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            client.otto_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))
     }
 }

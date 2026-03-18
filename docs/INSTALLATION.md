@@ -66,7 +66,7 @@ mv ascend-tools /usr/local/bin/
 
 ```bash
 # Set version and platform
-VERSION="v0.5.0"
+VERSION="v1.0.0"
 PLATFORM="aarch64-apple-darwin"
 
 # Download and extract

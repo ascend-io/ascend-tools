@@ -544,7 +544,7 @@ fn to_python(py: Python<'_>, value: &impl serde::Serialize) -> PyResult<Py<PyAny
         .map_err(to_py_err)
 }
 
-fn to_py_err(e: impl AsAscendError) -> PyErr {
+fn to_py_err(e: impl std::fmt::Display + AsAscendError) -> PyErr {
     e.to_py_err()
 }
 

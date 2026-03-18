@@ -1619,9 +1619,24 @@ pub fn run_tui(
             }
 
             if app.should_quit {
-                // Signal all spawned threads to stop so thread::scope
-                // can join them without blocking indefinitely.
-                cancel.store(true, Ordering::Relaxed);
+                // Restore terminal before exiting the scope, since scope.join
+                // may block if a background SSE read is stuck.
+                terminal::disable_raw_mode()?;
+                crossterm::execute!(
+                    std::io::stderr(),
+                    LeaveAlternateScreen,
+                    DisableMouseCapture,
+                    DisableBracketedPaste,
+                    SetCursorStyle::DefaultUserShape
+                )?;
+                terminal.show_cursor()?;
+                let _ = std::panic::take_hook();
+
+                // If a streaming thread is stuck on a network read, exit
+                // the process cleanly rather than waiting indefinitely.
+                if cancel.load(Ordering::Relaxed) {
+                    std::process::exit(0);
+                }
                 break;
             }
         }
@@ -1629,7 +1644,7 @@ pub fn run_tui(
         Ok::<(), anyhow::Error>(())
     });
 
-    // Restore terminal after all spawned threads have joined
+    // Restore terminal (reached when scope completes normally)
     let _ = terminal::disable_raw_mode();
     let _ = crossterm::execute!(
         std::io::stderr(),
