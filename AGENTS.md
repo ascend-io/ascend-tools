@@ -42,8 +42,10 @@ crates/
 │       ├── lib.rs           # pub fn run_cli(args) — testable entry point
 │       ├── main.rs          # binary entry point
 │       ├── cli.rs           # clap commands, table/json output, print_table helper
-│       ├── skill-cli.md     # SKILL.md template (embedded via include_str!, installed by `skill install`)
-│       └── skill-js.md      # JavaScript SDK skill template
+│       ├── skill-cli.md     # SKILL.md templates (embedded via include_str!, installed by `skill install`)
+│       ├── skill-py.md
+│       ├── skill-js.md
+│       └── skill-mcp.md
 │
 ├── ascend-tools-py/          # PyO3 binding crate (cdylib, built by maturin)
 │   └── src/
@@ -52,7 +54,7 @@ crates/
 └── ascend-tools-js/          # napi-rs binding crate (cdylib, built by @napi-rs/cli)
     ├── cli.js               # CLI entry point for `npx ascend-tools`
     └── src/
-        └── lib.rs           # exposes Client class + run_cli() to Node.js via napi-rs (async methods via spawn_blocking)
+        └── lib.rs           # exposes Client class + run_cli() to Node.js via napi-rs (async methods via libuv thread pool)
 ```
 
 The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.

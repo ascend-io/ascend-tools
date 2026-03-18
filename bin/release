@@ -15,9 +15,10 @@ usage() {
   echo "  - bin/check passes"
   echo "  - Git tag does not already exist on GitHub"
   echo "  - Package version does not already exist on PyPI"
+  echo "  - Package version does not already exist on npm"
   echo ""
   echo "Options:"
-  echo "  --force        Skip GitHub tag, PyPI, and origin/main checks"
+  echo "  --force        Skip GitHub tag, PyPI, npm, and origin/main checks"
   echo "  --allow-dirty  Skip clean working tree check"
   exit "${1:-0}"
 }
