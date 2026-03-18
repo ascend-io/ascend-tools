@@ -1,41 +1,15 @@
 # ascend-tools-mcp
 
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-mcp.svg)](https://crates.io/crates/ascend-tools-mcp)
+
 [MCP](https://modelcontextprotocol.io) server for the [Ascend](https://www.ascend.io) Instance web API, exposing SDK methods as tools for AI assistants (Claude Code, Claude Desktop, Cursor, etc.).
 
-Built on [`ascend-tools-core`](../ascend-tools-core) and [`rmcp`](https://crates.io/crates/rmcp).
+Built on [`ascend-tools-core`](https://crates.io/crates/ascend-tools-core) and [`rmcp`](https://crates.io/crates/rmcp).
 
 ## Transports
 
 - **stdio** (default): communicates over stdin/stdout. Used by Claude Code and most MCP clients.
 - **HTTP**: Streamable HTTP on `/mcp`. Used for remote/shared deployments.
-
-## Tools
-
-| Tool | Description |
-|------|-------------|
-| `list_workspaces` | List workspaces with optional filters |
-| `get_workspace` | Get a workspace by title |
-| `create_workspace` | Create a new workspace |
-| `update_workspace` | Update a workspace |
-| `pause_workspace` | Pause a workspace |
-| `resume_workspace` | Resume a paused workspace |
-| `delete_workspace` | Delete a workspace |
-| `list_deployments` | List deployments with optional filters |
-| `get_deployment` | Get a deployment by title |
-| `create_deployment` | Create a new deployment |
-| `update_deployment` | Update a deployment |
-| `pause_deployment_automations` | Pause automations on a deployment |
-| `resume_deployment_automations` | Resume automations on a deployment |
-| `delete_deployment` | Delete a deployment |
-| `list_environments` | List environments |
-| `list_projects` | List projects |
-| `list_profiles` | List profiles for a workspace, deployment, or project+branch |
-| `list_flows` | List flows in a workspace or deployment |
-| `run_flow` | Trigger a flow run |
-| `list_flow_runs` | List flow runs with filters |
-| `get_flow_run` | Get a flow run by name |
-| `list_otto_providers` | List Otto providers and models |
-| `otto` | Chat with Otto AI assistant |
 
 ## Usage
 
@@ -49,7 +23,8 @@ ascend-tools mcp --http       # HTTP on 127.0.0.1:8000
 ### Claude Code
 
 ```bash
-claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
 ### Codex CLI
@@ -58,4 +33,16 @@ claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 codex mcp add ascend-tools-dev -- uvx ascend-tools mcp
 ```
 
-See the [top-level README](../../../README.md) for full documentation.
+## Tools
+
+25 tools covering workspaces, deployments, environments, projects, profiles, flows, flow runs, and Otto.
+
+| Category | Tools |
+|----------|-------|
+| Workspaces | list, get, create, update, pause, resume, delete |
+| Deployments | list, get, create, update, pause/resume automations, delete |
+| Resources | list/get environments, list/get projects, list profiles |
+| Flows | list, run, list runs, get run |
+| Otto | list providers, chat |
+
+See the [full documentation](https://github.com/ascend-io/ascend-tools) for the complete tools reference.

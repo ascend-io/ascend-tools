@@ -1,19 +1,25 @@
 # ascend-tools-cli
 
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-cli.svg)](https://crates.io/crates/ascend-tools-cli)
+
 CLI for the [Ascend](https://www.ascend.io) Instance web API. Installs as the `ascend-tools` binary.
 
-Built on [`ascend-tools-core`](../ascend-tools-core). Also embeds [`ascend-tools-mcp`](../ascend-tools-mcp) for the `mcp` subcommand and [`ascend-tools-tui`](../ascend-tools-tui) for the `otto tui` interactive chat.
+Built on [`ascend-tools-core`](https://crates.io/crates/ascend-tools-core). Embeds [`ascend-tools-mcp`](https://crates.io/crates/ascend-tools-mcp) for the `mcp` subcommand and [`ascend-tools-tui`](https://crates.io/crates/ascend-tools-tui) for `otto tui`.
 
 ## Install
 
 ```bash
-cargo install ascend-tools-cli
+cargo install ascend-tools-cli  # Rust
+uv tool install ascend-tools    # Python
+npm install -g ascend-tools     # Node.js
 ```
 
-Or via Python:
+## Authentication
 
 ```bash
-uv tool install ascend-tools
+export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+export ASCEND_INSTANCE_API_URL="https://api.instance.ascend.io"
 ```
 
 ## Usage
@@ -37,12 +43,8 @@ ascend-tools [-o text|json] [-V]
   deployment resume-automations <TITLE>
   deployment delete <TITLE>
 
-  environment list
-  environment get <TITLE>
-
-  project list
-  project get <TITLE>
-
+  environment list | get <TITLE>
+  project list | get <TITLE>
   profile list --workspace <TITLE> | --deployment <TITLE> | --project <NAME> --git-branch <BRANCH>
 
   flow list --workspace <TITLE> | --deployment <TITLE>
@@ -56,17 +58,9 @@ ascend-tools [-o text|json] [-V]
   otto tui [--workspace <TITLE>]
 
   mcp [--http] [--bind <ADDR>]
-  skill install --target <PATH> [--cli] [--python] [--mcp] [--all]
+  skill install --target <PATH> [--cli] [--python] [--javascript] [--mcp] [--all]
 ```
 
-## Authentication
+Default output is a human-readable table. Use `-o json` for machine-readable output. Auth can also be passed via `--service-account-id`, `--service-account-key`, and `--instance-api-url` flags.
 
-```bash
-export ASCEND_SERVICE_ACCOUNT_ID="asc-sa-..."
-export ASCEND_SERVICE_ACCOUNT_KEY="..."
-export ASCEND_INSTANCE_API_URL="https://api.instance.ascend.io"
-```
-
-Auth can also be passed via `--service-account-id`, `--service-account-key`, and `--instance-api-url` flags.
-
-See the [top-level README](../../../README.md) for full documentation.
+See the [full documentation](https://github.com/ascend-io/ascend-tools) for more details.

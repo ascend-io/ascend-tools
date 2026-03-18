@@ -2,12 +2,20 @@
 
 CLI, SDK, and MCP server for the Ascend Instance web API.
 
+[PyPI](https://pypi.org/project/ascend-tools/) |
+[npm](https://www.npmjs.com/package/ascend-tools) |
+[crates.io](https://crates.io/crates/ascend-tools-core) |
+[GitHub](https://github.com/ascend-io/ascend-tools)
+
 ## Install
 
 ```bash
-uv tool install ascend-tools    # Python (recommended)
+uv tool install ascend-tools    # Python
 npm install -g ascend-tools     # Node.js
+cargo install ascend-tools-cli  # Rust
 ```
+
+See [Installation](docs/INSTALLATION.md) for all methods (pre-built binaries, `uvx`, `npx`, etc.).
 
 ## Authentication
 
@@ -74,6 +82,20 @@ const workspaces = await client.listWorkspaces();
 await client.runFlow("sales", "My Workspace");
 ```
 
+## Rust SDK
+
+```bash
+cargo add ascend-tools-core
+```
+
+```rust
+use ascend_tools::client::AscendClient;
+use ascend_tools::config::Config;
+
+let client = AscendClient::new(Config::from_env()?)?;
+let workspaces = client.list_workspaces(Default::default())?;
+```
+
 ## MCP server
 
 Connect AI assistants (Claude Code, Cursor, etc.) to Ascend.
@@ -91,7 +113,7 @@ claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
 claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp
 ```
 
-See [MCP server guide](docs/mcp.md) for Codex CLI setup and the full tools reference.
+See [MCP server guide](docs/mcp.md) for full setup and tools reference.
 
 ## Skills
 
@@ -103,6 +125,17 @@ ascend-tools skill install --target .claude/skills --all
 
 Available flags: `--cli` (default), `--python`, `--javascript`, `--mcp`, `--all`.
 
+## Development
+
+```bash
+bin/setup       # install toolchain (Rust, uv, npm deps)
+bin/check       # lint + test (Rust, Python, JS)
+bin/build       # build all (Rust, Python, JS)
+bin/format      # auto-format (Rust, Python)
+```
+
+See [Development guide](docs/development.md) for the full contributor setup.
+
 ## Documentation
 
 - [Quickstart](docs/QUICKSTART.md) -- create a service account, install, and run your first flow
@@ -112,3 +145,4 @@ Available flags: `--cli` (default), `--python`, `--javascript`, `--mcp`, `--all`
 - [JavaScript SDK](docs/javascript.md) -- async Client methods, streaming, TypeScript types
 - [Rust SDK](docs/rust.md) -- typed client with structs and error handling
 - [MCP server](docs/mcp.md) -- set up AI assistants with Ascend tools
+- [Development](docs/development.md) -- contributor setup, architecture, release process

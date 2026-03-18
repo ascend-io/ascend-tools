@@ -1,22 +1,58 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+NEED_RESTART=false
+
+# ---------- Rust ----------
 
 if ! command -v rustup &>/dev/null; then
     echo "Installing rustup..."
     curl --proto '=https' --tlsv1.2 -LsSf https://sh.rustup.rs | sh -s -- -y
-    . "$HOME/.cargo/env"
+    if [ -f "$HOME/.cargo/env" ]; then
+        . "$HOME/.cargo/env"
+    fi
 fi
+
+if ! command -v cargo &>/dev/null; then
+    echo ""
+    echo "ERROR: cargo is not on PATH after installing rustup."
+    echo "Run: source \"\$HOME/.cargo/env\" && bin/setup"
+    exit 1
+fi
+echo "  rust $(rustc --version | awk '{print $2}')"
+
+# ---------- uv (Python) ----------
 
 if ! command -v uv &>/dev/null; then
     echo "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
+    if ! command -v uv &>/dev/null; then
+        echo ""
+        echo "ERROR: uv is not on PATH after install."
+        echo "Check the installer output above, then re-run bin/setup."
+        exit 1
+    fi
 fi
+echo "  uv $(uv --version | awk '{print $2}')"
 
-# Install JS dependencies (napi-rs, ava, typescript)
-if command -v npm &>/dev/null; then
-    cd "$(dirname "${BASH_SOURCE[0]}")/../crates/ascend-tools-js"
-    npm install --no-fund --no-audit
-    cd - >/dev/null
+# ---------- Node.js ----------
+
+if ! command -v node &>/dev/null; then
+    echo ""
+    echo "ERROR: node is not on PATH."
+    echo "Install Node.js 22+ via fnm, nvm, or https://nodejs.org"
+    echo "  fnm:  fnm install 22 && fnm use 22"
+    echo "  nvm:  nvm install 22 && nvm use 22"
+    echo "Then re-run bin/setup."
+    exit 1
 fi
+echo "  node $(node --version)"
 
+# ---------- JS dependencies ----------
+
+(cd crates/ascend-tools-js && npm install --no-fund --no-audit --silent)
+echo "  npm dependencies installed"
+
+echo ""
 echo "Setup complete!"

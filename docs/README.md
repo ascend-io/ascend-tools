@@ -12,3 +12,7 @@
 - [JavaScript SDK](javascript.md) -- use the `ascend-tools` package from JavaScript/TypeScript
 - [Rust SDK](rust.md) -- use the `ascend_tools` crate from Rust
 - [MCP server](mcp.md) -- connect AI assistants (Claude Code, Codex, etc.) to Ascend
+
+## Contributing
+
+- [Development](development.md) -- contributor setup, architecture, release process
