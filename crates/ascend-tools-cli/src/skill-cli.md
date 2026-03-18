@@ -17,8 +17,9 @@ npx ascend-tools --help     # Node.js
 Or install permanently:
 
 ```bash
-uv tool install ascend-tools    # Python
-npm install -g ascend-tools     # Node.js
+uv tool install ascend-tools      # Python
+npm install -g ascend-tools       # Node.js
+cargo install ascend-tools-cli    # Rust
 ```
 
 Upgrade to the latest version:
@@ -26,6 +27,7 @@ Upgrade to the latest version:
 ```bash
 uv tool install --upgrade ascend-tools    # Python
 npm update -g ascend-tools                # Node.js
+cargo install ascend-tools-cli            # Rust (reinstalls latest)
 ```
 
 ## Authentication

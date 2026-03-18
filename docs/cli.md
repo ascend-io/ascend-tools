@@ -5,8 +5,9 @@ Manage Ascend workspaces, deployments, flows, and flow runs from the command lin
 ## Install
 
 ```bash
-uv tool install ascend-tools    # Python
-npm install -g ascend-tools     # Node.js
+uv tool install ascend-tools      # Python
+npm install -g ascend-tools       # Node.js
+cargo install ascend-tools-cli    # Rust
 ```
 
 Upgrade to the latest version:
@@ -14,9 +15,10 @@ Upgrade to the latest version:
 ```bash
 uv tool install --upgrade ascend-tools    # Python
 npm update -g ascend-tools                # Node.js
+cargo install ascend-tools-cli            # Rust (reinstalls latest)
 ```
 
-See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries).
+See [Installation](INSTALLATION.md) for other methods (pre-built binaries, `uvx`, `npx`).
 
 ## Authenticate
 
