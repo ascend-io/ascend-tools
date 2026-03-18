@@ -254,4 +254,4 @@ Install reference skills for AI coding assistants (Claude Code, Codex, etc.):
 ascend-tools skill install --target .claude/skills --all
 ```
 
-Available flags: `--cli` (default), `--python`, `--javascript`, `--mcp`, `--all`.
+Available flags: `--cli` (default), `--python`, `--javascript`, `--rust`, `--mcp`, `--all`.

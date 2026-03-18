@@ -58,7 +58,7 @@ ascend-tools [-o text|json] [-V]
   otto tui [--workspace <TITLE>]
 
   mcp [--http] [--bind <ADDR>]
-  skill install --target <PATH> [--cli] [--python] [--javascript] [--mcp] [--all]
+  skill install --target <PATH> [--cli] [--python] [--javascript] [--rust] [--mcp] [--all]
 ```
 
 Default output is a human-readable table. Use `-o json` for machine-readable output. Auth can also be passed via `--service-account-id`, `--service-account-key`, and `--instance-api-url` flags.

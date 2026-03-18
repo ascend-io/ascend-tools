@@ -45,6 +45,7 @@ crates/
 │       ├── skill-cli.md     # SKILL.md templates (embedded via include_str!, installed by `skill install`)
 │       ├── skill-py.md
 │       ├── skill-js.md
+│       ├── skill-rs.md
 │       └── skill-mcp.md
 │
 ├── ascend-tools-py/          # PyO3 binding crate (cdylib, built by maturin)
@@ -60,7 +61,7 @@ crates/
 The `-py` and `-js` crates are **not** in the Cargo workspace (cdylib requires separate build tooling). Each has its own Cargo.lock. The `-py` crate is built by `maturin develop`, the `-js` crate by `napi build`. The `-mcp` crate uses `rmcp` for the MCP protocol implementation. The `-tui` crate uses `ratatui` + `crossterm` for the terminal interface.
 Integration tests live under `crates/ascend-tools-core/tests/` and `crates/ascend-tools-cli/tests/`. A demo htmx app at `tests/app/` exercises the JS SDK.
 
-PyPI: `ascend-tools`. npm: `ascend-tools`. Crates.io: not yet published. Installed binary: `ascend-tools`.
+PyPI: `ascend-tools`. npm: `ascend-tools`. Crates.io: `ascend-tools-core`, `ascend-tools-cli`, `ascend-tools-mcp`, `ascend-tools-tui`. Installed binary: `ascend-tools`.
 
 ## development
 
@@ -102,7 +103,7 @@ All SDK calls go through `/api/v1/` — no direct Cloud API calls.
 
 That's it — 3 env vars. The SDK automatically discovers the JWT audience domain from the Instance API via `GET /api/v1/auth/config`.
 
-Both SDKs read these automatically — `ascend_tools.Client()` (Python) and `new Client()` (JavaScript) with no args work if env vars are set.
+All three SDKs read these automatically — `Config::from_env()` (Rust), `ascend_tools.Client()` (Python), and `new Client()` (JavaScript) with no args work if env vars are set.
 
 ### local dev
 
@@ -149,7 +150,7 @@ ascend-tools [-o text|json] [-V]
   otto model list [--provider <ID>]
   otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
 
-  skill install --target <PATH> [--cli] [--python] [--javascript] [--mcp] [--all]
+  skill install --target <PATH> [--cli] [--python] [--javascript] [--rust] [--mcp] [--all]
 
   mcp [--http] [--bind <ADDR>]
 ```

@@ -1,7 +1,5 @@
 # Use the Rust SDK
 
-> The Rust SDK (`ascend-tools-core`) is not yet published on crates.io. Contact your Ascend representative if you're interested in using the Rust SDK directly.
-
 Manage Ascend workspaces, deployments, flows, and flow runs from Rust.
 
 ## Install
