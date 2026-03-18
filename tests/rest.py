@@ -335,7 +335,9 @@ def run_flow_with_retry(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ascend Instance web API integration tests")
+    parser = argparse.ArgumentParser(
+        description="Ascend Instance web API integration tests"
+    )
     parser.add_argument(
         "--runtime-id",
         default="ascend-tools",
