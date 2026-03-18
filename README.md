@@ -2,10 +2,11 @@
 
 CLI, SDK, and MCP server for the Ascend Instance web API.
 
-[PyPI](https://pypi.org/project/ascend-tools/) |
-[npm](https://www.npmjs.com/package/ascend-tools) |
-[crates.io](https://crates.io/crates/ascend-tools-core) |
-[GitHub](https://github.com/ascend-io/ascend-tools)
+[![PyPI](https://img.shields.io/pypi/v/ascend-tools)](https://pypi.org/project/ascend-tools/)
+[![npm](https://img.shields.io/npm/v/ascend-tools)](https://www.npmjs.com/package/ascend-tools)
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-core)](https://crates.io/crates/ascend-tools-core)
+[![CI](https://img.shields.io/github/actions/workflow/status/ascend-io/ascend-tools/ci.yml?branch=main&label=CI)](https://github.com/ascend-io/ascend-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
 
 ## Install
 
