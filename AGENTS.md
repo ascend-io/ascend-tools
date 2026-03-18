@@ -1,6 +1,6 @@
 # ascend-tools
 
-SDK, CLI, TUI, and MCP server for the Ascend Instance web API. Rust core with PyO3 Python bindings and napi-rs JavaScript bindings.
+CLI, SDK, and MCP server for the Ascend Instance web API. Rust core with PyO3 Python bindings and napi-rs JavaScript bindings.
 
 Repo: `ascend-io/ascend-tools`. Internal.
 
