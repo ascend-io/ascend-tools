@@ -2,21 +2,11 @@
 
 CLI, SDK, and MCP server for the Ascend Instance web API.
 
-[![PyPI](https://img.shields.io/pypi/v/ascend-tools)](https://pypi.org/project/ascend-tools/)
-[![npm](https://img.shields.io/npm/v/ascend-tools)](https://www.npmjs.com/package/ascend-tools)
-[![crates.io](https://img.shields.io/crates/v/ascend-tools-core)](https://crates.io/crates/ascend-tools-core)
+[![PyPI](https://img.shields.io/pypi/v/ascend-tools?color=8A2BE2)](https://pypi.org/project/ascend-tools/)
+[![npm](https://img.shields.io/npm/v/ascend-tools?color=8A2BE2)](https://www.npmjs.com/package/ascend-tools)
+[![crates.io](https://img.shields.io/crates/v/ascend-tools-core?color=8A2BE2)](https://crates.io/crates/ascend-tools-core)
 [![CI](https://img.shields.io/github/actions/workflow/status/ascend-io/ascend-tools/ci.yml?branch=main&label=CI)](https://github.com/ascend-io/ascend-tools/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
-
-## Install
-
-```bash
-uv tool install ascend-tools    # Python
-npm install -g ascend-tools     # Node.js
-cargo install ascend-tools-cli  # Rust
-```
-
-See [Installation](docs/INSTALLATION.md) for all methods (pre-built binaries, `uvx`, `npx`, etc.).
+[![License: MIT](https://img.shields.io/badge/license-MIT-8A2BE2.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
 
 ## Authentication
 
@@ -30,6 +20,32 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 
 ## CLI
 
+Install the CLI:
+
+```bash
+uv tool install ascend-tools
+```
+
+```bash
+npm install -g ascend-tools
+```
+
+```bash
+cargo install ascend-tools-cli
+```
+
+Or run without installing:
+
+```bash
+uvx ascend-tools workspace list
+```
+
+```bash
+npx ascend-tools workspace list
+```
+
+### Examples
+
 ```bash
 ascend-tools workspace list
 ascend-tools workspace get "My Workspace"
@@ -39,14 +55,7 @@ ascend-tools flow run <FLOW_NAME> --workspace "My Workspace"
 ascend-tools -o json workspace list
 ```
 
-Run without installing:
-
-```bash
-uvx ascend-tools workspace list     # Python
-npx ascend-tools workspace list     # Node.js
-```
-
-## Interactive TUI
+### Interactive TUI
 
 ```bash
 ascend-tools otto tui
@@ -64,7 +73,7 @@ uv add ascend-tools
 ```python
 from ascend_tools import Client
 
-client = Client()  # reads from env vars
+client = Client()
 client.list_workspaces()
 client.run_flow(flow="sales", workspace="My Workspace")
 ```
@@ -78,7 +87,7 @@ npm add ascend-tools
 ```javascript
 import { Client } from "ascend-tools";
 
-const client = new Client(); // reads from env vars
+const client = new Client();
 const workspaces = await client.listWorkspaces();
 await client.runFlow("sales", "My Workspace");
 ```
@@ -102,8 +111,11 @@ let workspaces = client.list_workspaces(Default::default())?;
 Connect AI assistants (Claude Code, Cursor, etc.) to Ascend:
 
 ```bash
-claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv
-claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
+```
+
+```bash
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp
 ```
 
 See [MCP server guide](docs/mcp.md) for Codex CLI setup and the full tools reference.
@@ -121,10 +133,10 @@ Available flags: `--cli` (default), `--python`, `--javascript`, `--mcp`, `--all`
 ## Development
 
 ```bash
-bin/setup       # install toolchain (Rust, uv, npm deps)
-bin/check       # lint + test (Rust, Python, JS)
-bin/build       # build all (Rust, Python, JS)
-bin/format      # auto-format (Rust, Python)
+bin/setup
+bin/check
+bin/build
+bin/format
 ```
 
 See [Development guide](docs/development.md) for the full contributor setup.
