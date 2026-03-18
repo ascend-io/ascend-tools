@@ -15,7 +15,7 @@ name = "ascend_tools_tui"
 path = "src/lib.rs"
 
 [dependencies]
-ascend-tools-core = { path = "../ascend-tools-core" }
+ascend-tools-core = { version = "1.0.0", path = "../ascend-tools-core" }
 anyhow = "1"
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 crossterm = "0.29"

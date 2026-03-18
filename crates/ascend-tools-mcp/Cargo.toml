@@ -15,7 +15,7 @@ name = "ascend_tools_mcp"
 path = "src/lib.rs"
 
 [dependencies]
-ascend-tools-core = { path = "../ascend-tools-core" }
+ascend-tools-core = { version = "1.0.0", path = "../ascend-tools-core" }
 rmcp = { version = "0.17", features = [
     "server",
     "macros",

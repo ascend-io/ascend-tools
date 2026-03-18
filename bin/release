@@ -14,10 +14,10 @@ usage() {
   echo "  - Working tree is clean (override with --allow-dirty)"
   echo "  - bin/check passes"
   echo "  - Git tag does not already exist on GitHub"
-  echo "  - Package version does not already exist on PyPI"
+  echo "  - Package version does not already exist on PyPI or crates.io"
   echo ""
   echo "Options:"
-  echo "  --force        Skip GitHub tag, PyPI, and origin/main checks"
+  echo "  --force        Skip GitHub tag, PyPI, crates.io, and origin/main checks"
   echo "  --allow-dirty  Skip clean working tree check"
   exit "${1:-0}"
 }
@@ -106,6 +106,19 @@ if [ "$FORCE" = false ]; then
   echo "  ascend-tools $VERSION does not exist on PyPI"
 else
   echo "  skipping PyPI check (--force)"
+fi
+
+# ---------- check crates.io ----------
+
+if [ "$FORCE" = false ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://crates.io/api/v1/crates/ascend-tools-core/$VERSION")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "ERROR: ascend-tools-core $VERSION already exists on crates.io. Use --force to override." >&2
+    exit 1
+  fi
+  echo "  ascend-tools-core $VERSION does not exist on crates.io"
+else
+  echo "  skipping crates.io check (--force)"
 fi
 
 # ---------- tag and push ----------
