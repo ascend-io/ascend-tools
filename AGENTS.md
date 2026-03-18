@@ -298,7 +298,7 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 ### transports
 
 - **stdio** (default): `ascend-tools mcp` — communicates over stdin/stdout. Used by Claude Code and most MCP clients.
-- **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`. Used for remote/shared deployments.
+- **HTTP**: `ascend-tools mcp --http [--bind 127.0.0.1:8000]` — Streamable HTTP on `/mcp`.
 
 ### tools
 
@@ -331,16 +331,6 @@ The `mcp` subcommand starts an MCP (Model Context Protocol) server, exposing Asc
 | `otto` | Chat with Otto, the Ascend AI assistant |
 
 ### usage with Claude Code
-
-**Remote (recommended)** — copy `ASCEND_MCP_URL` from Settings > Instance > MCP Server:
-
-```bash
-claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
-```
-
-Auth is handled automatically via OAuth (browser login). No service account or env vars needed.
-
-**Local (alternative)** — for offline or custom setups:
 
 ```bash
 claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv

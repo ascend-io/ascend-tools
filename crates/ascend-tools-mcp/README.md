@@ -9,7 +9,7 @@ Built on [`ascend-tools-core`](https://crates.io/crates/ascend-tools-core) and [
 ## Transports
 
 - **stdio** (default): communicates over stdin/stdout. Used by Claude Code and most MCP clients.
-- **HTTP**: Streamable HTTP on `/mcp`. Used for remote/shared deployments.
+- **HTTP**: Streamable HTTP on `/mcp`.
 
 ## Usage
 

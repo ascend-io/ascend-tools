@@ -99,22 +99,14 @@ let workspaces = client.list_workspaces(Default::default())?;
 
 ## MCP server
 
-Connect AI assistants (Claude Code, Cursor, etc.) to Ascend.
-
-**Remote** (recommended) -- copy `ASCEND_MCP_URL` from Settings > Instance > MCP Server:
+Connect AI assistants (Claude Code, Cursor, etc.) to Ascend:
 
 ```bash
-claude mcp add --transport http ascend-tools $ASCEND_MCP_URL
+claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # via uv
+claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
-**Local** -- for offline development:
-
-```bash
-claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp
-claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp
-```
-
-See [MCP server guide](docs/mcp.md) for full setup and tools reference.
+See [MCP server guide](docs/mcp.md) for Codex CLI setup and the full tools reference.
 
 ## Skills
 
