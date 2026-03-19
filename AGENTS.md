@@ -85,6 +85,8 @@ ascend-tools [-o text|json] [-V]
   otto model list [--provider <ID>]
   otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
 
+  signup
+
   skill install --target <PATH> [--cli] [--python] [--javascript] [--rust] [--mcp] [--all]
 
   mcp [--http] [--bind <ADDR>]

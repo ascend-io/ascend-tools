@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "ascend-tools-core",
@@ -121,6 +121,7 @@ dependencies = [
  "clap",
  "libc",
  "mockito",
+ "open",
  "predicates",
  "serde",
  "serde_json",
@@ -130,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "base64",
  "jsonwebtoken",
@@ -147,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-mcp"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "ascend-tools-core",
@@ -167,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "ascend-tools-tui"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -922,9 +923,9 @@ checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
 name = "euclid"
-version = "0.22.13"
+version = "0.22.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df61bf483e837f88d5c2291dcf55c67be7e676b3a51acc48db3a7b163b91ed63"
+checksum = "f1a05365e3b1c6d1650318537c7460c6923f1abdd272ad6842baa2b509957a06"
 dependencies = [
  "num-traits",
 ]
@@ -1466,6 +1467,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "is-docker"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "928bae27f42bc99b60d9ac7334e3a21d10ad8f1835a4e12ec3ec0464765ed1b3"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
+name = "is-wsl"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "173609498df190136aa7dea1a91db051746d339e18476eed5ca40521f02d7aa5"
+dependencies = [
+ "is-docker",
+ "once_cell",
 ]
 
 [[package]]
@@ -2029,6 +2049,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "open"
+version = "5.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43bb73a7fa3799b198970490a51174027ba0d4ec504b03cd08caf513d40024bc"
+dependencies = [
+ "is-wsl",
+ "libc",
+ "pathdiff",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2095,6 +2126,12 @@ name = "pastey"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b867cad97c0791bbd3aaa6472142568c6c9e8f71937e98379f584cfb0cf35bec"
+
+[[package]]
+name = "pathdiff"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "pem"
