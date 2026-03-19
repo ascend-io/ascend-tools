@@ -8,7 +8,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[non_exhaustive]
 pub enum Error {
     #[error(
-        "{field} is required, set {env_var} or pass --{flag}\n\n  hint: if you don't have an Ascend instance yet, run `ascend-tools signup`\n        then create a service account in Settings and set the env vars"
+        "{field} is required, set {env_var} or pass --{flag}\n\n  hint: if you don't have an Ascend Instance yet, run `ascend-tools signup`\n        then create a service account in Settings and set the env vars"
     )]
     MissingConfig {
         field: String,

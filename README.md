@@ -10,7 +10,7 @@ CLI, SDK, and MCP server for the Ascend Instance web API.
 
 ## Getting started
 
-Don't have an Ascend instance yet? Sign up:
+Don't have an Ascend Instance yet? Sign up:
 
 ```bash
 ascend-tools signup
