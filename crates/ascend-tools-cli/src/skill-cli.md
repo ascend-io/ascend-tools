@@ -106,6 +106,12 @@ ascend-tools otto model list [--provider <NAME>]
 ascend-tools otto tui [--workspace <TITLE>]
 ```
 
+### Signup
+
+```bash
+ascend-tools signup    # Opens https://app.ascend.io/signup in your browser
+```
+
 ### Flow run spec
 
 Pass `--spec` as JSON to control flow run behavior:

@@ -146,6 +146,8 @@ enum Commands {
         #[command(subcommand)]
         command: Option<SkillCommands>,
     },
+    /// Open the Ascend signup page in your browser
+    Signup,
 }
 
 pub fn run_cli<I, T>(args: I) -> Result<()>
@@ -161,6 +163,12 @@ where
     };
 
     // Commands that don't require authentication
+    if let Commands::Signup = command {
+        eprintln!("Opening https://app.ascend.io/signup in your browser...");
+        open::that("https://app.ascend.io/signup")?;
+        return Ok(());
+    }
+
     if let Commands::Skill { command } = command {
         return crate::skill::handle_skill(command);
     }
@@ -205,7 +213,7 @@ where
         }
         Commands::Flow { command } => crate::flow::handle_flow(&client, command, &cli.output),
         Commands::Otto { command } => crate::otto::handle_otto_cmd(&client, command, &cli.output),
-        Commands::Mcp { .. } | Commands::Skill { .. } => unreachable!(),
+        Commands::Mcp { .. } | Commands::Skill { .. } | Commands::Signup => unreachable!(),
     }
 }
 
@@ -572,6 +580,12 @@ mod tests {
             cli.command,
             Some(Commands::Mcp { http: true, .. })
         ));
+    }
+
+    #[test]
+    fn test_cli_parses_signup() {
+        let cli = CliParser::parse_from(["ascend-tools", "signup"]);
+        assert!(matches!(cli.command, Some(Commands::Signup)));
     }
 
     #[test]
