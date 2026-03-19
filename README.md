@@ -8,6 +8,14 @@ CLI, SDK, and MCP server for the Ascend Instance web API.
 [![CI](https://img.shields.io/github/actions/workflow/status/ascend-io/ascend-tools/ci.yml?branch=main&label=CI)](https://github.com/ascend-io/ascend-tools/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A2BE2.svg)](https://github.com/ascend-io/ascend-tools/blob/main/LICENSE)
 
+## Getting started
+
+Don't have an Ascend instance yet? Sign up:
+
+```bash
+ascend-tools signup
+```
+
 ## Authentication
 
 Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
