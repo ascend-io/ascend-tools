@@ -25,7 +25,8 @@ const QUERY_VALUE: &AsciiSet = NON_ALPHANUMERIC;
 const FOLLOW_UP_RETRY_TIMEOUT: Duration = Duration::from_secs(30);
 const FOLLOW_UP_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 const STOP_THREAD_TIMEOUT: Duration = Duration::from_secs(30);
-const STOP_THREAD_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const STOP_THREAD_POLL_INTERVAL_MIN: Duration = Duration::from_millis(100);
+const STOP_THREAD_POLL_INTERVAL_MAX: Duration = Duration::from_millis(500);
 /// Max retries for initial SSE connection (before any events arrive).
 /// Mid-stream reconnection is not attempted because the backend replays
 /// all buffered events on new subscriptions, producing duplicates.
@@ -512,24 +513,39 @@ impl AscendClient {
                 }),
             }
         } else {
-            // No provider specified — search all providers for the model
+            // No provider specified — search all providers for the model.
+            // Collect all matches to detect ambiguity across providers.
             let model_lower = model.to_lowercase();
+            let mut matches: Vec<(&OttoProvider, &crate::models::OttoProviderModel)> = Vec::new();
             for prov in &providers {
                 if let Some(m) = prov.models.iter().find(|m| {
                     m.id.to_lowercase() == model_lower || m.name.to_lowercase() == model_lower
                 }) {
-                    return Ok(Some(OttoModel::new(m.id.clone())));
+                    matches.push((prov, m));
                 }
             }
-            let available: Vec<String> = providers
-                .iter()
-                .flat_map(|p| p.models.iter().map(|m| m.name.clone()))
-                .collect();
-            Err(Error::NotFoundWithOptions {
-                kind: "otto model".to_string(),
-                title: model.to_string(),
-                available,
-            })
+            match matches.len() {
+                1 => Ok(Some(OttoModel::new(matches[0].1.id.clone()))),
+                0 => {
+                    let available: Vec<String> = providers
+                        .iter()
+                        .flat_map(|p| p.models.iter().map(|m| m.name.clone()))
+                        .collect();
+                    Err(Error::NotFoundWithOptions {
+                        kind: "otto model".to_string(),
+                        title: model.to_string(),
+                        available,
+                    })
+                }
+                _ => Err(Error::AmbiguousTitle {
+                    kind: "otto model".to_string(),
+                    title: model.to_string(),
+                    matches: matches
+                        .iter()
+                        .map(|(p, m)| (m.id.clone(), format!("{} ({})", m.name, p.name)))
+                        .collect(),
+                }),
+            }
         }
     }
 
@@ -605,11 +621,12 @@ impl AscendClient {
             let mut last_err = None;
             let mut resp_val = None;
             let mut sent_stop = false;
+            let mut current_token = token.clone();
             loop {
                 let resp = self
                     .agent
                     .post(&url)
-                    .header("Authorization", &format!("Bearer {token}"))
+                    .header("Authorization", &format!("Bearer {current_token}"))
                     .header("Content-Type", "application/json")
                     .send(json_body.as_bytes())
                     .with_request_context(context.clone())?;
@@ -629,6 +646,8 @@ impl AscendClient {
                         break;
                     }
                     std::thread::sleep(FOLLOW_UP_RETRY_INTERVAL);
+                    // Refresh token on retry (may have expired during wait)
+                    current_token = self.auth.get_token()?;
                     continue;
                 }
                 resp_val = Some(handle_response(resp, &context)?);
@@ -702,11 +721,14 @@ impl AscendClient {
         };
 
         if !(200..300).contains(&updates_resp.status().as_u16()) {
+            // Non-2xx on SSE connect is an interruption, not a completed stream.
+            // check_error_status will return Err for non-2xx, but if it somehow
+            // returns Ok, mark as Interrupted rather than misleadingly Completed.
             return check_error_status(updates_resp, &updates_context).map(|()| OttoChatResponse {
                 message: String::new(),
                 thread_id: Some(thread_id),
-                stream_status: OttoStreamStatus::Completed,
-                stream_error: None,
+                stream_status: OttoStreamStatus::Interrupted,
+                stream_error: Some(format!("{updates_context} returned non-2xx status")),
             });
         }
 
@@ -733,7 +755,14 @@ impl AscendClient {
             if event_type == Some("response.error") {
                 let error_msg = serde_json::from_str::<Value>(&event.data)
                     .ok()
-                    .and_then(|d| d.get("error").and_then(|v| v.as_str()).map(String::from))
+                    .and_then(|d| {
+                        // Try common error payload keys: error, message, detail
+                        d.get("error")
+                            .or_else(|| d.get("message"))
+                            .or_else(|| d.get("detail"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    })
                     .unwrap_or_else(|| "response error".to_string());
                 response_error = Some(error_msg);
                 break;
@@ -832,6 +861,7 @@ impl AscendClient {
 
     /// Stop a running Otto thread and wait until processing has fully stopped.
     /// Polls the stop endpoint until the backend reports "not_processing".
+    /// Starts with 100ms poll interval and backs off to 500ms.
     /// Returns an error if the thread does not stop within ~30 seconds.
     pub fn stop_thread_and_wait(&self, thread_id: &str) -> Result<()> {
         let resp: Value = self.stop_thread(thread_id)?;
@@ -840,9 +870,11 @@ impl AscendClient {
             return Ok(());
         }
         let deadline = Instant::now() + STOP_THREAD_TIMEOUT;
+        let mut poll_interval = STOP_THREAD_POLL_INTERVAL_MIN;
         // Poll until the backend confirms the thread is no longer processing.
         while Instant::now() < deadline {
-            std::thread::sleep(STOP_THREAD_POLL_INTERVAL);
+            std::thread::sleep(poll_interval);
+            poll_interval = (poll_interval * 2).min(STOP_THREAD_POLL_INTERVAL_MAX);
             let resp: Value = self.stop_thread(thread_id)?;
             let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
             if status != "stopping" {

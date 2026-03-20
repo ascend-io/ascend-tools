@@ -291,6 +291,8 @@ struct App {
     /// Set when cancel fires; the main loop spawns a thread to stop the backend.
     stop_pending: bool,
     interrupting: bool,
+    /// Set when user presses Ctrl+C during interrupting state — force exit.
+    force_quit: bool,
 }
 
 impl App {
@@ -332,6 +334,7 @@ impl App {
             stream_generation: 0,
             stop_pending: false,
             interrupting: false,
+            force_quit: false,
         }
     }
 
@@ -377,9 +380,12 @@ impl App {
     // -- Key handling -------------------------------------------------------
 
     fn handle_key(&mut self, key: KeyEvent, cancel: &AtomicBool) {
-        // Ctrl+C: cancel stream or quit
+        // Ctrl+C: cancel stream, force quit if already interrupting, or quit
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.interrupting {
+                // Second Ctrl+C while stopping — force quit
+                self.force_quit = true;
+                self.should_quit = true;
                 return;
             }
             if self.streaming {
@@ -859,11 +865,15 @@ impl App {
                 self.model_label = model;
             }
             StreamMsg::StopFinished { error } => {
-                self.finish_stream();
-                if let Some(err) = error {
-                    self.push_system(format!("Interrupt failed: {err}"));
-                } else {
-                    self.push_system("Cancelled");
+                // Only act if we're actually in interrupting state.
+                // A late StopFinished from a previous cancel is harmless.
+                if self.interrupting {
+                    self.finish_stream();
+                    if let Some(err) = error {
+                        self.push_system(format!("Interrupt failed: {err}"));
+                    } else {
+                        self.push_system("Cancelled");
+                    }
                 }
             }
             StreamMsg::Stream { generation, kind } => {
@@ -943,7 +953,7 @@ impl App {
         if self.interrupting {
             return;
         }
-        cancel.store(true, Ordering::Relaxed);
+        cancel.store(true, Ordering::Release);
         self.stream_generation = self.stream_generation.wrapping_add(1);
         self.flush_stream_text();
         self.active_tool_call = None;
@@ -1614,7 +1624,7 @@ pub fn run_tui(
     let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
     let cancel = AtomicBool::new(false);
     let gen_counter = AtomicU64::new(0);
-    let active_thread_id: Mutex<Option<String>> = Mutex::new(None);
+    let active_thread_id: Mutex<Option<(u64, String)>> = Mutex::new(None);
 
     let result = std::thread::scope(|scope| {
         // Resolve provider/model labels in the background so the TUI loads instantly
@@ -1667,11 +1677,14 @@ pub fn run_tui(
             // Spawns a background thread so the TUI stays responsive.
             if app.stop_pending {
                 app.stop_pending = false;
-                if let Some(tid) = active_thread_id
+                let current_gen = app.stream_generation;
+                let tid = active_thread_id
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .clone()
-                {
+                    .as_ref()
+                    .filter(|(g, _)| *g == current_gen)
+                    .map(|(_, tid)| tid.clone());
+                if let Some(tid) = tid {
                     let stop_tx = stream_tx.clone();
                     scope.spawn(move || {
                         let error = client
@@ -1690,9 +1703,9 @@ pub fn run_tui(
             if !app.interrupting
                 && let Some(request) = app.take_pending_request()
             {
-                let generation = gen_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                let generation = gen_counter.fetch_add(1, Ordering::AcqRel) + 1;
                 app.stream_generation = generation;
-                cancel.store(false, Ordering::Relaxed);
+                cancel.store(false, Ordering::Release);
                 *active_thread_id.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 let tx = stream_tx.clone();
                 let cancel_ref = &cancel;
@@ -1706,7 +1719,7 @@ pub fn run_tui(
                     let result = client.otto_streaming(
                         &request,
                         |event| {
-                            if cancel_ref.load(Ordering::Relaxed) {
+                            if cancel_ref.load(Ordering::Acquire) {
                                 return ControlFlow::Break(());
                             }
                             match event {
@@ -1726,8 +1739,10 @@ pub fn run_tui(
                             ControlFlow::Continue(())
                         },
                         |tid: &str| {
+                            // Only store thread_id if this generation hasn't been superseded.
+                            // Prevents a cancelled request's late thread_id from poisoning state.
                             *active_tid.lock().unwrap_or_else(|e| e.into_inner()) =
-                                Some(tid.to_string());
+                                Some((generation, tid.to_string()));
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),
@@ -1759,9 +1774,10 @@ pub fn run_tui(
                 let restore_hook = original_hook.clone();
                 std::panic::set_hook(Box::new(move |info| (restore_hook)(info)));
 
-                // If a streaming thread is stuck on a network read, exit
-                // the process cleanly rather than waiting indefinitely.
-                if cancel.load(Ordering::Relaxed) {
+                // If force-quitting (second Ctrl+C) or a streaming thread
+                // may be stuck on a network read, exit the process cleanly
+                // rather than waiting for scoped thread join.
+                if app.force_quit || cancel.load(Ordering::Acquire) {
                     std::process::exit(0);
                 }
                 break;
@@ -2016,7 +2032,7 @@ mod tests {
 
         assert!(app.interrupting);
         assert!(app.stop_pending);
-        assert!(cancel.load(Ordering::Relaxed));
+        assert!(cancel.load(Ordering::Acquire));
         // Generation should advance to reject future messages from old stream
         assert_eq!(app.stream_generation, 2);
         // Partial output should be flushed to messages
@@ -2456,7 +2472,7 @@ mod tests {
     // -- 10. Multiple rapid Ctrl+C -----------------------------------------
 
     #[test]
-    fn rapid_ctrl_c_during_interrupting_is_safe() {
+    fn rapid_ctrl_c_during_interrupting_force_quits() {
         let mut app = test_app();
         app.streaming = true;
         app.interrupting = true;
@@ -2464,16 +2480,15 @@ mod tests {
 
         let cancel = AtomicBool::new(true);
 
-        // Spam Ctrl+C 5 times
-        for _ in 0..5 {
-            app.handle_key(
-                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-                &cancel,
-            );
-        }
+        // First Ctrl+C during interrupting → force quit
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancel,
+        );
 
-        // Nothing should change — should NOT quit, NOT double-cancel
-        assert!(!app.should_quit);
+        assert!(app.should_quit);
+        assert!(app.force_quit);
+        // Still interrupting/streaming — force quit bypasses normal cleanup
         assert!(app.interrupting);
         assert!(app.streaming);
         assert_eq!(app.stream_generation, 5);
@@ -2529,15 +2544,15 @@ mod tests {
     // -- 12. StopFinished when not interrupting (race) ---------------------
 
     #[test]
-    fn stop_finished_when_not_interrupting_still_cleans_up() {
+    fn stop_finished_when_not_interrupting_is_noop() {
         let mut app = test_app();
         app.streaming = true;
         app.interrupting = false; // race: already recovered somehow
 
         app.handle_stream_msg(StreamMsg::StopFinished { error: None });
 
-        // Should gracefully finish
-        assert!(!app.streaming);
+        // Should not affect state — only acts when interrupting
+        assert!(app.streaming);
         assert!(!app.interrupting);
     }
 
@@ -2573,7 +2588,7 @@ mod tests {
 
         assert!(app.interrupting);
         assert!(!app.should_quit);
-        assert!(cancel.load(Ordering::Relaxed));
+        assert!(cancel.load(Ordering::Acquire));
     }
 
     #[test]
@@ -2599,7 +2614,7 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &cancel);
 
         assert!(app.interrupting);
-        assert!(cancel.load(Ordering::Relaxed));
+        assert!(cancel.load(Ordering::Acquire));
     }
 
     #[test]
@@ -2914,5 +2929,41 @@ mod tests {
         assert_eq!(lines.len(), 1);
         // Line should have multiple spans (indent, text, code, text)
         assert!(lines[0].spans.len() >= 3);
+    }
+
+    // -- Force quit (second Ctrl+C during interrupting) --------------------
+
+    #[test]
+    fn second_ctrl_c_during_interrupting_sets_force_quit() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+
+        let cancel = AtomicBool::new(true);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancel,
+        );
+
+        assert!(app.force_quit);
+        assert!(app.should_quit);
+    }
+
+    // -- StopFinished guarded by interrupting state ------------------------
+
+    #[test]
+    fn stop_finished_ignored_when_not_interrupting() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = false;
+
+        let msg_count_before = app.messages.len();
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("should be ignored".into()),
+        });
+
+        // Should not change state or add messages
+        assert!(app.streaming);
+        assert_eq!(app.messages.len(), msg_count_before);
     }
 }
