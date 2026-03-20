@@ -15,7 +15,7 @@
 //! - Vi yank/paste registers
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -379,7 +379,7 @@ impl App {
 
     // -- Key handling -------------------------------------------------------
 
-    fn handle_key(&mut self, key: KeyEvent, cancel: &AtomicBool) {
+    fn handle_key(&mut self, key: KeyEvent, cancelled_gen: &AtomicU64) {
         // Ctrl+C: cancel stream, force quit if already interrupting, or quit
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.interrupting {
@@ -389,7 +389,7 @@ impl App {
                 return;
             }
             if self.streaming {
-                self.cancel_stream(cancel);
+                self.cancel_stream(cancelled_gen);
             } else {
                 self.should_quit = true;
             }
@@ -401,7 +401,7 @@ impl App {
             if self.interrupting {
                 return;
             }
-            self.cancel_stream(cancel);
+            self.cancel_stream(cancelled_gen);
             return;
         }
 
@@ -949,11 +949,14 @@ impl App {
         }
     }
 
-    fn cancel_stream(&mut self, cancel: &AtomicBool) {
+    fn cancel_stream(&mut self, cancelled_gen: &AtomicU64) {
         if self.interrupting {
             return;
         }
-        cancel.store(true, Ordering::Release);
+        // Store the generation being cancelled BEFORE advancing, so workers
+        // for this generation see the cancellation even if a new request
+        // resets nothing (cancelled_gen is never cleared).
+        cancelled_gen.store(self.stream_generation, Ordering::Release);
         self.stream_generation = self.stream_generation.wrapping_add(1);
         self.flush_stream_text();
         self.active_tool_call = None;
@@ -1622,7 +1625,7 @@ pub fn run_tui(
     }));
 
     let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
-    let cancel = AtomicBool::new(false);
+    let cancelled_gen = AtomicU64::new(0);
     let gen_counter = AtomicU64::new(0);
     let active_thread_id: Mutex<Option<(u64, String)>> = Mutex::new(None);
 
@@ -1648,7 +1651,7 @@ pub fn run_tui(
             if event::poll(POLL_DURATION)? {
                 match event::read()? {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        app.handle_key(key, &cancel);
+                        app.handle_key(key, &cancelled_gen);
                     }
                     Event::Paste(text) => {
                         app.handle_paste(&text);
@@ -1705,10 +1708,10 @@ pub fn run_tui(
             {
                 let generation = gen_counter.fetch_add(1, Ordering::AcqRel) + 1;
                 app.stream_generation = generation;
-                cancel.store(false, Ordering::Release);
+                // No cancelled_gen reset — each worker checks its own generation.
                 *active_thread_id.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 let tx = stream_tx.clone();
-                let cancel_ref = &cancel;
+                let cg_ref = &cancelled_gen;
                 let active_tid = &active_thread_id;
                 scope.spawn(move || {
                     let tx2 = tx.clone();
@@ -1719,7 +1722,7 @@ pub fn run_tui(
                     let result = client.otto_streaming(
                         &request,
                         |event| {
-                            if cancel_ref.load(Ordering::Acquire) {
+                            if cg_ref.load(Ordering::Acquire) >= generation {
                                 return ControlFlow::Break(());
                             }
                             match event {
@@ -1739,8 +1742,6 @@ pub fn run_tui(
                             ControlFlow::Continue(())
                         },
                         |tid: &str| {
-                            // Only store thread_id if this generation hasn't been superseded.
-                            // Prevents a cancelled request's late thread_id from poisoning state.
                             *active_tid.lock().unwrap_or_else(|e| e.into_inner()) =
                                 Some((generation, tid.to_string()));
                             let _ = tx2.send(StreamMsg::Stream {
@@ -1749,6 +1750,17 @@ pub fn run_tui(
                             });
                         },
                     );
+                    // If this generation was cancelled (possibly before thread_id
+                    // arrived), fire a stop to clean up the backend run.
+                    if cg_ref.load(Ordering::Acquire) >= generation
+                        && let Some((g, tid)) = active_tid
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_ref()
+                        && *g == generation
+                    {
+                        let _ = client.stop_thread(tid);
+                    }
                     match result {
                         Ok(response) => send(StreamMsgKind::Finished {
                             status: response.stream_status,
@@ -1774,10 +1786,10 @@ pub fn run_tui(
                 let restore_hook = original_hook.clone();
                 std::panic::set_hook(Box::new(move |info| (restore_hook)(info)));
 
-                // If force-quitting (second Ctrl+C) or a streaming thread
-                // may be stuck on a network read, exit the process cleanly
-                // rather than waiting for scoped thread join.
-                if app.force_quit || cancel.load(Ordering::Acquire) {
+                // If force-quitting (second Ctrl+C) or a cancelled worker
+                // may be stuck on a blocking SSE read, exit the process
+                // cleanly rather than waiting for scoped thread join.
+                if app.force_quit || cancelled_gen.load(Ordering::Acquire) > 0 {
                     std::process::exit(0);
                 }
                 break;
@@ -1810,7 +1822,7 @@ pub fn run_tui(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicU64;
 
     fn test_app() -> App {
         App::new(None, None, None, String::new(), None)
@@ -2027,12 +2039,12 @@ mod tests {
         app.stream_generation = 1;
         app.stream_buffer = "partial output".into();
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
         assert!(app.stop_pending);
-        assert!(cancel.load(Ordering::Acquire));
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
         // Generation should advance to reject future messages from old stream
         assert_eq!(app.stream_generation, 2);
         // Partial output should be flushed to messages
@@ -2052,8 +2064,8 @@ mod tests {
         app.stream_generation = 1;
         // No text received yet — buffer and pending are empty
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
         assert!(app.stop_pending);
@@ -2069,8 +2081,8 @@ mod tests {
         app.stream_buffer = "buffered ".into();
         app.stream_pending = "pending".chars().collect();
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         // Both buffer and pending should be flushed together
         let otto_msg = app
@@ -2088,8 +2100,8 @@ mod tests {
         app.stream_generation = 1;
         app.active_tool_call = Some("read_file".into());
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         assert!(app.active_tool_call.is_none());
     }
@@ -2104,8 +2116,8 @@ mod tests {
         app.stream_generation = 5;
         app.stop_pending = false; // already dispatched
 
-        let cancel = AtomicBool::new(true);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(1);
+        app.cancel_stream(&cancelled_gen);
 
         // Should not change anything — generation stays, no double stop
         assert_eq!(app.stream_generation, 5);
@@ -2227,8 +2239,8 @@ mod tests {
         app.stream_generation = 1;
         app.thread_id = None;
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
         assert!(app.stop_pending);
@@ -2344,8 +2356,8 @@ mod tests {
         app.stream_generation = 1;
 
         // Cancel advances generation to 2
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
         assert_eq!(app.stream_generation, 2);
 
         // Old-generation messages should be silently dropped
@@ -2401,8 +2413,8 @@ mod tests {
         });
 
         // 2. User cancels
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
         assert!(app.interrupting);
         assert!(app.stop_pending);
 
@@ -2446,8 +2458,8 @@ mod tests {
         });
 
         // 2. Cancel
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         // 3. Stop times out (your screenshot scenario)
         app.stop_pending = false;
@@ -2478,12 +2490,12 @@ mod tests {
         app.interrupting = true;
         app.stream_generation = 5;
 
-        let cancel = AtomicBool::new(true);
+        let cancelled_gen = AtomicU64::new(1);
 
         // First Ctrl+C during interrupting → force quit
         app.handle_key(
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-            &cancel,
+            &cancelled_gen,
         );
 
         assert!(app.should_quit);
@@ -2501,10 +2513,13 @@ mod tests {
         app.interrupting = true;
         app.stream_generation = 5;
 
-        let cancel = AtomicBool::new(true);
+        let cancelled_gen = AtomicU64::new(1);
 
         for _ in 0..5 {
-            app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &cancel);
+            app.handle_key(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                &cancelled_gen,
+            );
         }
 
         assert!(app.interrupting);
@@ -2521,8 +2536,8 @@ mod tests {
         app.stream_generation = 1;
 
         // Cancel advances generation
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
         assert_eq!(app.stream_generation, 2);
 
         // Error from old generation arrives — should be discarded
@@ -2580,25 +2595,25 @@ mod tests {
         app.streaming = true;
         app.stream_generation = 1;
 
-        let cancel = AtomicBool::new(false);
+        let cancelled_gen = AtomicU64::new(0);
         app.handle_key(
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-            &cancel,
+            &cancelled_gen,
         );
 
         assert!(app.interrupting);
         assert!(!app.should_quit);
-        assert!(cancel.load(Ordering::Acquire));
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
     }
 
     #[test]
     fn ctrl_c_while_not_streaming_quits() {
         let mut app = test_app();
 
-        let cancel = AtomicBool::new(false);
+        let cancelled_gen = AtomicU64::new(0);
         app.handle_key(
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-            &cancel,
+            &cancelled_gen,
         );
 
         assert!(app.should_quit);
@@ -2608,13 +2623,16 @@ mod tests {
     fn esc_while_streaming_cancels() {
         let mut app = test_app();
         app.streaming = true;
-        app.stream_generation = 0;
+        app.stream_generation = 1;
 
-        let cancel = AtomicBool::new(false);
-        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &cancelled_gen,
+        );
 
         assert!(app.interrupting);
-        assert!(cancel.load(Ordering::Acquire));
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
     }
 
     #[test]
@@ -2622,8 +2640,11 @@ mod tests {
         let mut app = test_app();
         app.input_mode = InputMode::ViInsert;
 
-        let cancel = AtomicBool::new(false);
-        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), &cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &cancelled_gen,
+        );
 
         assert_eq!(app.input_mode, InputMode::ViNormal);
         assert!(!app.interrupting);
@@ -2685,8 +2706,8 @@ mod tests {
         app.stream_buffer = "Let me check that for you.".into();
         app.active_tool_call = Some("list_workspaces".into());
 
-        let cancel = AtomicBool::new(false);
-        app.cancel_stream(&cancel);
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
 
         assert!(app.active_tool_call.is_none());
         assert!(app.interrupting);
@@ -2939,10 +2960,10 @@ mod tests {
         app.streaming = true;
         app.interrupting = true;
 
-        let cancel = AtomicBool::new(true);
+        let cancelled_gen = AtomicU64::new(1);
         app.handle_key(
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-            &cancel,
+            &cancelled_gen,
         );
 
         assert!(app.force_quit);
