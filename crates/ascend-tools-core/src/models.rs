@@ -269,32 +269,33 @@ pub struct OttoChatRequest {
     pub model: Option<OttoModel>,
 }
 
-/// Model specification for Otto — either a plain model name or a provider+model pair.
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
-pub enum OttoModel {
-    /// Use default provider for this model name.
-    Name(String),
-    /// Use a specific provider and model.
-    ProviderModel {
-        provider_id: String,
-        model_id: String,
-    },
+/// Terminal status for an Otto stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(string_enum = "lowercase"))]
+#[serde(rename_all = "lowercase")]
+pub enum OttoStreamStatus {
+    Completed,
+    Cancelled,
+    Interrupted,
 }
 
+/// Model identifier for Otto — a plain string model ID.
+///
+/// The backend expects a flat string (e.g. `"bedrock/global.anthropic.claude-opus-4-6-v1"`).
+/// Use [`AscendClient::resolve_otto_model`] to resolve display names to IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OttoModel(pub String);
+
 impl OttoModel {
-    /// Build an `OttoModel` from optional provider and model strings.
-    ///
-    /// Returns `None` if `model` is `None`.
-    pub fn from_options(provider: Option<&str>, model: Option<&str>) -> Option<Self> {
-        match (provider, model) {
-            (Some(p), Some(m)) => Some(Self::ProviderModel {
-                provider_id: p.to_string(),
-                model_id: m.to_string(),
-            }),
-            (None, Some(m)) => Some(Self::Name(m.to_string())),
-            _ => None,
-        }
+    /// Create from a raw model ID string.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Returns the model ID.
+    pub fn id(&self) -> &str {
+        &self.0
     }
 }
 
@@ -304,6 +305,9 @@ impl OttoModel {
 pub struct OttoChatResponse {
     pub message: String,
     pub thread_id: Option<String>,
+    pub stream_status: OttoStreamStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_error: Option<String>,
 }
 
 /// A streaming event from Otto.

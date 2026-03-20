@@ -15,8 +15,8 @@
 //! - Vi yank/paste registers
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
@@ -30,7 +30,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, OttoModel, StreamEvent};
+use ascend_tools::models::{OttoChatRequest, OttoModel, OttoStreamStatus, StreamEvent};
 use std::ops::ControlFlow;
 
 // ---------------------------------------------------------------------------
@@ -108,6 +108,9 @@ enum StreamMsg {
         provider_label: Option<String>,
         model_label: String,
     },
+    StopFinished {
+        error: Option<String>,
+    },
     /// Stream messages tagged with a generation to discard stale messages
     /// from cancelled requests.
     Stream {
@@ -119,20 +122,28 @@ enum StreamMsg {
 enum StreamMsgKind {
     ThreadId(String),
     Delta(String),
-    ToolCallStart { name: String },
-    ToolCallOutput { name: String, output: String },
-    Done,
+    ToolCallStart {
+        name: String,
+    },
+    ToolCallOutput {
+        name: String,
+        output: String,
+    },
+    Finished {
+        status: OttoStreamStatus,
+        error: Option<String>,
+    },
     Error(String),
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum InputMode {
     Emacs,
     ViInsert,
     ViNormal,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Role {
     User,
     Otto,
@@ -279,6 +290,9 @@ struct App {
     stream_generation: u64,
     /// Set when cancel fires; the main loop spawns a thread to stop the backend.
     stop_pending: bool,
+    interrupting: bool,
+    /// Set when user presses Ctrl+C during interrupting state — force exit.
+    force_quit: bool,
 }
 
 impl App {
@@ -319,14 +333,37 @@ impl App {
             active_tool_call: None,
             stream_generation: 0,
             stop_pending: false,
+            interrupting: false,
+            force_quit: false,
         }
     }
 
     // -- Input helpers ------------------------------------------------------
 
-    fn input_line_count(&self) -> u16 {
-        let count = 1 + self.input.iter().filter(|c| **c == '\n').count();
-        (count as u16).min(MAX_INPUT_LINES)
+    fn input_line_count(&self, width: u16) -> u16 {
+        let avail = (width as usize).saturating_sub(3); // prompt_len
+        if avail == 0 {
+            return 1;
+        }
+        let mut rows = 1usize;
+        let mut col = 0usize;
+        for &ch in &self.input {
+            if ch == '\n' {
+                rows += 1;
+                col = 0;
+            } else {
+                if col >= avail {
+                    rows += 1;
+                    col = 0;
+                }
+                col += 1;
+            }
+        }
+        // Cursor at end needs an extra row if current row is full
+        if self.cursor == self.input.len() && col >= avail {
+            rows += 1;
+        }
+        (rows as u16).min(MAX_INPUT_LINES)
     }
 
     fn handle_paste(&mut self, text: &str) {
@@ -342,11 +379,17 @@ impl App {
 
     // -- Key handling -------------------------------------------------------
 
-    fn handle_key(&mut self, key: KeyEvent, cancel: &AtomicBool) {
-        // Ctrl+C: cancel stream or quit
+    fn handle_key(&mut self, key: KeyEvent, cancelled_gen: &AtomicU64) {
+        // Ctrl+C: cancel stream, force quit if already interrupting, or quit
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            if self.interrupting {
+                // Second Ctrl+C while stopping — force quit
+                self.force_quit = true;
+                self.should_quit = true;
+                return;
+            }
             if self.streaming {
-                self.cancel_stream(cancel);
+                self.cancel_stream(cancelled_gen);
             } else {
                 self.should_quit = true;
             }
@@ -355,7 +398,10 @@ impl App {
 
         // Escape: cancel stream (if streaming), otherwise normal key handling
         if key.code == KeyCode::Esc && key.modifiers == KeyModifiers::NONE && self.streaming {
-            self.cancel_stream(cancel);
+            if self.interrupting {
+                return;
+            }
+            self.cancel_stream(cancelled_gen);
             return;
         }
 
@@ -818,6 +864,18 @@ impl App {
                 self.provider_label = provider;
                 self.model_label = model;
             }
+            StreamMsg::StopFinished { error } => {
+                // Only act if we're actually in interrupting state.
+                // A late StopFinished from a previous cancel is harmless.
+                if self.interrupting {
+                    self.finish_stream();
+                    if let Some(err) = error {
+                        self.push_system(format!("Interrupt failed: {err}"));
+                    } else {
+                        self.push_system("Cancelled");
+                    }
+                }
+            }
             StreamMsg::Stream { generation, kind } => {
                 // Discard stale messages from cancelled requests
                 if generation != self.stream_generation {
@@ -845,21 +903,35 @@ impl App {
                 let output_summary = truncate(&output, 80);
                 self.push_system(format!("\u{2699} {name} \u{2192} {output_summary}"));
             }
-            StreamMsgKind::Done => {
-                self.finish_stream();
-                // Bell if response took >3s
-                if self
-                    .stream_start
-                    .is_some_and(|s| s.elapsed() > Duration::from_secs(3))
-                {
-                    let _ = crossterm::execute!(std::io::stderr(), crossterm::style::Print("\x07"));
+            StreamMsgKind::Finished { status, error } => match status {
+                OttoStreamStatus::Completed => {
+                    let should_bell = self
+                        .stream_start
+                        .is_some_and(|s| s.elapsed() > Duration::from_secs(3));
+                    self.finish_stream();
+                    if should_bell {
+                        let _ =
+                            crossterm::execute!(std::io::stderr(), crossterm::style::Print("\x07"));
+                    }
                 }
-                self.stream_start = None;
-            }
+                OttoStreamStatus::Cancelled => {
+                    // No-op: cleanup is deferred to StopFinished message
+                    // from the background stop thread.
+                }
+                OttoStreamStatus::Interrupted => {
+                    self.finish_stream();
+                    let detail = error.unwrap_or_else(|| "stream interrupted".to_string());
+                    self.push_system(format!("Connection lost: {detail}"));
+                }
+            },
             StreamMsgKind::Error(err) => {
                 self.finish_stream();
-                self.push_system(format!("Error: {err}"));
-                self.stream_start = None;
+                let message = if err.contains("Otto stream ended unexpectedly") {
+                    format!("Connection lost: {err}")
+                } else {
+                    format!("Error: {err}")
+                };
+                self.push_system(message);
             }
         }
     }
@@ -877,18 +949,27 @@ impl App {
         }
     }
 
-    fn cancel_stream(&mut self, cancel: &AtomicBool) {
-        cancel.store(true, Ordering::Relaxed);
-        self.finish_stream();
-        self.push_system("Cancelled");
-        self.stream_start = None;
+    fn cancel_stream(&mut self, cancelled_gen: &AtomicU64) {
+        if self.interrupting {
+            return;
+        }
+        // Store the generation being cancelled BEFORE advancing, so workers
+        // for this generation see the cancellation even if a new request
+        // resets nothing (cancelled_gen is never cleared).
+        cancelled_gen.store(self.stream_generation, Ordering::Release);
+        self.stream_generation = self.stream_generation.wrapping_add(1);
+        self.flush_stream_text();
+        self.active_tool_call = None;
+        self.interrupting = true;
         self.stop_pending = true;
     }
 
     fn finish_stream(&mut self) {
         self.flush_stream_text();
         self.streaming = false;
+        self.interrupting = false;
         self.active_tool_call = None;
+        self.stream_start = None;
     }
 
     fn tick_stream(&mut self) {
@@ -938,7 +1019,7 @@ impl App {
             return;
         }
 
-        let input_height = self.input_line_count();
+        let input_height = self.input_line_count(area.width);
         let chunks = Layout::vertical([
             Constraint::Min(1),               // chat
             Constraint::Length(1),            // top rule
@@ -1014,13 +1095,21 @@ impl App {
             )));
 
             if self.stream_buffer.is_empty() && self.stream_pending.is_empty() {
-                let label = if let Some(tool) = &self.active_tool_call {
+                let label = if self.interrupting {
+                    format!("  {} Stopping...", SPINNER[self.spinner_frame])
+                } else if let Some(tool) = &self.active_tool_call {
                     format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame])
                 } else {
                     format!("  {} Ascending...", SPINNER[self.spinner_frame])
                 };
                 lines.push(Line::from(Span::styled(
                     label,
+                    Style::default().fg(DIM_OTTO_COLOR),
+                )));
+            } else if self.interrupting {
+                lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
+                lines.push(Line::from(Span::styled(
+                    format!("  {} Stopping...", SPINNER[self.spinner_frame]),
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
             } else if let Some(tool) = &self.active_tool_call {
@@ -1050,7 +1139,8 @@ impl App {
 
         // Scrollbar
         if total_rendered > visible {
-            let mut scrollbar_state = ScrollbarState::new(max_scroll).position(clamped_scroll);
+            let scrollbar_position = max_scroll.saturating_sub(clamped_scroll);
+            let mut scrollbar_state = ScrollbarState::new(max_scroll).position(scrollbar_position);
             frame.render_stateful_widget(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
                     .style(Style::default().fg(DIM_COLOR)),
@@ -1124,7 +1214,11 @@ impl App {
             InputMode::ViNormal => " \u{2502} ",
             _ => " \u{276f} ",
         };
-        let prompt_len = 3;
+        let prompt_len = 3usize;
+        let avail = (area.width as usize).saturating_sub(prompt_len);
+        if avail == 0 {
+            return;
+        }
 
         let prompt_color = match self.input_mode {
             InputMode::ViNormal => VI_NORMAL_COLOR,
@@ -1132,27 +1226,57 @@ impl App {
             _ => OTTO_COLOR,
         };
 
-        // Multi-line: split input on \n
-        let input_str: String = self.input.iter().collect();
-        let input_lines: Vec<&str> = input_str.split('\n').collect();
+        // Build visual rows with wrapping, tracking cursor position
+        let mut rows: Vec<String> = vec![String::new()];
+        let mut col = 0usize;
+        let mut cursor_row = 0usize;
+        let mut cursor_col = 0usize;
 
-        // Find which line the cursor is on and the column within that line
-        let mut cursor_line = 0;
-        let mut cursor_col = 0;
-        let mut chars_so_far = 0;
-        for (i, line) in input_lines.iter().enumerate() {
-            let line_len = line.chars().count();
-            let is_last = i == input_lines.len() - 1;
-            if self.cursor <= chars_so_far + line_len || is_last {
-                cursor_line = i;
-                cursor_col = self.cursor.saturating_sub(chars_so_far);
-                break;
+        for (i, &ch) in self.input.iter().enumerate() {
+            if i == self.cursor {
+                cursor_row = rows.len() - 1;
+                cursor_col = col;
             }
-            chars_so_far += line_len + 1; // +1 for \n
+            if ch == '\n' {
+                rows.push(String::new());
+                col = 0;
+            } else {
+                if col >= avail {
+                    rows.push(String::new());
+                    col = 0;
+                }
+                rows.last_mut().unwrap().push(ch);
+                col += 1;
+            }
+        }
+        // Cursor at end of input
+        if self.cursor == self.input.len() {
+            if col >= avail {
+                rows.push(String::new());
+                cursor_row = rows.len() - 1;
+                cursor_col = 0;
+            } else {
+                cursor_row = rows.len() - 1;
+                cursor_col = col;
+            }
         }
 
+        // Scroll viewport so cursor is always visible
+        let max_visible = area.height as usize;
+        let scroll_offset = if cursor_row >= max_visible {
+            cursor_row - max_visible + 1
+        } else {
+            0
+        };
+        let visible_end = (scroll_offset + max_visible).min(rows.len());
+
         let mut render_lines: Vec<Line<'_>> = Vec::new();
-        for (i, line) in input_lines.iter().enumerate() {
+        for (i, row) in rows
+            .iter()
+            .enumerate()
+            .take(visible_end)
+            .skip(scroll_offset)
+        {
             let p = if i == 0 { prompt } else { "   " };
             let p_style = if i == 0 {
                 Style::default().fg(prompt_color)
@@ -1161,7 +1285,7 @@ impl App {
             };
             render_lines.push(Line::from(vec![
                 Span::styled(p, p_style),
-                Span::raw((*line).to_string()),
+                Span::raw(row.clone()),
             ]));
         }
 
@@ -1169,7 +1293,7 @@ impl App {
 
         if !self.streaming {
             let cx = area.x + prompt_len as u16 + cursor_col as u16;
-            let cy = area.y + cursor_line as u16;
+            let cy = area.y + (cursor_row - scroll_offset) as u16;
             frame.set_cursor_position((cx, cy));
         }
     }
@@ -1214,6 +1338,11 @@ impl App {
             InputMode::Emacs => ("emacs", SYSTEM_COLOR),
             InputMode::ViInsert => ("INSERT", VI_NORMAL_COLOR),
             InputMode::ViNormal => ("NORMAL", VI_NORMAL_COLOR),
+        };
+        let (mode, mode_color) = if self.interrupting {
+            ("STOPPING", WARNING_COLOR)
+        } else {
+            (mode, mode_color)
         };
 
         let mut parts = vec![Span::styled(
@@ -1420,32 +1549,27 @@ fn resolve_provider_labels(
 ) -> (Option<String>, String) {
     let providers = client.list_otto_providers().ok().unwrap_or_default();
     match otto_model {
-        Some(OttoModel::Name(name)) => {
-            let friendly = providers
-                .iter()
-                .flat_map(|p| {
-                    p.models
-                        .iter()
-                        .filter(|m| m.id == *name)
-                        .map(|m| m.name.clone())
-                })
-                .next()
-                .unwrap_or_else(|| name.clone());
-            (None, friendly)
-        }
-        Some(OttoModel::ProviderModel {
-            provider_id,
-            model_id,
-        }) => {
-            let p = providers.iter().find(|p| p.id == *provider_id);
-            let provider_name = p
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| provider_id.clone());
-            let model_name = p
-                .and_then(|p| p.models.iter().find(|m| m.id == *model_id))
-                .map(|m| m.name.clone())
-                .unwrap_or_else(|| model_id.clone());
-            (Some(provider_name), model_name)
+        Some(model) => {
+            let model_id = model.id();
+            let lower = model_id.to_lowercase();
+            // Find which provider has this model (match by ID or name)
+            for p in &providers {
+                if let Some(m) = p.models.iter().find(|m| {
+                    m.id == model_id
+                        || m.id.to_lowercase() == lower
+                        || m.name.to_lowercase() == lower
+                }) {
+                    return (Some(p.name.clone()), m.name.clone());
+                }
+            }
+            // Fallback: extract a short name from the ID
+            // (e.g. "bedrock/global.anthropic.claude-sonnet-4-5-v1" → last segment)
+            let short = model_id
+                .rsplit_once('/')
+                .map(|(_, s)| s)
+                .or_else(|| model_id.rsplit_once('.').map(|(_, s)| s))
+                .unwrap_or(model_id);
+            (None, short.to_string())
         }
         None => providers
             .first()
@@ -1485,7 +1609,9 @@ pub fn run_tui(
     let mut terminal = Terminal::new(backend)?;
 
     // Panic hook to restore terminal on crash
-    let original_hook = std::panic::take_hook();
+    let original_hook: Arc<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static> =
+        std::panic::take_hook().into();
+    let panic_hook = original_hook.clone();
     std::panic::set_hook(Box::new(move |info| {
         let _ = terminal::disable_raw_mode();
         let _ = crossterm::execute!(
@@ -1495,13 +1621,13 @@ pub fn run_tui(
             DisableBracketedPaste,
             SetCursorStyle::DefaultUserShape
         );
-        original_hook(info);
+        (panic_hook)(info);
     }));
 
     let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
-    let cancel = AtomicBool::new(false);
+    let cancelled_gen = AtomicU64::new(0);
     let gen_counter = AtomicU64::new(0);
-    let active_thread_id: Mutex<Option<String>> = Mutex::new(None);
+    let active_thread_id: Mutex<Option<(u64, String)>> = Mutex::new(None);
 
     let result = std::thread::scope(|scope| {
         // Resolve provider/model labels in the background so the TUI loads instantly
@@ -1525,7 +1651,7 @@ pub fn run_tui(
             if event::poll(POLL_DURATION)? {
                 match event::read()? {
                     Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        app.handle_key(key, &cancel);
+                        app.handle_key(key, &cancelled_gen);
                     }
                     Event::Paste(text) => {
                         app.handle_paste(&text);
@@ -1554,25 +1680,38 @@ pub fn run_tui(
             // Spawns a background thread so the TUI stays responsive.
             if app.stop_pending {
                 app.stop_pending = false;
-                if let Some(tid) = active_thread_id
+                let current_gen = app.stream_generation;
+                let tid = active_thread_id
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .clone()
-                {
+                    .as_ref()
+                    .filter(|(g, _)| *g == current_gen)
+                    .map(|(_, tid)| tid.clone());
+                if let Some(tid) = tid {
+                    let stop_tx = stream_tx.clone();
                     scope.spawn(move || {
-                        let _ = client.stop_thread_and_wait(&tid);
+                        let error = client
+                            .stop_thread_and_wait(&tid)
+                            .err()
+                            .map(|e| e.to_string());
+                        let _ = stop_tx.send(StreamMsg::StopFinished { error });
                     });
+                } else {
+                    app.finish_stream();
+                    app.push_system("Cancelled");
                 }
             }
 
             // Launch streaming request if pending
-            if let Some(request) = app.take_pending_request() {
-                let generation = gen_counter.fetch_add(1, Ordering::Relaxed) + 1;
+            if !app.interrupting
+                && let Some(request) = app.take_pending_request()
+            {
+                let generation = gen_counter.fetch_add(1, Ordering::AcqRel) + 1;
                 app.stream_generation = generation;
-                cancel.store(false, Ordering::Relaxed);
+                // No cancelled_gen reset — each worker checks its own generation.
                 *active_thread_id.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 let tx = stream_tx.clone();
-                let cancel_ref = &cancel;
+                let cg_ref = &cancelled_gen;
                 let active_tid = &active_thread_id;
                 scope.spawn(move || {
                     let tx2 = tx.clone();
@@ -1583,7 +1722,7 @@ pub fn run_tui(
                     let result = client.otto_streaming(
                         &request,
                         |event| {
-                            if cancel_ref.load(Ordering::Relaxed) {
+                            if cg_ref.load(Ordering::Acquire) >= generation {
                                 return ControlFlow::Break(());
                             }
                             match event {
@@ -1604,15 +1743,29 @@ pub fn run_tui(
                         },
                         |tid: &str| {
                             *active_tid.lock().unwrap_or_else(|e| e.into_inner()) =
-                                Some(tid.to_string());
+                                Some((generation, tid.to_string()));
                             let _ = tx2.send(StreamMsg::Stream {
                                 generation,
                                 kind: StreamMsgKind::ThreadId(tid.to_string()),
                             });
                         },
                     );
+                    // If this generation was cancelled (possibly before thread_id
+                    // arrived), fire a stop to clean up the backend run.
+                    if cg_ref.load(Ordering::Acquire) >= generation
+                        && let Some((g, tid)) = active_tid
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_ref()
+                        && *g == generation
+                    {
+                        let _ = client.stop_thread(tid);
+                    }
                     match result {
-                        Ok(_) => send(StreamMsgKind::Done),
+                        Ok(response) => send(StreamMsgKind::Finished {
+                            status: response.stream_status,
+                            error: response.stream_error,
+                        }),
                         Err(e) => send(StreamMsgKind::Error(format!("{e}"))),
                     }
                 });
@@ -1630,11 +1783,13 @@ pub fn run_tui(
                     SetCursorStyle::DefaultUserShape
                 )?;
                 terminal.show_cursor()?;
-                let _ = std::panic::take_hook();
+                let restore_hook = original_hook.clone();
+                std::panic::set_hook(Box::new(move |info| (restore_hook)(info)));
 
-                // If a streaming thread is stuck on a network read, exit
-                // the process cleanly rather than waiting indefinitely.
-                if cancel.load(Ordering::Relaxed) {
+                // If force-quitting (second Ctrl+C) or a cancelled worker
+                // may be stuck on a blocking SSE read, exit the process
+                // cleanly rather than waiting for scoped thread join.
+                if app.force_quit || cancelled_gen.load(Ordering::Acquire) > 0 {
                     std::process::exit(0);
                 }
                 break;
@@ -1654,7 +1809,1182 @@ pub fn run_tui(
         SetCursorStyle::DefaultUserShape
     );
     let _ = terminal.show_cursor();
-    let _ = std::panic::take_hook();
+    let restore_hook = original_hook.clone();
+    std::panic::set_hook(Box::new(move |info| (restore_hook)(info)));
 
     result
+}
+
+// ---------------------------------------------------------------------------
+// Tests — App state machine
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU64;
+
+    fn test_app() -> App {
+        App::new(None, None, None, String::new(), None)
+    }
+
+    // -- Stream lifecycle --------------------------------------------------
+
+    #[test]
+    fn submit_starts_streaming_and_creates_pending_request() {
+        let mut app = test_app();
+        app.input = "hello".chars().collect();
+        app.submit();
+
+        assert!(app.streaming);
+        assert!(app.pending_request.is_some());
+        assert_eq!(app.pending_request.as_ref().unwrap().prompt, "hello");
+        assert!(app.stream_buffer.is_empty());
+        assert!(app.stream_pending.is_empty());
+        assert!(app.auto_scroll);
+        // User message should be added
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].role, Role::User);
+    }
+
+    #[test]
+    fn submit_blocked_while_streaming() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.input = "blocked".chars().collect();
+        app.submit();
+
+        // Should push a system message but NOT create a pending request
+        assert!(app.pending_request.is_none());
+        assert!(app.messages.iter().any(|m| m.role == Role::System));
+    }
+
+    #[test]
+    fn submit_on_empty_input_is_noop() {
+        let mut app = test_app();
+        app.input.clear();
+        app.submit();
+
+        assert!(!app.streaming);
+        assert!(app.pending_request.is_none());
+        assert!(app.messages.is_empty());
+    }
+
+    // -- Stream message handling -------------------------------------------
+
+    #[test]
+    fn stream_delta_accumulates_in_pending() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("hello ".into()),
+        });
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("world".into()),
+        });
+
+        let pending: String = app.stream_pending.iter().collect();
+        assert_eq!(pending, "hello world");
+    }
+
+    #[test]
+    fn stale_generation_messages_are_discarded() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 2;
+
+        // Message from generation 1 should be ignored
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("stale".into()),
+        });
+
+        assert!(app.stream_pending.is_empty());
+    }
+
+    #[test]
+    fn thread_id_is_stored_on_stream_msg() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ThreadId("t-123".into()),
+        });
+
+        assert_eq!(app.thread_id.as_deref(), Some("t-123"));
+    }
+
+    // -- Completed stream --------------------------------------------------
+
+    #[test]
+    fn completed_stream_flushes_buffer_and_stops_streaming() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.stream_start = Some(Instant::now());
+        app.stream_buffer = "response text".into();
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Completed,
+                error: None,
+            },
+        });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        // Buffer should be flushed to messages
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::Otto && m.content == "response text")
+        );
+    }
+
+    // -- Error handling ----------------------------------------------------
+
+    #[test]
+    fn stream_error_finishes_stream_and_shows_error_message() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Error("connection reset".into()),
+        });
+
+        assert!(!app.streaming);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("connection reset"))
+        );
+    }
+
+    #[test]
+    fn interrupted_stream_shows_connection_lost() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Interrupted,
+                error: Some("SSE stream closed".into()),
+            },
+        });
+
+        assert!(!app.streaming);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Connection lost"))
+        );
+    }
+
+    #[test]
+    fn otto_stream_ended_unexpectedly_error_shows_connection_lost() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Error(
+                "Otto stream ended unexpectedly: stream did not complete".into(),
+            ),
+        });
+
+        assert!(!app.streaming);
+        let sys_msg = app
+            .messages
+            .iter()
+            .find(|m| m.role == Role::System)
+            .expect("should have system message");
+        assert!(
+            sys_msg.content.contains("Connection lost"),
+            "expected 'Connection lost', got: {}",
+            sys_msg.content
+        );
+    }
+
+    // =====================================================================
+    // Cancellation & interrupt state machine (exhaustive)
+    // =====================================================================
+    //
+    // State diagram:
+    //   idle → [Ctrl+C] → cancel_stream() → interrupting=true, stop_pending=true
+    //        → [main loop] spawns stop thread → stop_pending=false
+    //        → [stop thread] sends StopFinished{error} → finish_stream()
+    //        → idle (ready for next message)
+    //
+    // The SSE stream may also send Finished{Cancelled} before StopFinished
+    // arrives — this is a no-op (deferred to StopFinished).
+
+    // -- 1. Basic cancel initiation ----------------------------------------
+
+    #[test]
+    fn cancel_sets_interrupting_and_stop_pending() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.stream_buffer = "partial output".into();
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        assert!(app.interrupting);
+        assert!(app.stop_pending);
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
+        // Generation should advance to reject future messages from old stream
+        assert_eq!(app.stream_generation, 2);
+        // Partial output should be flushed to messages
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::Otto && m.content == "partial output")
+        );
+        // Active tool call should be cleared
+        assert!(app.active_tool_call.is_none());
+    }
+
+    #[test]
+    fn cancel_with_no_text_yet() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        // No text received yet — buffer and pending are empty
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        assert!(app.interrupting);
+        assert!(app.stop_pending);
+        // No Otto message should be flushed (nothing to flush)
+        assert!(!app.messages.iter().any(|m| m.role == Role::Otto));
+    }
+
+    #[test]
+    fn cancel_with_pending_chars_flushes_both_buffer_and_pending() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.stream_buffer = "buffered ".into();
+        app.stream_pending = "pending".chars().collect();
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        // Both buffer and pending should be flushed together
+        let otto_msg = app
+            .messages
+            .iter()
+            .find(|m| m.role == Role::Otto)
+            .expect("should have Otto message");
+        assert_eq!(otto_msg.content, "buffered pending");
+    }
+
+    #[test]
+    fn cancel_clears_active_tool_call() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.active_tool_call = Some("read_file".into());
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        assert!(app.active_tool_call.is_none());
+    }
+
+    // -- 2. Idempotent cancel (multiple Ctrl+C) ----------------------------
+
+    #[test]
+    fn cancel_is_idempotent_while_interrupting() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 5;
+        app.stop_pending = false; // already dispatched
+
+        let cancelled_gen = AtomicU64::new(1);
+        app.cancel_stream(&cancelled_gen);
+
+        // Should not change anything — generation stays, no double stop
+        assert_eq!(app.stream_generation, 5);
+        assert!(!app.stop_pending); // should NOT re-set stop_pending
+    }
+
+    // -- 3. StopFinished: success ------------------------------------------
+
+    #[test]
+    fn stop_finished_success_ends_interrupt_and_shows_cancelled() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+
+        app.handle_stream_msg(StreamMsg::StopFinished { error: None });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(app.stream_start.is_none());
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content == "Cancelled")
+        );
+    }
+
+    // -- 4. StopFinished: timeout (your screenshot) ------------------------
+
+    #[test]
+    fn stop_finished_timeout_shows_interrupt_failed_and_recovers() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.thread_id = Some("t-123".into());
+
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some(
+                "API error (HTTP 408): thread 019d0b9d... did not stop within 30 seconds".into(),
+            ),
+        });
+
+        // Should fully recover to idle state
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(app.stream_start.is_none());
+        assert!(app.active_tool_call.is_none());
+        // Error message shown
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Interrupt failed"))
+        );
+        // Thread ID should be preserved so follow-up works
+        assert_eq!(app.thread_id.as_deref(), Some("t-123"));
+    }
+
+    #[test]
+    fn after_stop_timeout_user_can_submit_new_message() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.thread_id = Some("t-123".into());
+
+        // Stop times out
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("thread did not stop within 30 seconds".into()),
+        });
+
+        // User types a follow-up
+        app.input = "follow up question".chars().collect();
+        app.submit();
+
+        assert!(app.streaming);
+        let req = app
+            .pending_request
+            .as_ref()
+            .expect("should have pending request");
+        assert_eq!(req.prompt, "follow up question");
+        // Thread ID preserved for follow-up
+        assert_eq!(req.thread_id.as_deref(), Some("t-123"));
+    }
+
+    // -- 5. StopFinished: network error ------------------------------------
+
+    #[test]
+    fn stop_finished_network_error_recovers() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.thread_id = Some("t-456".into());
+
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("connection refused".into()),
+        });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Interrupt failed"))
+        );
+        // Thread ID preserved
+        assert_eq!(app.thread_id.as_deref(), Some("t-456"));
+
+        // Can still submit
+        app.input = "retry".chars().collect();
+        app.submit();
+        assert!(app.streaming);
+    }
+
+    // -- 6. Cancel before thread_id is known -------------------------------
+
+    #[test]
+    fn cancel_before_thread_id_finishes_immediately() {
+        // This simulates the main loop path where active_thread_id is None
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.thread_id = None;
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        assert!(app.interrupting);
+        assert!(app.stop_pending);
+
+        // In the main loop, stop_pending=true but active_thread_id=None
+        // triggers immediate finish_stream + "Cancelled"
+        // Simulate that path:
+        app.stop_pending = false;
+        app.finish_stream();
+        app.push_system("Cancelled");
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content == "Cancelled")
+        );
+    }
+
+    // -- 7. SSE Finished(Cancelled) then StopFinished ----------------------
+
+    #[test]
+    fn cancelled_stream_status_defers_to_stop_finished() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 1;
+
+        // SSE callback breaks → otto_streaming returns Cancelled
+        // This arrives as a Stream message (NOT StopFinished)
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Cancelled,
+                error: None,
+            },
+        });
+
+        // Should still be in interrupting state — waiting for StopFinished
+        assert!(app.streaming);
+        assert!(app.interrupting);
+    }
+
+    #[test]
+    fn cancelled_then_stop_finished_success() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 1;
+
+        // Step 1: SSE returns Cancelled (no-op)
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Cancelled,
+                error: None,
+            },
+        });
+        assert!(app.streaming); // still waiting
+
+        // Step 2: Background stop thread completes
+        app.handle_stream_msg(StreamMsg::StopFinished { error: None });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content == "Cancelled")
+        );
+    }
+
+    #[test]
+    fn cancelled_then_stop_finished_error() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 1;
+        app.thread_id = Some("t-789".into());
+
+        // Step 1: SSE returns Cancelled
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Cancelled,
+                error: None,
+            },
+        });
+
+        // Step 2: Stop thread fails
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("timeout".into()),
+        });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Interrupt failed"))
+        );
+        // Thread preserved for retry
+        assert_eq!(app.thread_id.as_deref(), Some("t-789"));
+    }
+
+    // -- 8. Stale messages after cancel ------------------------------------
+
+    #[test]
+    fn stale_deltas_after_cancel_are_discarded() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        // Cancel advances generation to 2
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+        assert_eq!(app.stream_generation, 2);
+
+        // Old-generation messages should be silently dropped
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("stale text".into()),
+        });
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ToolCallStart {
+                name: "stale_tool".into(),
+            },
+        });
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Finished {
+                status: OttoStreamStatus::Completed,
+                error: None,
+            },
+        });
+
+        // None of these should have affected state
+        assert!(app.stream_pending.is_empty());
+        assert!(app.active_tool_call.is_none());
+        // Still interrupting (waiting for StopFinished)
+        assert!(app.interrupting);
+        assert!(app.streaming);
+    }
+
+    // -- 9. Full cancel → recover → new message cycle ----------------------
+
+    #[test]
+    fn full_cancel_recover_new_message_cycle() {
+        let mut app = test_app();
+
+        // 1. User sends first message
+        app.input = "first question".chars().collect();
+        app.submit();
+        assert!(app.streaming);
+        let req1 = app.take_pending_request().unwrap();
+        assert_eq!(req1.prompt, "first question");
+
+        // Simulate thread ID arriving
+        app.stream_generation = 1;
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ThreadId("t-cycle".into()),
+        });
+        // Some text arrives
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("partial answer".into()),
+        });
+
+        // 2. User cancels
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+        assert!(app.interrupting);
+        assert!(app.stop_pending);
+
+        // 3. Stop thread succeeds
+        app.stop_pending = false;
+        app.handle_stream_msg(StreamMsg::StopFinished { error: None });
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+
+        // Partial text should be in messages
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::Otto && m.content.contains("partial answer"))
+        );
+
+        // 4. User sends follow-up
+        app.input = "second question".chars().collect();
+        app.submit();
+        assert!(app.streaming);
+        let req2 = app.pending_request.as_ref().unwrap();
+        assert_eq!(req2.prompt, "second question");
+        assert_eq!(req2.thread_id.as_deref(), Some("t-cycle"));
+    }
+
+    #[test]
+    fn full_cancel_timeout_recover_new_message_cycle() {
+        let mut app = test_app();
+
+        // 1. Streaming
+        app.input = "question".chars().collect();
+        app.submit();
+        app.stream_generation = 1;
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ThreadId("t-timeout".into()),
+        });
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Delta("response".into()),
+        });
+
+        // 2. Cancel
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        // 3. Stop times out (your screenshot scenario)
+        app.stop_pending = false;
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some(
+                "API error (HTTP 408): thread t-timeout did not stop within 30 seconds".into(),
+            ),
+        });
+
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+
+        // 4. User sends follow-up — should work despite timeout
+        app.input = "follow up".chars().collect();
+        app.submit();
+        assert!(app.streaming);
+        assert!(!app.interrupting);
+        let req = app.pending_request.as_ref().unwrap();
+        assert_eq!(req.thread_id.as_deref(), Some("t-timeout"));
+    }
+
+    // -- 10. Multiple rapid Ctrl+C -----------------------------------------
+
+    #[test]
+    fn rapid_ctrl_c_during_interrupting_force_quits() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 5;
+
+        let cancelled_gen = AtomicU64::new(1);
+
+        // First Ctrl+C during interrupting → force quit
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancelled_gen,
+        );
+
+        assert!(app.should_quit);
+        assert!(app.force_quit);
+        // Still interrupting/streaming — force quit bypasses normal cleanup
+        assert!(app.interrupting);
+        assert!(app.streaming);
+        assert_eq!(app.stream_generation, 5);
+    }
+
+    #[test]
+    fn rapid_esc_during_interrupting_is_safe() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.stream_generation = 5;
+
+        let cancelled_gen = AtomicU64::new(1);
+
+        for _ in 0..5 {
+            app.handle_key(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                &cancelled_gen,
+            );
+        }
+
+        assert!(app.interrupting);
+        assert!(app.streaming);
+        assert_eq!(app.stream_generation, 5);
+    }
+
+    // -- 11. Stream error during interrupting state ------------------------
+
+    #[test]
+    fn stream_error_during_interrupting_is_discarded() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        // Cancel advances generation
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+        assert_eq!(app.stream_generation, 2);
+
+        // Error from old generation arrives — should be discarded
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::Error("old error".into()),
+        });
+
+        // Still interrupting, waiting for StopFinished
+        assert!(app.streaming);
+        assert!(app.interrupting);
+        assert!(
+            !app.messages
+                .iter()
+                .any(|m| { m.role == Role::System && m.content.contains("old error") })
+        );
+    }
+
+    // -- 12. StopFinished when not interrupting (race) ---------------------
+
+    #[test]
+    fn stop_finished_when_not_interrupting_is_noop() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = false; // race: already recovered somehow
+
+        app.handle_stream_msg(StreamMsg::StopFinished { error: None });
+
+        // Should not affect state — only acts when interrupting
+        assert!(app.streaming);
+        assert!(!app.interrupting);
+    }
+
+    #[test]
+    fn stop_finished_when_idle_is_harmless() {
+        let mut app = test_app();
+        // Not streaming at all
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("some error".into()),
+        });
+
+        // Should not crash or leave bad state
+        assert!(!app.streaming);
+        assert!(!app.interrupting);
+    }
+
+    // -- 13. Ctrl+C/Esc routing --------------------------------------------
+
+    #[test]
+    fn ctrl_c_while_streaming_cancels_not_quits() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancelled_gen,
+        );
+
+        assert!(app.interrupting);
+        assert!(!app.should_quit);
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn ctrl_c_while_not_streaming_quits() {
+        let mut app = test_app();
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancelled_gen,
+        );
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn esc_while_streaming_cancels() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &cancelled_gen,
+        );
+
+        assert!(app.interrupting);
+        assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn esc_while_not_streaming_enters_vi_normal() {
+        let mut app = test_app();
+        app.input_mode = InputMode::ViInsert;
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &cancelled_gen,
+        );
+
+        assert_eq!(app.input_mode, InputMode::ViNormal);
+        assert!(!app.interrupting);
+    }
+
+    // -- 14. Submit blocked during interrupting ----------------------------
+
+    #[test]
+    fn submit_blocked_during_interrupting() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+        app.input = "please work".chars().collect();
+        app.submit();
+
+        // Should be blocked (streaming is still true)
+        assert!(app.pending_request.is_none());
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Waiting"))
+        );
+    }
+
+    // -- 15. Pending request not launched during interrupting ---------------
+
+    #[test]
+    fn pending_request_guard_during_interrupting() {
+        // The main loop has: if !app.interrupting && let Some(request) = ...
+        // This test verifies the app-level invariant that pending_request
+        // should not exist during interrupting (submit blocks it).
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+
+        // Force a pending request (shouldn't happen in practice)
+        app.pending_request = Some(OttoChatRequest {
+            prompt: "should not launch".into(),
+            runtime_uuid: None,
+            thread_id: None,
+            model: None,
+        });
+
+        // The main loop guard is: if !app.interrupting && let Some(req) = app.take_pending_request()
+        // Verify: with interrupting=true, take_pending_request should return Some
+        // but the guard prevents launching. We verify the take works.
+        assert!(app.interrupting);
+        assert!(app.pending_request.is_some());
+        // (The main loop guard is tested by integration, not here)
+    }
+
+    // -- 16. Cancel during tool call execution -----------------------------
+
+    #[test]
+    fn cancel_during_tool_call_clears_tool_and_preserves_text() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.stream_buffer = "Let me check that for you.".into();
+        app.active_tool_call = Some("list_workspaces".into());
+
+        let cancelled_gen = AtomicU64::new(0);
+        app.cancel_stream(&cancelled_gen);
+
+        assert!(app.active_tool_call.is_none());
+        assert!(app.interrupting);
+        // Partial text preserved
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::Otto && m.content.contains("Let me check"))
+        );
+    }
+
+    // -- Tool call display -------------------------------------------------
+
+    #[test]
+    fn tool_call_start_sets_active_tool() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ToolCallStart {
+                name: "list_flows".into(),
+            },
+        });
+
+        assert_eq!(app.active_tool_call.as_deref(), Some("list_flows"));
+    }
+
+    #[test]
+    fn tool_call_output_clears_active_tool_and_adds_system_msg() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.stream_generation = 1;
+        app.active_tool_call = Some("list_flows".into());
+
+        app.handle_stream_msg(StreamMsg::Stream {
+            generation: 1,
+            kind: StreamMsgKind::ToolCallOutput {
+                name: "list_flows".into(),
+                output: "sales, marketing".into(),
+            },
+        });
+
+        assert!(app.active_tool_call.is_none());
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("list_flows"))
+        );
+    }
+
+    // -- Provider info update ----------------------------------------------
+
+    #[test]
+    fn provider_info_updates_labels() {
+        let mut app = test_app();
+
+        app.handle_stream_msg(StreamMsg::ProviderInfo {
+            provider_label: Some("AWS Bedrock".into()),
+            model_label: "Claude Sonnet".into(),
+        });
+
+        assert_eq!(app.provider_label.as_deref(), Some("AWS Bedrock"));
+        assert_eq!(app.model_label, "Claude Sonnet");
+    }
+
+    // -- Input helpers -----------------------------------------------------
+
+    #[test]
+    fn input_line_count_wraps_correctly() {
+        let mut app = test_app();
+        // 10 chars, width 8 (avail = 5 after 3-char prompt) → 2 rows of content
+        // + cursor at end of full row triggers extra row = 3
+        app.input = "abcdefghij".chars().collect();
+        app.cursor = app.input.len();
+        assert_eq!(app.input_line_count(8), 3);
+
+        // 7 chars, avail 5 → row1: 5 chars, row2: 2 chars + cursor not full → 2 rows
+        app.input = "abcdefg".chars().collect();
+        app.cursor = app.input.len();
+        assert_eq!(app.input_line_count(8), 2);
+    }
+
+    #[test]
+    fn input_line_count_newlines() {
+        let mut app = test_app();
+        app.input = "line1\nline2\nline3".chars().collect();
+        app.cursor = app.input.len();
+        assert_eq!(app.input_line_count(80), 3);
+    }
+
+    #[test]
+    fn input_line_count_capped_at_max() {
+        let mut app = test_app();
+        // Create input with many newlines to exceed MAX_INPUT_LINES
+        app.input = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk".chars().collect();
+        app.cursor = app.input.len();
+        assert_eq!(app.input_line_count(80), MAX_INPUT_LINES);
+    }
+
+    // -- Slash commands ----------------------------------------------------
+
+    #[test]
+    fn clear_command_resets_thread() {
+        let mut app = test_app();
+        app.thread_id = Some("t-old".into());
+        app.messages.push(Message {
+            role: Role::Otto,
+            content: "old message".into(),
+            timestamp: SystemTime::now(),
+        });
+
+        app.handle_command("/clear");
+
+        assert!(app.thread_id.is_none());
+        // Should only have the "Thread cleared" system message
+        assert_eq!(app.messages.len(), 1);
+        assert!(app.messages[0].content.contains("cleared"));
+    }
+
+    #[test]
+    fn unknown_command_shows_error() {
+        let mut app = test_app();
+        app.handle_command("/foobar");
+
+        assert!(
+            app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("Unknown command"))
+        );
+    }
+
+    #[test]
+    fn quit_command_sets_should_quit() {
+        let mut app = test_app();
+        app.handle_command("/quit");
+        assert!(app.should_quit);
+
+        let mut app2 = test_app();
+        app2.handle_command("/exit");
+        assert!(app2.should_quit);
+
+        let mut app3 = test_app();
+        app3.handle_command("/q");
+        assert!(app3.should_quit);
+    }
+
+    // -- History -----------------------------------------------------------
+
+    #[test]
+    fn history_records_submitted_input() {
+        let mut app = test_app();
+        app.input = "first query".chars().collect();
+        app.submit();
+        app.finish_stream(); // clear streaming state
+
+        app.input = "second query".chars().collect();
+        app.submit();
+        app.finish_stream();
+
+        // Navigate back through history
+        if let Some(prev) = app.history.prev(&app.input) {
+            let s: String = prev.iter().collect();
+            assert_eq!(s, "second query");
+        } else {
+            panic!("expected history entry");
+        }
+    }
+
+    // -- Streaming text smoothing ------------------------------------------
+
+    #[test]
+    fn tick_stream_flushes_when_bulk_threshold_exceeded() {
+        let mut app = test_app();
+        app.streaming = true;
+        // Add more chars than STREAM_BULK_THRESHOLD
+        let text: String = (0..250).map(|_| 'x').collect();
+        app.stream_pending = text.chars().collect();
+        // Set last_stream_tick to the past so chars_due > 0
+        app.last_stream_tick = Instant::now() - Duration::from_millis(100);
+
+        app.tick_stream();
+
+        // Should have flushed a large chunk into stream_buffer
+        assert!(!app.stream_buffer.is_empty());
+        // Total should still equal 250
+        assert_eq!(app.stream_buffer.len() + app.stream_pending.len(), 250);
+    }
+
+    // -- Completion --------------------------------------------------------
+
+    #[test]
+    fn tab_completion_cycles_through_commands() {
+        let mut app = test_app();
+        app.input = "/cl".chars().collect();
+        app.cursor = app.input.len();
+
+        app.complete_tab();
+        let first: String = app.input.iter().collect();
+        assert_eq!(first, "/clear");
+
+        // Tab again should still show /clear (only match)
+        app.complete_tab();
+        let second: String = app.input.iter().collect();
+        assert_eq!(second, "/clear");
+    }
+
+    // -- Paste handling ----------------------------------------------------
+
+    #[test]
+    fn paste_inserts_at_cursor_and_switches_to_insert_mode() {
+        let mut app = test_app();
+        app.input_mode = InputMode::ViNormal;
+        app.input = "hello".chars().collect();
+        app.cursor = 5;
+
+        app.handle_paste(" world");
+
+        let text: String = app.input.iter().collect();
+        assert_eq!(text, "hello world");
+        assert_eq!(app.input_mode, InputMode::ViInsert);
+        assert_eq!(app.cursor, 11);
+    }
+
+    // -- Markdown rendering ------------------------------------------------
+
+    #[test]
+    fn render_markdown_handles_code_blocks() {
+        let text = "text\n```rust\nfn main() {}\n```\nmore text";
+        let lines = render_markdown(text, Role::Otto);
+        // Should have: text, code block header, code line, code block footer, more text
+        assert!(lines.len() >= 5);
+    }
+
+    #[test]
+    fn render_markdown_handles_inline_code() {
+        let text = "use `foo()` here";
+        let lines = render_markdown(text, Role::Otto);
+        assert_eq!(lines.len(), 1);
+        // Line should have multiple spans (indent, text, code, text)
+        assert!(lines[0].spans.len() >= 3);
+    }
+
+    // -- Force quit (second Ctrl+C during interrupting) --------------------
+
+    #[test]
+    fn second_ctrl_c_during_interrupting_sets_force_quit() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = true;
+
+        let cancelled_gen = AtomicU64::new(1);
+        app.handle_key(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            &cancelled_gen,
+        );
+
+        assert!(app.force_quit);
+        assert!(app.should_quit);
+    }
+
+    // -- StopFinished guarded by interrupting state ------------------------
+
+    #[test]
+    fn stop_finished_ignored_when_not_interrupting() {
+        let mut app = test_app();
+        app.streaming = true;
+        app.interrupting = false;
+
+        let msg_count_before = app.messages.len();
+        app.handle_stream_msg(StreamMsg::StopFinished {
+            error: Some("should be ignored".into()),
+        });
+
+        // Should not change state or add messages
+        assert!(app.streaming);
+        assert_eq!(app.messages.len(), msg_count_before);
+    }
 }

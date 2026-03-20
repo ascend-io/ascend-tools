@@ -1,6 +1,7 @@
 use std::fmt;
 use std::io::BufReader;
 use std::ops::ControlFlow;
+use std::time::{Duration, Instant};
 
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
@@ -11,8 +12,8 @@ use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
     Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
-    OttoChatRequest, OttoChatResponse, OttoProvider, Project, Runtime, RuntimeCreate,
-    RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
+    OttoChatRequest, OttoChatResponse, OttoModel, OttoProvider, OttoStreamStatus, Project, Runtime,
+    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -21,6 +22,16 @@ const PATH_SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'#').add(b'%').add(b'/'
 /// Encode for use in URL query parameter values.
 /// Uses NON_ALPHANUMERIC to correctly encode &, =, +, and other reserved characters.
 const QUERY_VALUE: &AsciiSet = NON_ALPHANUMERIC;
+const FOLLOW_UP_RETRY_TIMEOUT: Duration = Duration::from_secs(30);
+const FOLLOW_UP_RETRY_INTERVAL: Duration = Duration::from_millis(500);
+const STOP_THREAD_TIMEOUT: Duration = Duration::from_secs(30);
+const STOP_THREAD_POLL_INTERVAL_MIN: Duration = Duration::from_millis(100);
+const STOP_THREAD_POLL_INTERVAL_MAX: Duration = Duration::from_millis(500);
+/// Max retries for initial SSE connection (before any events arrive).
+/// Mid-stream reconnection is not attempted because the backend replays
+/// all buffered events on new subscriptions, producing duplicates.
+const SSE_CONNECT_MAX_RETRIES: u32 = 3;
+const SSE_CONNECT_BACKOFF: Duration = Duration::from_millis(500);
 
 fn encode_path(s: &str) -> String {
     utf8_percent_encode(s, PATH_SEGMENT).to_string()
@@ -444,31 +455,97 @@ impl AscendClient {
         self.get("/api/v1/otto/providers")
     }
 
-    /// Resolve a provider name to its ID.
+    /// Resolve a provider name and model name to an [`OttoModel`] with IDs.
     ///
-    /// Fetches the provider list and finds the one matching `name`
-    /// (case-insensitive, matches against both name and ID).
-    pub fn resolve_otto_provider_id(&self, name: &str) -> Result<String> {
+    /// Accepts display names or IDs for both provider and model (case-insensitive).
+    /// Returns `None` when `model` is `None`.
+    pub fn resolve_otto_model(
+        &self,
+        provider: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<Option<OttoModel>> {
+        let model = match model {
+            Some(m) => m,
+            None => return Ok(None),
+        };
         let providers = self.list_otto_providers()?;
-        let lower = name.to_lowercase();
-        let matches: Vec<_> = providers
-            .into_iter()
-            .filter(|p| p.name.to_lowercase() == lower || p.id.to_lowercase() == lower)
-            .collect();
-        match matches.len() {
-            1 => Ok(matches.into_iter().next().unwrap().id),
-            0 => Err(Error::NotFound {
-                kind: "otto provider".to_string(),
-                title: name.to_string(),
-            }),
-            _ => Err(Error::AmbiguousTitle {
-                kind: "otto provider".to_string(),
-                title: name.to_string(),
-                matches: matches
-                    .iter()
-                    .map(|p| (p.id.clone(), p.name.clone()))
-                    .collect(),
-            }),
+
+        if let Some(provider_name) = provider {
+            // Resolve provider by name or ID
+            let lower = provider_name.to_lowercase();
+            let matched: Vec<_> = providers
+                .iter()
+                .filter(|p| p.name.to_lowercase() == lower || p.id.to_lowercase() == lower)
+                .collect();
+            let prov = match matched.len() {
+                1 => matched[0],
+                0 => {
+                    return Err(Error::NotFoundWithOptions {
+                        kind: "otto provider".to_string(),
+                        title: provider_name.to_string(),
+                        available: providers
+                            .iter()
+                            .map(|p| format!("{} ({})", p.name, p.id))
+                            .collect(),
+                    });
+                }
+                _ => {
+                    return Err(Error::AmbiguousTitle {
+                        kind: "otto provider".to_string(),
+                        title: provider_name.to_string(),
+                        matches: matched
+                            .iter()
+                            .map(|p| (p.id.clone(), p.name.clone()))
+                            .collect(),
+                    });
+                }
+            };
+            let model_lower = model.to_lowercase();
+            let resolved = prov.models.iter().find(|m| {
+                m.id.to_lowercase() == model_lower || m.name.to_lowercase() == model_lower
+            });
+            match resolved {
+                Some(m) => Ok(Some(OttoModel::new(m.id.clone()))),
+                None => Err(Error::NotFoundWithOptions {
+                    kind: format!("model on provider '{}'", prov.name),
+                    title: model.to_string(),
+                    available: prov.models.iter().map(|m| m.name.clone()).collect(),
+                }),
+            }
+        } else {
+            // No provider specified — search all providers for the model.
+            // Collect all matches to detect ambiguity across providers.
+            let model_lower = model.to_lowercase();
+            let mut matches: Vec<(&OttoProvider, &crate::models::OttoProviderModel)> = Vec::new();
+            for prov in &providers {
+                if let Some(m) = prov.models.iter().find(|m| {
+                    m.id.to_lowercase() == model_lower || m.name.to_lowercase() == model_lower
+                }) {
+                    matches.push((prov, m));
+                }
+            }
+            match matches.len() {
+                1 => Ok(Some(OttoModel::new(matches[0].1.id.clone()))),
+                0 => {
+                    let available: Vec<String> = providers
+                        .iter()
+                        .flat_map(|p| p.models.iter().map(|m| m.name.clone()))
+                        .collect();
+                    Err(Error::NotFoundWithOptions {
+                        kind: "otto model".to_string(),
+                        title: model.to_string(),
+                        available,
+                    })
+                }
+                _ => Err(Error::AmbiguousTitle {
+                    kind: "otto model".to_string(),
+                    title: model.to_string(),
+                    matches: matches
+                        .iter()
+                        .map(|(p, m)| (m.id.clone(), format!("{} ({})", m.name, p.name)))
+                        .collect(),
+                }),
+            }
         }
     }
 
@@ -488,9 +565,18 @@ impl AscendClient {
             },
             |_| {},
         )?;
+        if response.stream_status != OttoStreamStatus::Completed {
+            return Err(Error::OttoStreamEndedUnexpectedly {
+                context: response
+                    .stream_error
+                    .unwrap_or_else(|| "stream did not complete".to_string()),
+            });
+        }
         Ok(OttoChatResponse {
             message: full_message,
             thread_id: response.thread_id,
+            stream_status: OttoStreamStatus::Completed,
+            stream_error: None,
         })
     }
 
@@ -530,25 +616,17 @@ impl AscendClient {
         let json_body = serde_json::to_string(&body)
             .with_json_serialize_context(format!("{context} request body"))?;
         let is_follow_up = request.thread_id.is_some();
+        let retry_deadline = Instant::now() + FOLLOW_UP_RETRY_TIMEOUT;
         let create_resp: Value = {
             let mut last_err = None;
             let mut resp_val = None;
-            // Retry on 409 (thread still processing from a cancelled run).
-            // The stop request is async, so the thread may not have fully
-            // wound down yet when the user sends a follow-up message.
-            let attempts = if is_follow_up { 30 } else { 1 };
-            for attempt in 0..attempts {
-                if attempt > 0 {
-                    // Call stop to nudge the backend, then wait before retrying
-                    if let Some(ref tid) = request.thread_id {
-                        let _ = self.stop_thread(tid);
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(200));
-                }
+            let mut sent_stop = false;
+            let mut current_token = token.clone();
+            loop {
                 let resp = self
                     .agent
                     .post(&url)
-                    .header("Authorization", &format!("Bearer {token}"))
+                    .header("Authorization", &format!("Bearer {current_token}"))
                     .header("Content-Type", "application/json")
                     .send(json_body.as_bytes())
                     .with_request_context(context.clone())?;
@@ -556,6 +634,20 @@ impl AscendClient {
                 if status == 409 && is_follow_up {
                     let body_str = resp.into_body().read_to_string().unwrap_or_default();
                     last_err = Some(api_error(status, &body_str));
+                    // Send stop once (fire-and-forget) to nudge the backend,
+                    // then retry the POST until the thread finishes processing.
+                    if !sent_stop {
+                        if let Some(ref tid) = request.thread_id {
+                            let _ = self.stop_thread(tid);
+                        }
+                        sent_stop = true;
+                    }
+                    if Instant::now() >= retry_deadline {
+                        break;
+                    }
+                    std::thread::sleep(FOLLOW_UP_RETRY_INTERVAL);
+                    // Refresh token on retry (may have expired during wait)
+                    current_token = self.auth.get_token()?;
                     continue;
                 }
                 resp_val = Some(handle_response(resp, &context)?);
@@ -578,36 +670,105 @@ impl AscendClient {
 
         on_thread_id(&thread_id);
 
-        // Step 2: Stream SSE events from the thread updates endpoint (no global timeout)
+        // Step 2: Connect to the SSE updates stream.
+        //
+        // The backend SSE stream never closes naturally — it sends heartbeat
+        // pings every 30s and stays open for future messages on the thread.
+        // On new subscriptions it replays ALL buffered events from the start,
+        // so we only retry the initial connection (before any events arrive).
+        // Mid-stream reconnection would produce duplicate text.
         let updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
         let updates_context = format!("GET {updates_path}");
-        let updates_resp = self
-            .streaming_agent
-            .get(&updates_url)
-            .header("Authorization", &format!("Bearer {token}"))
-            .header("Accept", "text/event-stream")
-            .call()
-            .with_request_context(updates_context.clone())?;
+
+        let updates_resp = {
+            let mut last_err = None;
+            let mut resp = None;
+            for attempt in 0..=SSE_CONNECT_MAX_RETRIES {
+                if attempt > 0 {
+                    let backoff = SSE_CONNECT_BACKOFF * 2u32.pow(attempt - 1);
+                    std::thread::sleep(backoff);
+                }
+                // Fresh token on retry (may have expired)
+                let stream_token = if attempt > 0 {
+                    self.auth.get_token()?
+                } else {
+                    token.clone()
+                };
+                match self
+                    .streaming_agent
+                    .get(&updates_url)
+                    .header("Authorization", &format!("Bearer {stream_token}"))
+                    .header("Accept", "text/event-stream")
+                    .call()
+                {
+                    Ok(r) => {
+                        resp = Some(r);
+                        break;
+                    }
+                    Err(e) => last_err = Some(e),
+                }
+            }
+            match resp {
+                Some(r) => r,
+                None => {
+                    return Err(Error::RequestFailed {
+                        context: updates_context,
+                        source: last_err.unwrap(),
+                    });
+                }
+            }
+        };
 
         if !(200..300).contains(&updates_resp.status().as_u16()) {
+            // Non-2xx on SSE connect is an interruption, not a completed stream.
+            // check_error_status will return Err for non-2xx, but if it somehow
+            // returns Ok, mark as Interrupted rather than misleadingly Completed.
             return check_error_status(updates_resp, &updates_context).map(|()| OttoChatResponse {
                 message: String::new(),
                 thread_id: Some(thread_id),
+                stream_status: OttoStreamStatus::Interrupted,
+                stream_error: Some(format!("{updates_context} returned non-2xx status")),
             });
         }
 
-        // Parse SSE stream, dispatching events to the caller
+        // Parse SSE stream, dispatching events to the caller.
+        // No mid-stream reconnection — see comment above.
         let reader = BufReader::new(updates_resp.into_body().into_reader());
+
+        let mut saw_terminal_event = false;
+        let mut cancelled_by_callback = false;
+        let mut response_error: Option<String> = None;
 
         for event_result in SseReader::new(reader) {
             let event = event_result?;
             let event_type = event.event_type.as_deref();
 
             if event_type == Some("thread.done") || event_type == Some("thread.stopped") {
+                saw_terminal_event = true;
                 break;
             }
 
+            // response.error is a terminal event from the backend indicating
+            // the response failed (e.g. context window exceeded, model error).
+            // Treat it like a stream interruption with the error message.
+            if event_type == Some("response.error") {
+                let error_msg = serde_json::from_str::<Value>(&event.data)
+                    .ok()
+                    .and_then(|d| {
+                        // Try common error payload keys: error, message, detail
+                        d.get("error")
+                            .or_else(|| d.get("message"))
+                            .or_else(|| d.get("detail"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    })
+                    .unwrap_or_else(|| "response error".to_string());
+                response_error = Some(error_msg);
+                break;
+            }
+
+            // Skip heartbeats and unknown event types without data
             let Ok(data) = serde_json::from_str::<Value>(&event.data) else {
                 continue;
             };
@@ -663,13 +824,29 @@ impl AscendClient {
             if let Some(se) = stream_event
                 && on_event(se).is_break()
             {
+                cancelled_by_callback = true;
                 break;
             }
         }
 
+        let (stream_status, stream_error) = if cancelled_by_callback {
+            (OttoStreamStatus::Cancelled, None)
+        } else if let Some(err) = response_error {
+            (OttoStreamStatus::Interrupted, Some(err))
+        } else if saw_terminal_event {
+            (OttoStreamStatus::Completed, None)
+        } else {
+            (
+                OttoStreamStatus::Interrupted,
+                Some(format!("{updates_context} ended before terminal event")),
+            )
+        };
+
         Ok(OttoChatResponse {
             message: String::new(),
             thread_id: Some(thread_id),
+            stream_status,
+            stream_error,
         })
     }
 
@@ -684,16 +861,20 @@ impl AscendClient {
 
     /// Stop a running Otto thread and wait until processing has fully stopped.
     /// Polls the stop endpoint until the backend reports "not_processing".
-    /// Returns an error if the thread does not stop within ~5 seconds.
+    /// Starts with 100ms poll interval and backs off to 500ms.
+    /// Returns an error if the thread does not stop within ~30 seconds.
     pub fn stop_thread_and_wait(&self, thread_id: &str) -> Result<()> {
         let resp: Value = self.stop_thread(thread_id)?;
         let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
         if status != "stopping" {
             return Ok(());
         }
-        // Poll until the backend confirms the thread is no longer processing
-        for _ in 0..50 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        let deadline = Instant::now() + STOP_THREAD_TIMEOUT;
+        let mut poll_interval = STOP_THREAD_POLL_INTERVAL_MIN;
+        // Poll until the backend confirms the thread is no longer processing.
+        while Instant::now() < deadline {
+            std::thread::sleep(poll_interval);
+            poll_interval = (poll_interval * 2).min(STOP_THREAD_POLL_INTERVAL_MAX);
             let resp: Value = self.stop_thread(thread_id)?;
             let status = resp.get("status").and_then(|v| v.as_str()).unwrap_or("");
             if status != "stopping" {
@@ -702,7 +883,7 @@ impl AscendClient {
         }
         Err(Error::ApiError {
             status: 408,
-            message: format!("thread {thread_id} did not stop within 5 seconds"),
+            message: format!("thread {thread_id} did not stop within 30 seconds"),
         })
     }
 

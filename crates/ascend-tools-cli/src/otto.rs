@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, OttoModel, StreamEvent};
+use ascend_tools::models::{OttoChatRequest, StreamEvent};
 use clap::Subcommand;
 
 use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
@@ -263,16 +263,11 @@ pub(crate) fn handle_otto_cmd(
                 uuid.as_deref(),
             )?;
 
-            let provider_id = provider
-                .as_deref()
-                .map(|name| client.resolve_otto_provider_id(name))
-                .transpose()?;
-
             let request = OttoChatRequest {
                 prompt,
                 runtime_uuid,
                 thread_id: thread,
-                model: OttoModel::from_options(provider_id.as_deref(), model.as_deref()),
+                model: client.resolve_otto_model(provider.as_deref(), model.as_deref())?,
             };
 
             match output {
@@ -404,7 +399,7 @@ pub(crate) fn handle_otto_cmd(
                 deployment.as_deref(),
                 uuid.as_deref(),
             )?;
-            let otto_model = OttoModel::from_options(provider.as_deref(), model.as_deref());
+            let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref())?;
             let context_label = workspace
                 .as_deref()
                 .map(|w| format!("workspace:{w}"))

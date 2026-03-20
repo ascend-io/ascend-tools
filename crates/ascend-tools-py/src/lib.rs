@@ -477,14 +477,12 @@ impl Client {
                 let runtime_uuid = self
                     .inner
                     .resolve_optional_runtime_target(workspace, deployment, uuid)?;
-                let provider_id = provider
-                    .map(|name| self.inner.resolve_otto_provider_id(name))
-                    .transpose()?;
+                let otto_model = self.inner.resolve_otto_model(provider, model)?;
                 let request = models::OttoChatRequest {
                     prompt: prompt.to_string(),
                     runtime_uuid,
                     thread_id: thread_id.map(String::from),
-                    model: models::OttoModel::from_options(provider_id.as_deref(), model),
+                    model: otto_model,
                 };
                 self.inner.otto(&request)
             })
