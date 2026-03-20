@@ -238,3 +238,21 @@ def run_mcp_http(
     since it blocks the calling thread.
     """
     ...
+
+
+def init_mcp_embed(instance_api_url: str) -> None:
+    """Initialize the embeddable MCP handler. Call once at app startup before handle_mcp_request."""
+    ...
+
+
+def handle_mcp_request(
+    method: str,
+    path: str,
+    headers: list[tuple[str, str]],
+    body: bytes,
+) -> tuple[int, list[tuple[str, str]], bytes]:
+    """Handle one MCP HTTP request. Uses the request's Authorization Bearer token.
+
+    Returns (status_code, headers, body).
+    """
+    ...

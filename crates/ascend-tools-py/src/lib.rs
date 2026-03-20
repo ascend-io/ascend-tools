@@ -569,6 +569,26 @@ fn run_mcp_http(
     })
 }
 
+/// Initialize the embeddable MCP handler. Call once at app startup before handle_mcp_request.
+#[pyfunction]
+fn init_mcp_embed(instance_api_url: String) -> PyResult<()> {
+    ascend_tools_mcp::init_mcp_embed(instance_api_url);
+    Ok(())
+}
+
+/// Handle one MCP HTTP request using the caller's Bearer token from the request.
+/// Returns (status_code, list of (name, value) headers, body bytes).
+#[pyfunction]
+fn handle_mcp_request(
+    method: &str,
+    path: &str,
+    headers: Vec<(String, String)>,
+    body: &[u8],
+) -> PyResult<(u16, Vec<(String, String)>, Vec<u8>)> {
+    ascend_tools_mcp::handle_mcp_request(method, path, &headers, body)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[pymodule]
@@ -577,6 +597,8 @@ fn core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(run_cli, m)?)?;
     m.add_function(wrap_pyfunction!(run_mcp_http, m)?)?;
+    m.add_function(wrap_pyfunction!(init_mcp_embed, m)?)?;
+    m.add_function(wrap_pyfunction!(handle_mcp_request, m)?)?;
     Ok(())
 }
 

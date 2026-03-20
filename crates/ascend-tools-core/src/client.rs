@@ -106,6 +106,20 @@ impl AscendClient {
         })
     }
 
+    /// Create a client that uses the given instance token (Bearer) for all requests.
+    /// Used when each request has its own token (e.g. MCP proxy propagating the caller's key).
+    pub fn from_instance_token(instance_api_url: String, token: String) -> Result<Self> {
+        let agent = crate::new_agent();
+        let streaming_agent = crate::new_streaming_agent();
+        let auth = Auth::from_instance_token(instance_api_url.clone(), token, agent.clone());
+        Ok(Self {
+            agent,
+            streaming_agent,
+            instance_api_url,
+            auth,
+        })
+    }
+
     // -- Runtimes --
 
     pub fn list_runtimes(&self, filters: RuntimeFilters) -> Result<Vec<Runtime>> {

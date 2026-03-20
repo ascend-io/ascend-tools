@@ -10,15 +10,18 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 
 /// Manages authentication for the Ascend API.
 ///
-/// Signs Ed25519 JWTs and exchanges them for instance tokens
-/// via the Instance API's /api/v1/auth/token endpoint.
+/// Either signs Ed25519 JWTs and exchanges them for instance tokens
+/// via the Instance API's /api/v1/auth/token endpoint (service account),
+/// or uses a fixed instance token (Bearer) passed at construction.
 pub struct Auth {
     service_account_id: String,
-    key_bytes: Zeroizing<Vec<u8>>,
+    key_bytes: Option<Zeroizing<Vec<u8>>>,
     instance_api_url: String,
     agent: Agent,
     cloud_api_domain: Mutex<Option<String>>,
     cached_token: Mutex<Option<CachedToken>>,
+    /// When set, get_token() returns this without exchange (per-request token from MCP proxy).
+    fixed_token: Option<String>,
 }
 
 struct CachedToken {
@@ -51,12 +54,27 @@ impl Auth {
 
         Ok(Self {
             service_account_id,
-            key_bytes,
+            key_bytes: Some(key_bytes),
             instance_api_url,
             agent,
             cloud_api_domain: Mutex::new(None),
             cached_token: Mutex::new(None),
+            fixed_token: None,
         })
+    }
+
+    /// Create an Auth that always returns the given instance token (no JWT exchange).
+    /// Used when the caller already has a Bearer token (e.g. from the MCP proxy).
+    pub fn from_instance_token(instance_api_url: String, token: String, agent: Agent) -> Self {
+        Self {
+            service_account_id: "instance-token".to_string(),
+            key_bytes: None,
+            instance_api_url,
+            agent,
+            cloud_api_domain: Mutex::new(None),
+            cached_token: Mutex::new(None),
+            fixed_token: Some(token),
+        }
     }
 
     /// Returns the service account ID.
@@ -64,8 +82,12 @@ impl Auth {
         &self.service_account_id
     }
 
-    /// Get a valid instance token, refreshing if needed.
+    /// Get a valid instance token, refreshing if needed (or return fixed token when set).
     pub fn get_token(&self) -> Result<String> {
+        if let Some(ref t) = self.fixed_token {
+            return Ok(t.clone());
+        }
+
         let mut guard = self.cached_token.lock().map_err(|_| Error::MutexPoisoned {
             name: "token cache",
         })?;
@@ -145,6 +167,10 @@ impl Auth {
 
     /// Sign a JWT with the Ed25519 private key.
     fn sign_jwt(&self, now: u64, cloud_api_domain: &str) -> Result<String> {
+        let key_bytes = self
+            .key_bytes
+            .as_ref()
+            .ok_or_else(|| Error::InvalidServiceAccountKeyEncoding)?;
         let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::EdDSA);
         let claims = serde_json::json!({
             "sub": self.service_account_id,
@@ -154,7 +180,7 @@ impl Auth {
             "name": self.service_account_id,
             "service_account": self.service_account_id,
         });
-        let der_key = ed25519_seed_to_pkcs8_der(&self.key_bytes)?;
+        let der_key = ed25519_seed_to_pkcs8_der(key_bytes)?;
         let key = jsonwebtoken::EncodingKey::from_ed_der(&der_key);
         jsonwebtoken::encode(&header, &claims, &key)
             .map_err(|source| Error::JwtSignFailed { source })
