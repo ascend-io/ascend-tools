@@ -99,6 +99,13 @@ pub enum Error {
     #[error("no {kind} found with title '{title}'")]
     NotFound { kind: String, title: String },
 
+    #[error("no {kind} found matching '{title}', available: {}", .available.join(", "))]
+    NotFoundWithOptions {
+        kind: String,
+        title: String,
+        available: Vec<String>,
+    },
+
     #[error("multiple {kind}s found with title '{title}', use --uuid to specify one: {}", .matches.iter().map(|(uuid, title)| format!("{uuid} ({title})")).collect::<Vec<_>>().join(", "))]
     AmbiguousTitle {
         kind: String,
@@ -108,6 +115,9 @@ pub enum Error {
 
     #[error("SSE stream error: {context}")]
     SseParseError { context: String },
+
+    #[error("Otto stream ended unexpectedly: {context}")]
+    OttoStreamEndedUnexpectedly { context: String },
 }
 
 impl Error {

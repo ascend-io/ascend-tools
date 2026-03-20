@@ -9,8 +9,7 @@ use rmcp::{
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
-    FlowRunFilters, OttoChatRequest, OttoModel, RuntimeCreate, RuntimeFilters, RuntimeKind,
-    RuntimeUpdate,
+    FlowRunFilters, OttoChatRequest, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate,
 };
 
 use crate::params::{
@@ -479,16 +478,13 @@ impl AscendMcpServer {
                 params.deployment.as_deref(),
                 params.uuid.as_deref(),
             )?;
-            let provider_id = params
-                .provider
-                .as_deref()
-                .map(|name| c.resolve_otto_provider_id(name))
-                .transpose()?;
+            let model =
+                c.resolve_otto_model(params.provider.as_deref(), params.model.as_deref())?;
             c.otto(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_uuid,
                 thread_id: params.thread_id,
-                model: OttoModel::from_options(provider_id.as_deref(), params.model.as_deref()),
+                model,
             })
         })
         .await
