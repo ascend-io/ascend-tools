@@ -990,8 +990,6 @@ fn otto_streaming_retries_409_on_follow_up() {
     // We use two separate mockito servers to avoid LIFO ordering issues:
     // the test verifies that the retry loop eventually succeeds and that
     // a stop is sent as a nudge.
-    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
-
     let mut server = Server::new();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
