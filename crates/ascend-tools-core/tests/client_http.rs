@@ -810,7 +810,7 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         ":ping\n\n",
         "event: response.output_text.delta\ndata: {\"delta\":\"a\"}\n\n",
         ":heartbeat\n\n",
-        "event: thread.details\ndata: {\"messages\":[],\"is_processing\":true}\n\n",
+        "event: thread.preview\ndata: {\"thread_id\":\"x\",\"title\":\"\",\"updated_at\":\"\",\"is_processing\":false}\n\n",
         "event: response.output_text.delta\ndata: {\"delta\":\"b\"}\n\n",
         "event: thread.done\ndata: {}\n\n",
     );
