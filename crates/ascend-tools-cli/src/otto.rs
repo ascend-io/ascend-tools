@@ -267,6 +267,7 @@ pub(crate) fn handle_otto_cmd(
                 prompt,
                 runtime_uuid,
                 thread_id: thread,
+                sse_after_message_id: None,
                 model: client.resolve_otto_model(provider.as_deref(), model.as_deref())?,
             };
 

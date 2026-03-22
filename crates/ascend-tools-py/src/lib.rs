@@ -482,6 +482,7 @@ impl Client {
                     prompt: prompt.to_string(),
                     runtime_uuid,
                     thread_id: thread_id.map(String::from),
+                    sse_after_message_id: None,
                     model: otto_model,
                 };
                 self.inner.otto(&request)

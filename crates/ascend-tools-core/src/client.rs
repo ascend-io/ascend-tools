@@ -677,7 +677,12 @@ impl AscendClient {
         // On new subscriptions it replays ALL buffered events from the start,
         // so we only retry the initial connection (before any events arrive).
         // Mid-stream reconnection would produce duplicate text.
-        let updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
+        let mut updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
+        if let Some(after) = request.sse_after_message_id.as_deref() {
+            if !after.is_empty() {
+                updates_path.push_str(&format!("?after={}", encode_query_value(after)));
+            }
+        }
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
         let updates_context = format!("GET {updates_path}");
 
@@ -774,10 +779,17 @@ impl AscendClient {
             };
 
             let stream_event = match event_type {
-                Some("response.output_text.delta") => data
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .map(|d| StreamEvent::TextDelta(d.to_string())),
+                Some("response.output_text.delta") => match data.get("delta").and_then(|v| v.as_str()) {
+                    Some(d) => Some(StreamEvent::TextDelta(d.to_string())),
+                    None => {
+                        #[cfg(debug_assertions)]
+                        eprintln!(
+                            "ascend-tools: response.output_text.delta missing string delta: {}",
+                            serde_json::to_string(&data).unwrap_or_default()
+                        );
+                        None
+                    }
+                },
                 Some("response.output_item.added") => {
                     let Some(item) = data.get("item") else {
                         continue;

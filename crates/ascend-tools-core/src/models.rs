@@ -265,6 +265,9 @@ pub struct OttoChatRequest {
     pub runtime_uuid: Option<String>,
     #[serde(skip)]
     pub thread_id: Option<String>,
+    /// When set, the SSE `GET .../updates` request includes `?after=` for delta mode.
+    #[serde(skip)]
+    pub sse_after_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<OttoModel>,
 }

@@ -416,6 +416,7 @@ fn otto_streaming_interrupted_when_sse_closes_without_terminal_event() {
         prompt: "hello".to_string(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -489,6 +490,7 @@ fn otto_streaming_completes_on_thread_done() {
         prompt: "hi".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -550,6 +552,7 @@ fn otto_streaming_completes_on_thread_stopped() {
         prompt: "stop".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -612,6 +615,7 @@ fn otto_streaming_cancelled_by_callback() {
         prompt: "cancel".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -677,6 +681,7 @@ fn otto_streaming_handles_response_error_event() {
         prompt: "err".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -750,6 +755,7 @@ fn otto_streaming_dispatches_tool_call_events() {
         prompt: "tools".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -784,6 +790,53 @@ fn otto_streaming_dispatches_tool_call_events() {
     );
 }
 
+#[test]
+fn otto_streaming_includes_after_query_on_updates_when_set() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-aft", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-aft"}"#)
+        .expect(1)
+        .create();
+
+    let sse_body = concat!(
+        "event: thread.preview\ndata: {\"id\":\"t-aft\",\"messages\":{},\"is_processing\":false,\"total_message_count\":0,\"has_more\":false}\n\n",
+        "event: thread.done\ndata: {}\n\n",
+    );
+    server
+        .mock(
+            "GET",
+            Matcher::Regex(r"/api/v1/otto/threads/t-aft/updates\?after=.*".to_string()),
+        )
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "hi".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        sse_after_message_id: Some("cursor-msg".into()),
+        model: None,
+    };
+
+    let response = client
+        .otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {})
+        .unwrap();
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
 // ---------------------------------------------------------------------------
 // Otto streaming: heartbeat/comment lines are silently skipped
 // ---------------------------------------------------------------------------
@@ -810,7 +863,7 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         ":ping\n\n",
         "event: response.output_text.delta\ndata: {\"delta\":\"a\"}\n\n",
         ":heartbeat\n\n",
-        "event: thread.details\ndata: {\"messages\":[],\"is_processing\":true}\n\n",
+        "event: thread.preview\ndata: {\"id\":\"t-hb\",\"messages\":{},\"is_processing\":true,\"total_message_count\":0,\"has_more\":false}\n\n",
         "event: response.output_text.delta\ndata: {\"delta\":\"b\"}\n\n",
         "event: thread.done\ndata: {}\n\n",
     );
@@ -826,6 +879,7 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         prompt: "heartbeat".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -881,6 +935,7 @@ fn otto_streaming_sse_endpoint_returns_error() {
         prompt: "err".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -921,6 +976,7 @@ fn otto_streaming_thread_post_returns_error() {
         prompt: "fail".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -967,6 +1023,7 @@ fn otto_non_streaming_errors_on_interrupted_stream() {
         prompt: "sync".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1027,6 +1084,7 @@ fn otto_streaming_retries_409_on_follow_up() {
         prompt: "follow-up".into(),
         runtime_uuid: None,
         thread_id: Some("t-existing".into()),
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1074,6 +1132,7 @@ fn otto_streaming_409_on_new_thread_returns_error() {
         prompt: "new".into(),
         runtime_uuid: None,
         thread_id: None, // new thread — no retry
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1123,6 +1182,7 @@ fn otto_streaming_on_thread_id_called_before_events() {
         prompt: "tid".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1184,6 +1244,7 @@ fn otto_streaming_empty_sse_stream_returns_interrupted() {
         prompt: "empty".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1221,6 +1282,7 @@ fn otto_streaming_missing_thread_id_in_response() {
         prompt: "no-tid".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 
@@ -1356,6 +1418,7 @@ fn otto_streaming_response_error_without_message() {
         prompt: "err-bare".into(),
         runtime_uuid: None,
         thread_id: None,
+        sse_after_message_id: None,
         model: None,
     };
 

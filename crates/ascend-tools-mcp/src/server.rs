@@ -484,6 +484,7 @@ impl AscendMcpServer {
                 prompt: params.prompt,
                 runtime_uuid,
                 thread_id: params.thread_id,
+                sse_after_message_id: None,
                 model,
             })
         })

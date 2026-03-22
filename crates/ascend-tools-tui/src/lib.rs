@@ -761,6 +761,7 @@ impl App {
             prompt: text,
             runtime_uuid: self.runtime_uuid.clone(),
             thread_id: self.thread_id.clone(),
+            sse_after_message_id: None,
             model: self.otto_model.clone(),
         });
         self.streaming = true;
@@ -2685,6 +2686,7 @@ mod tests {
             prompt: "should not launch".into(),
             runtime_uuid: None,
             thread_id: None,
+            sse_after_message_id: None,
             model: None,
         });
 
