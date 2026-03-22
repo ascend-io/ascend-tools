@@ -13,7 +13,8 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
     Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
     OttoChatRequest, OttoChatResponse, OttoModel, OttoProvider, OttoStreamStatus, Project, Runtime,
-    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
+    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, ThreadSnapshot,
+    ThreadSnapshotKind, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -638,7 +639,9 @@ impl AscendClient {
                     // then retry the POST until the thread finishes processing.
                     if !sent_stop {
                         if let Some(ref tid) = request.thread_id {
-                            let _ = self.stop_thread(tid);
+                            if let Err(e) = self.stop_thread(tid) {
+                                eprintln!("ascend-tools: stop_thread failed during 409 follow-up: {e:?}");
+                            }
                         }
                         sent_stop = true;
                     }
@@ -775,10 +778,26 @@ impl AscendClient {
 
             // Skip heartbeats and unknown event types without data
             let Ok(data) = serde_json::from_str::<Value>(&event.data) else {
+                eprintln!(
+                    "ascend-tools: skipping SSE data line (invalid JSON) for event {:?}",
+                    event_type
+                );
                 continue;
             };
 
             let stream_event = match event_type {
+                Some("thread.preview") => Some(StreamEvent::ThreadSnapshot(ThreadSnapshot {
+                    kind: ThreadSnapshotKind::Preview,
+                    payload: data,
+                })),
+                Some("thread.history") => Some(StreamEvent::ThreadSnapshot(ThreadSnapshot {
+                    kind: ThreadSnapshotKind::History,
+                    payload: data,
+                })),
+                Some("thread.delta") => Some(StreamEvent::ThreadSnapshot(ThreadSnapshot {
+                    kind: ThreadSnapshotKind::Delta,
+                    payload: data,
+                })),
                 Some("response.output_text.delta") => match data.get("delta").and_then(|v| v.as_str()) {
                     Some(d) => Some(StreamEvent::TextDelta(d.to_string())),
                     None => {
@@ -792,15 +811,20 @@ impl AscendClient {
                 },
                 Some("response.output_item.added") => {
                     let Some(item) = data.get("item") else {
+                        eprintln!("ascend-tools: response.output_item.added missing `item`");
                         continue;
                     };
                     if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                        let Some(call_id) = item
+                            .get("call_id")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                        else {
+                            eprintln!("ascend-tools: skipping function_call without call_id");
+                            continue;
+                        };
                         Some(StreamEvent::ToolCallStart {
-                            call_id: item
-                                .get("call_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or_default()
-                                .to_string(),
+                            call_id: call_id.to_string(),
                             name: item
                                 .get("name")
                                 .and_then(|v| v.as_str())
@@ -813,6 +837,8 @@ impl AscendClient {
                                 .to_string(),
                         })
                     } else {
+                        let typ = item.get("type").and_then(|v| v.as_str()).unwrap_or("<missing>");
+                        eprintln!("ascend-tools: skipping response.output_item.added type={typ}");
                         None
                     }
                 }

@@ -1739,6 +1739,7 @@ pub fn run_tui(
                                         tool_names.get(&call_id).cloned().unwrap_or_default();
                                     send(StreamMsgKind::ToolCallOutput { name, output });
                                 }
+                                StreamEvent::ThreadSnapshot(_) => {}
                             }
                             ControlFlow::Continue(())
                         },

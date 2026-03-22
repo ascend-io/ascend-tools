@@ -313,6 +313,21 @@ pub struct OttoChatResponse {
     pub stream_error: Option<String>,
 }
 
+/// Kind of thread snapshot delivered over the thread updates SSE stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThreadSnapshotKind {
+    Preview,
+    History,
+    Delta,
+}
+
+/// Parsed `thread.preview` / `thread.history` / `thread.delta` SSE payload (JSON object).
+#[derive(Debug, Clone)]
+pub struct ThreadSnapshot {
+    pub kind: ThreadSnapshotKind,
+    pub payload: serde_json::Value,
+}
+
 /// A streaming event from Otto.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
@@ -326,6 +341,8 @@ pub enum StreamEvent {
     },
     /// A tool call has completed with output.
     ToolCallOutput { call_id: String, output: String },
+    /// Thread state snapshot from ``thread.preview``, ``thread.history``, or ``thread.delta``.
+    ThreadSnapshot(ThreadSnapshot),
 }
 
 /// An Otto provider with its enabled models.
