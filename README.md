@@ -124,6 +124,13 @@ let client = AscendClient::new(Config::from_env()?)?;
 let workspaces = client.list_workspaces(Default::default())?;
 ```
 
+## Diagnostics and logging
+
+- **`ascend-tools-core`** (Rust library used by the CLI and other crates): malformed SSE JSON lines and other parse skips are reported on **stderr** via `eprintln!`. There is no `tracing` dependency in this crate, so **`RUST_LOG` does not control core SSE diagnostics**.
+- **`ascend-tools-mcp`**: uses `tracing` / `tracing-subscriber`; set **`RUST_LOG`** (e.g. `RUST_LOG=info`) for MCP server logs.
+
+The JavaScript and Python SDK clients do not yet expose the Otto thread SSE **`?after=`** delta cursor; use the Rust `OttoChatRequest.sse_after_message_id` field when you need delta mode from the SDK.
+
 ## MCP server
 
 Connect AI assistants (Claude Code, Codex CLI, Cursor, etc.) to Ascend via `uvx`:

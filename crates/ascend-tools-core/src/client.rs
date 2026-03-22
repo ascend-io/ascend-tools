@@ -638,9 +638,12 @@ impl AscendClient {
                     // Send stop once (fire-and-forget) to nudge the backend,
                     // then retry the POST until the thread finishes processing.
                     if !sent_stop {
+                        #[allow(clippy::collapsible_if)]
                         if let Some(ref tid) = request.thread_id {
                             if let Err(e) = self.stop_thread(tid) {
-                                eprintln!("ascend-tools: stop_thread failed during 409 follow-up: {e:?}");
+                                eprintln!(
+                                    "ascend-tools: stop_thread failed during 409 follow-up: {e:?}"
+                                );
                             }
                         }
                         sent_stop = true;
@@ -681,10 +684,12 @@ impl AscendClient {
         // so we only retry the initial connection (before any events arrive).
         // Mid-stream reconnection would produce duplicate text.
         let mut updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
-        if let Some(after) = request.sse_after_message_id.as_deref() {
-            if !after.is_empty() {
-                updates_path.push_str(&format!("?after={}", encode_query_value(after)));
-            }
+        if let Some(after) = request
+            .sse_after_message_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            updates_path.push_str(&format!("?after={}", encode_query_value(after)));
         }
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
         let updates_context = format!("GET {updates_path}");
@@ -798,17 +803,18 @@ impl AscendClient {
                     kind: ThreadSnapshotKind::Delta,
                     payload: data,
                 })),
-                Some("response.output_text.delta") => match data.get("delta").and_then(|v| v.as_str()) {
-                    Some(d) => Some(StreamEvent::TextDelta(d.to_string())),
-                    None => {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "ascend-tools: response.output_text.delta missing string delta: {}",
-                            serde_json::to_string(&data).unwrap_or_default()
-                        );
-                        None
+                Some("response.output_text.delta") => {
+                    match data.get("delta").and_then(|v| v.as_str()) {
+                        Some(d) => Some(StreamEvent::TextDelta(d.to_string())),
+                        None => {
+                            eprintln!(
+                                "ascend-tools: response.output_text.delta missing string delta: {}",
+                                serde_json::to_string(&data).unwrap_or_default()
+                            );
+                            None
+                        }
                     }
-                },
+                }
                 Some("response.output_item.added") => {
                     let Some(item) = data.get("item") else {
                         eprintln!("ascend-tools: response.output_item.added missing `item`");
@@ -837,7 +843,10 @@ impl AscendClient {
                                 .to_string(),
                         })
                     } else {
-                        let typ = item.get("type").and_then(|v| v.as_str()).unwrap_or("<missing>");
+                        let typ = item
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("<missing>");
                         eprintln!("ascend-tools: skipping response.output_item.added type={typ}");
                         None
                     }
