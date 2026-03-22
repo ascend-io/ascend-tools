@@ -37,6 +37,8 @@ const run = await client.runFlow("sales", "My Workspace");
 
 All methods are async and return plain objects/arrays. See the [demo app](../../tests/app/) for a full example.
 
+**Otto thread SSE:** delta sync via `?after=<message_id>` on `GET …/updates` is supported by the Rust `ascend-tools-core` client (`sse_after_message_id` on the chat request). The Node binding does not expose that cursor yet; new threads always open the updates stream without `after` (progressive `thread.preview` / `thread.history`).
+
 ## Authentication
 
 Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):

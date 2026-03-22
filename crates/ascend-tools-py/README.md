@@ -34,6 +34,8 @@ client.run_flow(flow="sales", workspace="My Workspace")
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
 
+**Otto thread SSE:** delta sync with `?after=<message_id>` is implemented in the Rust core for CLI/SDK consumers that use `sse_after_message_id`. The Python `Client` wrapper does not expose that field yet; streams use full progressive snapshots.
+
 ## Authentication
 
 Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
