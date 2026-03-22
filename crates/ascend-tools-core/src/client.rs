@@ -33,6 +33,31 @@ const STOP_THREAD_POLL_INTERVAL_MAX: Duration = Duration::from_millis(500);
 /// all buffered events on new subscriptions, producing duplicates.
 const SSE_CONNECT_MAX_RETRIES: u32 = 3;
 const SSE_CONNECT_BACKOFF: Duration = Duration::from_millis(500);
+/// Max characters for diagnostics (never log full wire payloads by default).
+const SSE_DIAG_SNIPPET_MAX: usize = 160;
+
+fn truncate_utf8(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let mut out = s.chars().take(max_chars).collect::<String>();
+    out.push('…');
+    out
+}
+
+fn sse_value_type_hint(data: &Value) -> String {
+    match data {
+        Value::Object(map) => {
+            let keys: Vec<&str> = map.keys().map(|k| k.as_str()).take(32).collect();
+            format!("object(keys={keys:?})")
+        }
+        Value::Array(a) => format!("array(len={})", a.len()),
+        Value::String(s) => format!("string(len={})", s.chars().count()),
+        Value::Number(_) => "number".to_string(),
+        Value::Bool(b) => format!("bool({b})"),
+        Value::Null => "null".to_string(),
+    }
+}
 
 fn encode_path(s: &str) -> String {
     utf8_percent_encode(s, PATH_SEGMENT).to_string()
@@ -633,7 +658,13 @@ impl AscendClient {
                     .with_request_context(context.clone())?;
                 let status = resp.status().as_u16();
                 if status == 409 && is_follow_up {
-                    let body_str = resp.into_body().read_to_string().unwrap_or_default();
+                    let body_str = match resp.into_body().read_to_string() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("ascend-tools: failed to read 409 response body: {e:?}");
+                            String::new()
+                        }
+                    };
                     last_err = Some(api_error(status, &body_str));
                     // Send stop once (fire-and-forget) to nudge the backend,
                     // then retry the POST until the thread finishes processing.
@@ -687,6 +718,7 @@ impl AscendClient {
         if let Some(after) = request
             .sse_after_message_id
             .as_deref()
+            .map(str::trim)
             .filter(|s| !s.is_empty())
         {
             updates_path.push_str(&format!("?after={}", encode_query_value(after)));
@@ -766,17 +798,22 @@ impl AscendClient {
             // the response failed (e.g. context window exceeded, model error).
             // Treat it like a stream interruption with the error message.
             if event_type == Some("response.error") {
-                let error_msg = serde_json::from_str::<Value>(&event.data)
-                    .ok()
-                    .and_then(|d| {
-                        // Try common error payload keys: error, message, detail
-                        d.get("error")
-                            .or_else(|| d.get("message"))
-                            .or_else(|| d.get("detail"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
-                    .unwrap_or_else(|| "response error".to_string());
+                let error_msg = match serde_json::from_str::<Value>(&event.data) {
+                    Ok(d) => d
+                        .get("error")
+                        .or_else(|| d.get("message"))
+                        .or_else(|| d.get("detail"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| "response error".to_string()),
+                    Err(e) => {
+                        let frag = truncate_utf8(event.data.trim(), SSE_DIAG_SNIPPET_MAX);
+                        eprintln!(
+                            "ascend-tools: response.error data is not valid JSON ({e}); fragment={frag:?}"
+                        );
+                        "response error".to_string()
+                    }
+                };
                 response_error = Some(error_msg);
                 break;
             }
@@ -807,9 +844,14 @@ impl AscendClient {
                     match data.get("delta").and_then(|v| v.as_str()) {
                         Some(d) => Some(StreamEvent::TextDelta(d.to_string())),
                         None => {
+                            let hint = sse_value_type_hint(&data);
+                            let snippet = truncate_utf8(
+                                &serde_json::to_string(&data)
+                                    .unwrap_or_else(|_| "<serialize-error>".into()),
+                                SSE_DIAG_SNIPPET_MAX,
+                            );
                             eprintln!(
-                                "ascend-tools: response.output_text.delta missing string delta: {}",
-                                serde_json::to_string(&data).unwrap_or_default()
+                                "ascend-tools: response.output_text.delta missing string delta: {hint} snippet={snippet:?}"
                             );
                             None
                         }
@@ -852,12 +894,18 @@ impl AscendClient {
                     }
                 }
                 Some("response.run_item_stream_event.tool_call_output_item") => {
+                    let Some(call_id) = data
+                        .get("call_id")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    else {
+                        eprintln!(
+                            "ascend-tools: skipping tool_call_output_item without non-empty call_id"
+                        );
+                        continue;
+                    };
                     Some(StreamEvent::ToolCallOutput {
-                        call_id: data
-                            .get("call_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
+                        call_id: call_id.to_string(),
                         output: data
                             .get("output")
                             .and_then(|v| v.as_str())
@@ -865,7 +913,11 @@ impl AscendClient {
                             .to_string(),
                     })
                 }
-                _ => None,
+                Some("ping") => None,
+                _ => {
+                    eprintln!("ascend-tools: skipping unknown SSE event type: {event_type:?}");
+                    None
+                }
             };
 
             if let Some(se) = stream_event

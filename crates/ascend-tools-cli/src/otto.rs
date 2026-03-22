@@ -160,6 +160,10 @@ impl Drop for StreamRenderer {
 #[derive(Subcommand)]
 pub(crate) enum OttoCommands {
     /// Send a message to Otto
+    ///
+    /// Text output mode prints assistant text deltas only. Thread snapshot events
+    /// (`thread.preview` / `thread.history` / `thread.delta`) and tool lifecycle events
+    /// are not shown; use JSON output (`--output json`) or `otto tui` for full streams.
     #[command(arg_required_else_help = true)]
     Run {
         /// Message to send to Otto

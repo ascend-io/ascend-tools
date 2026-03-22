@@ -1652,6 +1652,95 @@ fn otto_streaming_omits_after_query_when_cursor_is_empty_string() {
 }
 
 #[test]
+fn otto_streaming_omits_after_query_when_cursor_is_whitespace_only() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-aft-ws", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-aft-ws"}"#)
+        .expect(1)
+        .create();
+
+    let sse_body = concat!(
+        "event: thread.preview\ndata: {\"id\":\"t-aft-ws\",\"messages\":{},\"is_processing\":false,\"total_message_count\":0,\"has_more\":false}\n\n",
+        "event: thread.done\ndata: {}\n\n",
+    );
+    server
+        .mock("GET", "/api/v1/otto/threads/t-aft-ws/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "hi".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        sse_after_message_id: Some("  \t  ".into()),
+        model: None,
+    };
+
+    let response = client
+        .otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {})
+        .unwrap();
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
+#[test]
+fn otto_streaming_encodes_after_cursor_with_reserved_and_unicode_chars() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-aft-enc", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-enc"}"#)
+        .expect(1)
+        .create();
+
+    let expected_path = "/api/v1/otto/threads/t-enc/updates?after=a%26b%3Dc%2Fd%E2%82%AC";
+    let sse_body = concat!(
+        "event: thread.preview\ndata: {\"id\":\"t-enc\",\"messages\":{},\"is_processing\":false,\"total_message_count\":0,\"has_more\":false}\n\n",
+        "event: thread.done\ndata: {}\n\n",
+    );
+    server
+        .mock("GET", expected_path)
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "hi".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        sse_after_message_id: Some("a&b=c/d€".into()),
+        model: None,
+    };
+
+    let response = client
+        .otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {})
+        .unwrap();
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
+#[test]
 fn otto_streaming_dispatches_thread_history_snapshot() {
     let mut server = Server::new();
     let now = SystemTime::now()
