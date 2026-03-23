@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ascend-tools"
-version = "1.2.0"
+version = "1.3.0"
 description = "Ascend CLI, SDK, MCP."
 requires-python = ">=3.11"
 readme = "README.md"
