@@ -2,8 +2,8 @@
 
 ## Getting started
 
-- [Quickstart](QUICKSTART.md): create a service account, install, and run your first flow
-- [Installation](INSTALLATION.md): all install methods (uv, npm, Cargo, pre-built binaries)
+- [Quickstart](quickstart.md): create a service account, install, and run your first flow
+- [Installation](installation.md): all install methods (uv, npm, Cargo, pre-built binaries)
 
 ## Guides
 
@@ -15,4 +15,4 @@
 
 ## Contributing
 
-- [Development](development.md): contributor setup, architecture, release process
+- [Development](DEVELOPMENT.md): contributor setup, architecture, release process

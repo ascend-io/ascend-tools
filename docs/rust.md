@@ -26,7 +26,7 @@ let config = Config::from_env()?;
 let client = AscendClient::new(config)?;
 ```
 
-See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
+See [Quickstart](quickstart.md) for the full service account creation walkthrough.
 
 ### With explicit credentials
 

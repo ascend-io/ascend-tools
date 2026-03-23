@@ -80,10 +80,10 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
-  otto run <PROMPT> [--workspace <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
+  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
   otto provider list
   otto model list [--provider <ID>]
-  otto tui [--workspace <TITLE>] [--provider <ID>] [--model <ID>]
+  otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>]
 
   signup
 
@@ -322,6 +322,7 @@ uvx --refresh ascend-tools --version
 
 ## conventions
 
+- `docs/` naming: `snake_case.md` for public-facing docs, `SCREAMING_SNAKE_CASE.md` for internal-only (e.g. `DEVELOPMENT.md`)
 - Rust stable toolchain (edition 2024, requires 1.85+)
 - Commits and PR titles use Conventional Commits (`type(scope): summary` when scoped, otherwise `type: summary`); use `refactor:` for internal quality improvements without behavior changes
 - API methods return typed structs in Rust (`serde_json::Value` used only for dynamic fields like `FlowRun.error`)
