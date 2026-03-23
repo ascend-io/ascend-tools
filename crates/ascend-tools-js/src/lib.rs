@@ -311,6 +311,56 @@ impl Client {
         }))
     }
 
+    // -- Secret methods --
+
+    #[napi(ts_return_type = "Promise<string[]>")]
+    pub fn list_secrets(&self, environment: Option<String>) -> AsyncTask<TypedTask<Vec<String>>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            client.list_secrets(environment.as_deref()).map_err(to_napi_err)
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<VaultSecret>")]
+    pub fn get_secret(&self, name: String, environment: Option<String>) -> AsyncTask<TypedTask<models::VaultSecret>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            client.get_secret(&name, environment.as_deref()).map_err(to_napi_err)
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<SecretStatus>")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_secret(&self, name: String, secret_value: Option<String>, generate_ssh_key: Option<bool>, algorithm: Option<String>, format: Option<String>, environment: Option<String>) -> AsyncTask<TypedTask<models::SecretStatus>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let value = if generate_ssh_key.unwrap_or(false) {
+                models::SecretValue::GenerateSshKey { algorithm, format }
+            } else if let Some(v) = secret_value {
+                models::SecretValue::Value(v)
+            } else {
+                return Err(napi::Error::from_reason("either secret_value or generate_ssh_key=true is required"));
+            };
+            client.set_secret(&name, &value, environment.as_deref()).map_err(to_napi_err)
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<SecretStatus>")]
+    pub fn delete_secret(&self, name: String, environment: Option<String>) -> AsyncTask<TypedTask<models::SecretStatus>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            client.delete_secret(&name, environment.as_deref()).map_err(to_napi_err)
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<SshPublicKey>")]
+    pub fn get_secret_ssh_public_key(&self, name: String) -> AsyncTask<TypedTask<models::SshPublicKey>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            client.get_secret_ssh_public_key(&name).map_err(to_napi_err)
+        }))
+    }
+
     // -- Otto methods --
 
     #[napi(ts_return_type = "Promise<OttoProvider[]>")]

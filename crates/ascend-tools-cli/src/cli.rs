@@ -11,6 +11,7 @@ use crate::flow::FlowCommands;
 use crate::otto::OttoCommands;
 use crate::profile::ProfileCommands;
 use crate::project::ProjectCommands;
+use crate::secret::SecretCommands;
 use crate::skill::SkillCommands;
 use crate::workspace::WorkspaceCommands;
 
@@ -119,6 +120,19 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ProfileCommands>,
     },
+    /// Manage vault secrets
+    #[command(long_about = "Manage vault secrets.\n\n\
+            Examples:\n  \
+            ascend-tools secret list\n  \
+            ascend-tools secret list --environment Production\n  \
+            ascend-tools secret set my-secret --value 'hunter2'\n  \
+            ascend-tools secret set ssh-key --generate-ssh-key\n  \
+            ascend-tools secret get my-secret\n  \
+            ascend-tools secret delete my-secret --yes")]
+    Secret {
+        #[command(subcommand)]
+        command: Option<SecretCommands>,
+    },
     /// Chat with Otto AI assistant
     #[command(long_about = "Chat with Otto AI assistant.\n\n\
             Examples:\n  \
@@ -212,6 +226,7 @@ where
             crate::profile::handle_profile(&client, command, &cli.output)
         }
         Commands::Flow { command } => crate::flow::handle_flow(&client, command, &cli.output),
+        Commands::Secret { command } => crate::secret::handle_secret(&client, command, &cli.output),
         Commands::Otto { command } => crate::otto::handle_otto_cmd(&client, command, &cli.output),
         Commands::Mcp { .. } | Commands::Skill { .. } | Commands::Signup => unreachable!(),
     }
@@ -729,5 +744,147 @@ mod tests {
             }
             _ => panic!("expected Otto Model List command"),
         }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_list() {
+        let cli = CliParser::parse_from(["ascend-tools", "secret", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Secret {
+                command: Some(SecretCommands::List { .. })
+            })
+        ));
+    }
+
+    #[test]
+    fn test_cli_parses_secret_list_with_environment() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "secret",
+            "list",
+            "--environment",
+            "Production",
+        ]);
+        match cli.command {
+            Some(Commands::Secret {
+                command: Some(SecretCommands::List { environment }),
+            }) => {
+                assert_eq!(environment.as_deref(), Some("Production"));
+            }
+            _ => panic!("expected Secret List command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_get() {
+        let cli = CliParser::parse_from(["ascend-tools", "secret", "get", "my-secret"]);
+        match cli.command {
+            Some(Commands::Secret {
+                command: Some(SecretCommands::Get { name, environment }),
+            }) => {
+                assert_eq!(name, "my-secret");
+                assert!(environment.is_none());
+            }
+            _ => panic!("expected Secret Get command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_set_with_value() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "secret",
+            "set",
+            "my-secret",
+            "--value",
+            "hunter2",
+        ]);
+        match cli.command {
+            Some(Commands::Secret {
+                command:
+                    Some(SecretCommands::Set {
+                        name,
+                        value,
+                        generate_ssh_key,
+                        ..
+                    }),
+            }) => {
+                assert_eq!(name, "my-secret");
+                assert_eq!(value.as_deref(), Some("hunter2"));
+                assert!(!generate_ssh_key);
+            }
+            _ => panic!("expected Secret Set command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_set_generate_ssh_key() {
+        let cli = CliParser::parse_from([
+            "ascend-tools",
+            "secret",
+            "set",
+            "ssh-key",
+            "--generate-ssh-key",
+            "--algorithm",
+            "rsa4096",
+            "--format",
+            "pem",
+        ]);
+        match cli.command {
+            Some(Commands::Secret {
+                command:
+                    Some(SecretCommands::Set {
+                        name,
+                        generate_ssh_key,
+                        algorithm,
+                        format,
+                        ..
+                    }),
+            }) => {
+                assert_eq!(name, "ssh-key");
+                assert!(generate_ssh_key);
+                assert_eq!(algorithm.as_deref(), Some("rsa4096"));
+                assert_eq!(format.as_deref(), Some("pem"));
+            }
+            _ => panic!("expected Secret Set command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_delete() {
+        let cli = CliParser::parse_from(["ascend-tools", "secret", "delete", "my-secret", "--yes"]);
+        match cli.command {
+            Some(Commands::Secret {
+                command: Some(SecretCommands::Delete { name, yes, .. }),
+            }) => {
+                assert_eq!(name, "my-secret");
+                assert!(yes);
+            }
+            _ => panic!("expected Secret Delete command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_get_ssh_public_key() {
+        let cli =
+            CliParser::parse_from(["ascend-tools", "secret", "get-ssh-public-key", "ssh-key"]);
+        match cli.command {
+            Some(Commands::Secret {
+                command: Some(SecretCommands::GetSshPublicKey { name }),
+            }) => {
+                assert_eq!(name, "ssh-key");
+            }
+            _ => panic!("expected Secret GetSshPublicKey command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_secret_bare_is_none() {
+        let cli = CliParser::parse_from(["ascend-tools", "secret"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Secret { command: None })
+        ));
     }
 }

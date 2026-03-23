@@ -1,11 +1,11 @@
 ---
 name: ascend-tools-cli
-description: Use the ascend-tools CLI to manage Ascend workspaces, deployments, flows, and flow runs.
+description: Use the ascend-tools CLI to manage Ascend workspaces, deployments, flows, secrets, and flow runs.
 ---
 
 # ascend-tools CLI
 
-Manage Ascend workspaces, deployments, flows, and flow runs via the `ascend-tools` CLI.
+Manage Ascend workspaces, deployments, flows, secrets, and flow runs via the `ascend-tools` CLI.
 
 ## Installation
 
@@ -95,6 +95,18 @@ ascend-tools flow list --workspace <TITLE> | --deployment <TITLE>
 ascend-tools flow run <FLOW_NAME> --workspace <TITLE> | --deployment <TITLE> [--spec '<JSON>'] [--resume]
 ascend-tools flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status <STATUS>] [--flow <NAME>] [--since <ISO8601>] [--until <ISO8601>] [--offset <N>] [--limit <N>]
 ascend-tools flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
+```
+
+### Secrets
+
+```bash
+ascend-tools secret list [--environment <NAME>]
+ascend-tools secret get <NAME> [--environment <NAME>]
+ascend-tools secret set <NAME> --value '<VALUE>' [--environment <NAME>]
+ascend-tools secret set <NAME> --from-file <PATH> [--environment <NAME>]
+ascend-tools secret set <NAME> --generate-ssh-key [--algorithm <ALG>] [--format <FMT>] [--environment <NAME>]
+ascend-tools secret delete <NAME> [--environment <NAME>] [--yes]
+ascend-tools secret get-ssh-public-key <NAME>
 ```
 
 ### Otto

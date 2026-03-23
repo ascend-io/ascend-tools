@@ -327,6 +327,52 @@ pub struct GetFlowRunParams {
     pub uuid: Option<String>,
 }
 
+// -- Secret params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListSecretsParams {
+    /// Environment title (omit for instance-scoped secrets)
+    pub environment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetSecretParams {
+    /// Secret name
+    pub name: String,
+    /// Environment title (omit for instance-scoped secrets)
+    pub environment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetSecretParams {
+    /// Secret name
+    pub name: String,
+    /// Secret value (mutually exclusive with generate_ssh_key)
+    pub secret_value: Option<String>,
+    /// Generate an SSH private key instead of providing a value
+    pub generate_ssh_key: Option<bool>,
+    /// SSH key algorithm: ed25519 (default), rsa4096, rsa3072, rsa2048 — only with generate_ssh_key
+    pub algorithm: Option<String>,
+    /// SSH key format: openssh (default), pem, pkcs8 — only with generate_ssh_key
+    pub format: Option<String>,
+    /// Environment title (omit for instance-scoped secrets)
+    pub environment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteSecretParams {
+    /// Secret name
+    pub name: String,
+    /// Environment title (omit for instance-scoped secrets)
+    pub environment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetSecretSshPublicKeyParams {
+    /// Secret name containing an SSH private key
+    pub name: String,
+}
+
 // -- Otto params --
 
 #[derive(Debug, Deserialize, JsonSchema)]

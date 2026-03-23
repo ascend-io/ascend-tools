@@ -10,15 +10,18 @@ use rmcp::{
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
     FlowRunFilters, OttoChatRequest, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate,
+    SecretValue,
 };
 
 use crate::params::{
-    CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
-    GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
-    GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
-    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams, OttoParams,
+    CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteSecretParams,
+    DeleteWorkspaceParams, GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams,
+    GetProjectParams, GetSecretParams, GetSecretSshPublicKeyParams, GetWorkspaceParams,
+    ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams, ListFlowsParams,
+    ListProfilesParams, ListProjectsParams, ListSecretsParams, ListWorkspacesParams, OttoParams,
     PauseDeploymentAutomationsParams, PauseWorkspaceParams, ResumeDeploymentAutomationsParams,
-    ResumeWorkspaceParams, RunFlowParams, UpdateDeploymentParams, UpdateWorkspaceParams,
+    ResumeWorkspaceParams, RunFlowParams, SetSecretParams, UpdateDeploymentParams,
+    UpdateWorkspaceParams,
 };
 
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
@@ -458,6 +461,82 @@ impl AscendMcpServer {
         .await
     }
 
+    // -- Secret tools --
+
+    #[tool(description = "List secrets in the instance or environment vault")]
+    async fn list_secrets(
+        &self,
+        Parameters(params): Parameters<ListSecretsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.list_secrets(params.environment.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Get a secret value (requires cloud admin permissions)")]
+    async fn get_secret(
+        &self,
+        Parameters(params): Parameters<GetSecretParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.get_secret(&params.name, params.environment.as_deref())
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Create or update a secret in the instance or environment vault. Provide either secret_value or set generate_ssh_key=true."
+    )]
+    async fn set_secret(
+        &self,
+        Parameters(params): Parameters<SetSecretParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        let value = if params.generate_ssh_key.unwrap_or(false) {
+            SecretValue::GenerateSshKey {
+                algorithm: params.algorithm,
+                format: params.format,
+            }
+        } else if let Some(v) = params.secret_value {
+            SecretValue::Value(v)
+        } else {
+            return Err(McpError::invalid_params(
+                "either secret_value or generate_ssh_key=true is required",
+                None,
+            ));
+        };
+        blocking(client, move |c| {
+            c.set_secret(&params.name, &value, params.environment.as_deref())
+        })
+        .await
+    }
+
+    #[tool(description = "Delete a secret from the instance or environment vault")]
+    async fn delete_secret(
+        &self,
+        Parameters(params): Parameters<DeleteSecretParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            c.delete_secret(&params.name, params.environment.as_deref())
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Get the SSH public key for a stored SSH private key (instance scope only)"
+    )]
+    async fn get_secret_ssh_public_key(
+        &self,
+        Parameters(params): Parameters<GetSecretSshPublicKeyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| c.get_secret_ssh_public_key(&params.name)).await
+    }
+
     // -- Otto --
 
     #[tool(description = "List Otto providers and their enabled models")]
@@ -496,7 +575,7 @@ impl ServerHandler for AscendMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "Ascend MCP server. Provides tools to manage workspaces, deployments, flows, and chat with Otto."
+                "Ascend MCP server. Provides tools to manage workspaces, deployments, flows, secrets, and chat with Otto."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
@@ -672,5 +751,105 @@ mod tests {
 
         assert!(err.contains("Ascend client is not configured"));
         assert!(err.contains("ASCEND_SERVICE_ACCOUNT_ID"));
+    }
+
+    #[tokio::test]
+    async fn secret_list_and_set_succeed() {
+        let mut server = Server::new_async().await;
+        mock_auth(&mut server);
+
+        let list_mock = server
+            .mock("GET", "/vaults/instance/secrets")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"["db-password","api-key"]"#)
+            .expect(1)
+            .create();
+
+        let set_mock = server
+            .mock("POST", "/vaults/instance/secrets/new-secret")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"status":"created"}"#)
+            .expect(1)
+            .create();
+
+        let mcp = test_server(&server);
+
+        let secrets = mcp
+            .list_secrets(Parameters(crate::params::ListSecretsParams {
+                environment: None,
+            }))
+            .await
+            .unwrap();
+        let json = tool_result_json(secrets);
+        assert!(json.is_array());
+        assert_eq!(json.as_array().unwrap().len(), 2);
+
+        let result = mcp
+            .set_secret(Parameters(crate::params::SetSecretParams {
+                name: "new-secret".to_string(),
+                secret_value: Some("hunter2".to_string()),
+                generate_ssh_key: None,
+                algorithm: None,
+                format: None,
+                environment: None,
+            }))
+            .await
+            .unwrap();
+        let json = tool_result_json(result);
+        assert_eq!(json["status"], "created");
+
+        list_mock.assert();
+        set_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn secret_delete_succeeds() {
+        let mut server = Server::new_async().await;
+        mock_auth(&mut server);
+
+        let delete_mock = server
+            .mock("DELETE", "/vaults/instance/secrets/old-secret")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"status":"deleted"}"#)
+            .expect(1)
+            .create();
+
+        let mcp = test_server(&server);
+
+        let result = mcp
+            .delete_secret(Parameters(crate::params::DeleteSecretParams {
+                name: "old-secret".to_string(),
+                environment: None,
+            }))
+            .await
+            .unwrap();
+        let json = tool_result_json(result);
+        assert_eq!(json["status"], "deleted");
+
+        delete_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn set_secret_requires_value_or_generate() {
+        let mut server = Server::new_async().await;
+        mock_auth(&mut server);
+        let mcp = test_server(&server);
+
+        let err = mcp
+            .set_secret(Parameters(crate::params::SetSecretParams {
+                name: "test".to_string(),
+                secret_value: None,
+                generate_ssh_key: None,
+                algorithm: None,
+                format: None,
+                environment: None,
+            }))
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("secret_value"));
     }
 }

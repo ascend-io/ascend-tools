@@ -8,6 +8,7 @@ mod flow;
 mod otto;
 mod profile;
 mod project;
+mod secret;
 mod skill;
 mod workspace;
 

@@ -451,6 +451,90 @@ impl Client {
         to_python(py, &run)
     }
 
+    // -- Secret methods --
+
+    #[pyo3(signature = (*, environment=None))]
+    fn list_secrets(
+        &self,
+        py: Python<'_>,
+        environment: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let secrets = py
+            .detach(|| self.inner.list_secrets(environment))
+            .map_err(to_py_err)?;
+        to_python(py, &secrets)
+    }
+
+    #[pyo3(signature = (*, name, environment=None))]
+    fn get_secret(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        environment: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let secret = py
+            .detach(|| self.inner.get_secret(name, environment))
+            .map_err(to_py_err)?;
+        to_python(py, &secret)
+    }
+
+    #[pyo3(signature = (*, name, value=None, generate_ssh_key=false, algorithm=None, format=None, environment=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn set_secret(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        value: Option<&str>,
+        generate_ssh_key: bool,
+        algorithm: Option<&str>,
+        format: Option<&str>,
+        environment: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let secret_value = if generate_ssh_key {
+            models::SecretValue::GenerateSshKey {
+                algorithm: algorithm.map(String::from),
+                format: format.map(String::from),
+            }
+        } else if let Some(v) = value {
+            models::SecretValue::Value(v.to_string())
+        } else {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "either value or generate_ssh_key=True is required",
+            ));
+        };
+        let result = py
+            .detach(|| self.inner.set_secret(name, &secret_value, environment))
+            .map_err(to_py_err)?;
+        to_python(py, &result)
+    }
+
+    #[pyo3(signature = (*, name, environment=None))]
+    fn delete_secret(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        environment: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let result = py
+            .detach(|| self.inner.delete_secret(name, environment))
+            .map_err(to_py_err)?;
+        to_python(py, &result)
+    }
+
+    #[pyo3(signature = (*, name))]
+    fn get_secret_ssh_public_key(
+        &self,
+        py: Python<'_>,
+        name: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let key = py
+            .detach(|| self.inner.get_secret_ssh_public_key(name))
+            .map_err(to_py_err)?;
+        to_python(py, &key)
+    }
+
+    // -- Otto methods --
+
     #[pyo3(signature = ())]
     fn list_otto_providers(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let providers = py

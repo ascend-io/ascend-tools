@@ -80,6 +80,12 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
+  secret list [--environment <NAME>]
+  secret get <NAME> [--environment <NAME>]
+  secret set <NAME> --value <VALUE> | --from-file <PATH> | --generate-ssh-key [--algorithm, --format] [--environment <NAME>]
+  secret delete <NAME> [--environment <NAME>] [--yes]
+  secret get-ssh-public-key <NAME>
+
   otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
   otto provider list
   otto model list [--provider <ID>]
@@ -173,6 +179,15 @@ client.list_flow_runs(workspace="My Workspace", status="running")
 client.list_flow_runs(deployment="My Deployment", flow="sales", limit=10)
 client.get_flow_run(name="fr-...", workspace="My Workspace")
 
+# Secrets
+client.list_secrets()
+client.list_secrets(environment="Production")
+client.get_secret(name="my-secret")
+client.set_secret(name="my-secret", value="hunter2")
+client.set_secret(name="ssh-key", generate_ssh_key=True, algorithm="ed25519")
+client.delete_secret(name="my-secret")
+client.get_secret_ssh_public_key(name="ssh-key")
+
 # Otto (AI assistant)
 client.list_otto_providers()
 client.otto(prompt="What flows are running?", workspace="My Workspace")
@@ -222,6 +237,15 @@ await client.runFlow("sales", "My Workspace");
 await client.listFlowRuns("My Workspace", null, null, "running");
 await client.getFlowRun("fr-...", "My Workspace");
 
+// Secrets
+await client.listSecrets();
+await client.listSecrets("Production");
+await client.getSecret("my-secret");
+await client.setSecret("my-secret", "hunter2");
+await client.setSecret("ssh-key", null, true, "ed25519");
+await client.deleteSecret("my-secret");
+await client.getSecretSshPublicKey("ssh-key");
+
 // Otto (AI assistant)
 await client.listOttoProviders();
 await client.otto("What flows are running?", "My Workspace");
@@ -265,6 +289,11 @@ The `mcp` subcommand starts an MCP server exposing AscendClient methods as tools
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
+| `list_secrets` | List secrets in the instance or environment vault |
+| `get_secret` | Get a secret value (requires cloud admin) |
+| `set_secret` | Create or update a secret |
+| `delete_secret` | Delete a secret |
+| `get_secret_ssh_public_key` | Get the SSH public key for a stored SSH private key |
 | `list_otto_providers` | List Otto providers and their enabled models |
 | `otto` | Chat with Otto, the Ascend AI assistant |
 

@@ -13,7 +13,8 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
     Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
     OttoChatRequest, OttoChatResponse, OttoModel, OttoProvider, OttoStreamStatus, Project, Runtime,
-    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
+    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, SecretStatus, SecretValue,
+    SshPublicKey, StreamEvent, VaultSecret, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -358,6 +359,121 @@ impl AscendClient {
         qs.push("title", title);
         let projects: Vec<Project> = self.get(&format!("/api/v1/projects{}", qs.finish()))?;
         resolve_one(projects, "project", title, |p| (&p.uuid, &p.title))
+    }
+
+    // -- Secrets --
+
+    /// Resolve an optional environment title to a UUID.
+    fn resolve_environment_uuid(&self, environment: Option<&str>) -> Result<Option<String>> {
+        match environment {
+            Some(title) => Ok(Some(self.get_environment(title)?.uuid)),
+            None => Ok(None),
+        }
+    }
+
+    /// Build the API path for a secret operation.
+    fn secret_path(environment_uuid: Option<&str>, name: Option<&str>) -> String {
+        match (environment_uuid, name) {
+            (Some(uuid), Some(n)) => format!(
+                "/vaults/environment/{}/secrets/{}",
+                encode_path(uuid),
+                encode_path(n)
+            ),
+            (Some(uuid), None) => format!("/vaults/environment/{}/secrets", encode_path(uuid)),
+            (None, Some(n)) => format!("/vaults/instance/secrets/{}", encode_path(n)),
+            (None, None) => "/vaults/instance/secrets".into(),
+        }
+    }
+
+    /// Build the JSON request body for a secret value.
+    fn secret_body(value: &SecretValue) -> Value {
+        match value {
+            SecretValue::Value(v) => serde_json::json!({ "secret_value": v }),
+            SecretValue::GenerateSshKey { algorithm, format } => {
+                let mut config = serde_json::Map::new();
+                if let Some(alg) = algorithm {
+                    config.insert("algorithm".into(), serde_json::json!(alg));
+                }
+                if let Some(fmt) = format {
+                    config.insert("format".into(), serde_json::json!(fmt));
+                }
+                serde_json::json!({ "generate_ssh_private_key": config })
+            }
+        }
+    }
+
+    /// List secret names in the instance vault, or an environment vault if specified.
+    pub fn list_secrets(&self, environment: Option<&str>) -> Result<Vec<String>> {
+        let env_uuid = self.resolve_environment_uuid(environment)?;
+        let path = Self::secret_path(env_uuid.as_deref(), None);
+        self.get(&path)
+    }
+
+    /// Get a secret value by name. Requires cloud admin permissions.
+    pub fn get_secret(&self, name: &str, environment: Option<&str>) -> Result<VaultSecret> {
+        let env_uuid = self.resolve_environment_uuid(environment)?;
+        let path = Self::secret_path(env_uuid.as_deref(), Some(name));
+        self.get(&path)
+    }
+
+    /// Create a new secret.
+    pub fn create_secret(
+        &self,
+        name: &str,
+        value: &SecretValue,
+        environment: Option<&str>,
+    ) -> Result<SecretStatus> {
+        let env_uuid = self.resolve_environment_uuid(environment)?;
+        let path = Self::secret_path(env_uuid.as_deref(), Some(name));
+        let body = Self::secret_body(value);
+        self.post_json(&path, &body)
+    }
+
+    /// Update an existing secret.
+    pub fn update_secret(
+        &self,
+        name: &str,
+        value: &SecretValue,
+        environment: Option<&str>,
+    ) -> Result<SecretStatus> {
+        let env_uuid = self.resolve_environment_uuid(environment)?;
+        let path = Self::secret_path(env_uuid.as_deref(), Some(name));
+        let body = Self::secret_body(value);
+        self.put_json(&path, &body)
+    }
+
+    /// Create or update a secret (tries create, falls back to update on conflict).
+    pub fn set_secret(
+        &self,
+        name: &str,
+        value: &SecretValue,
+        environment: Option<&str>,
+    ) -> Result<SecretStatus> {
+        match self.create_secret(name, value, environment) {
+            Ok(status) => Ok(status),
+            Err(Error::ApiError { status: 409, .. }) => {
+                self.update_secret(name, value, environment)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Delete a secret.
+    pub fn delete_secret(&self, name: &str, environment: Option<&str>) -> Result<SecretStatus> {
+        let env_uuid = self.resolve_environment_uuid(environment)?;
+        let path = Self::secret_path(env_uuid.as_deref(), Some(name));
+        // delete_empty returns Result<()> but we need the status response,
+        // so use the request helper directly.
+        self.request("DELETE", &path, None)
+    }
+
+    /// Get the SSH public key for a stored SSH private key (instance scope only).
+    pub fn get_secret_ssh_public_key(&self, name: &str) -> Result<SshPublicKey> {
+        let path = format!(
+            "/vaults/instance/secrets/{}/ssh-public-key",
+            encode_path(name)
+        );
+        self.get(&path)
     }
 
     // -- Profiles --
@@ -918,7 +1034,11 @@ impl AscendClient {
         check_error_status(resp, &context)
     }
 
-    /// Unified request helper for GET, POST, and PATCH.
+    fn put_json<T: serde::de::DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T> {
+        self.request("PUT", path, Some(body))
+    }
+
+    /// Unified request helper for GET, POST, PUT, and PATCH.
     fn request<T: serde::de::DeserializeOwned>(
         &self,
         method: &str,
@@ -942,6 +1062,7 @@ impl AscendClient {
                 let req = match m {
                     "POST" => self.agent.post(&url),
                     "PATCH" => self.agent.patch(&url),
+                    "PUT" => self.agent.put(&url),
                     _ => unreachable!("unsupported method with body: {m}"),
                 };
                 req.header("Authorization", &format!("Bearer {token}"))
@@ -954,6 +1075,12 @@ impl AscendClient {
                 .post(&url)
                 .header("Authorization", &format!("Bearer {token}"))
                 .send_empty()
+                .with_request_context(context.clone())?,
+            ("DELETE", None) => self
+                .agent
+                .delete(&url)
+                .header("Authorization", &format!("Bearer {token}"))
+                .call()
                 .with_request_context(context.clone())?,
             _ => unreachable!("unsupported method without body: {method}"),
         };

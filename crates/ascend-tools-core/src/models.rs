@@ -325,6 +325,40 @@ pub enum StreamEvent {
     ToolCallOutput { call_id: String, output: String },
 }
 
+/// A vault secret entry (name + value).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
+pub struct VaultSecret {
+    pub secret_name: String,
+    pub secret_value: String,
+}
+
+/// SSH public key in both OpenSSH and PEM formats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
+pub struct SshPublicKey {
+    pub public_key: String,
+    pub public_key_pem: String,
+}
+
+/// Response from create/update/delete secret endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "jsts", napi_derive::napi(object))]
+pub struct SecretStatus {
+    pub status: String,
+}
+
+/// Options for creating or updating a secret.
+pub enum SecretValue {
+    /// A plaintext secret value.
+    Value(String),
+    /// Generate an SSH private key with optional algorithm and format.
+    GenerateSshKey {
+        algorithm: Option<String>,
+        format: Option<String>,
+    },
+}
+
 /// An Otto provider with its enabled models.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "jsts", napi_derive::napi(object))]
