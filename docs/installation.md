@@ -94,7 +94,7 @@ mv ascend-tools /usr/local/bin/
 
 ```bash
 # Set version and platform
-VERSION="v1.1.0"
+VERSION="v0.0.0"  # replace with desired version
 PLATFORM="aarch64-apple-darwin"
 
 # Download and extract
@@ -137,4 +137,4 @@ export ASCEND_INSTANCE_API_URL="<YOUR_INSTANCE_API_URL>"
 ascend-tools workspace list
 ```
 
-See the [Quickstart](QUICKSTART.md) for the full setup walkthrough.
+See the [Quickstart](quickstart.md) for the full setup walkthrough.

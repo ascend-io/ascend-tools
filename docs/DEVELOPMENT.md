@@ -48,7 +48,7 @@ bin/test            # Rust tests only (cargo test --workspace)
 | `bin/check-version` | Verify version is consistent across all Cargo.toml, pyproject.toml, package.json |
 | `bin/check-rs` | `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace` |
 | `bin/check-py` | `ruff check .`, `ruff format --check .`, `ty check` |
-| `bin/check-js` | `npm install`, `npm run build`, `npm test` (ava) |
+| `bin/check-js` | `npm run build`, `npm test` (ava) |
 
 ## Format
 
@@ -63,7 +63,7 @@ bin/format-py       # ruff format .
 ```bash
 bin/install         # install Rust binary + Python package locally
 bin/install-rs      # cargo install --path crates/ascend-tools-cli
-bin/install-py      # maturin develop
+bin/install-py      # uv tool install .
 ```
 
 ## Architecture
@@ -125,11 +125,7 @@ All registry publishing uses OIDC trusted publishers — no long-lived tokens.
 
 ## Testing against a live instance
 
-```bash
-bin/integration [--app-dev] [--app]
-```
-
-Requires `ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, and `ASCEND_INSTANCE_API_URL` environment variables pointing to a test instance. See `.github/workflows/integration.yml` for details.
+Integration tests run via GitHub Actions (see `.github/workflows/integration.yml`). They require `ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, and `ASCEND_INSTANCE_API_URL` environment variables pointing to a test instance.
 
 ## Adding a new CLI command
 

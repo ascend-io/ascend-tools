@@ -43,7 +43,7 @@ import { Client } from "ascend-tools";
 const client = new Client(); // reads ASCEND_SERVICE_ACCOUNT_ID, etc. from env
 ```
 
-See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
+See [Quickstart](quickstart.md) for the full service account creation walkthrough.
 
 ### With explicit credentials
 
@@ -135,6 +135,34 @@ await client.resumeDeploymentAutomations("My Deployment");
 await client.deleteDeployment("My Deployment");
 ```
 
+### Create a deployment
+
+```javascript
+const dep = await client.createDeployment(
+  "My Deployment",   // title
+  "Production",      // environment
+  "My Project",      // project
+  "default",         // profile
+  "main",            // gitBranch
+);
+```
+
+### Update a deployment
+
+```javascript
+const dep = await client.updateDeployment(
+  "My Deployment",   // title
+  null,              // uuid
+  null,              // newTitle
+  null,              // gitBranch
+  null,              // gitBranchBase
+  null,              // profile
+  null,              // size
+  null,              // storageSize
+  true,              // enableAutomations
+);
+```
+
 ## Manage flows
 
 ### List flows
@@ -148,6 +176,19 @@ const flows = await client.listFlows(null, "My Deployment");
 
 ```javascript
 const result = await client.runFlow("sales", "My Workspace");
+```
+
+Resume a paused workspace before running:
+
+```javascript
+const result = await client.runFlow(
+  "sales",           // flow
+  "My Workspace",    // workspace
+  null,              // deployment
+  null,              // uuid
+  null,              // spec
+  true,              // resume
+);
 ```
 
 Pass a spec object for advanced options:

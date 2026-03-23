@@ -9,7 +9,7 @@ claude mcp add --transport stdio ascend-tools-dev -- uvx ascend-tools mcp    # v
 claude mcp add --transport stdio ascend-tools-dev -- npx ascend-tools mcp    # via npm
 ```
 
-Auth environment variables (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from your shell. See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
+Auth environment variables (`ASCEND_SERVICE_ACCOUNT_ID`, `ASCEND_SERVICE_ACCOUNT_KEY`, `ASCEND_INSTANCE_API_URL`) are inherited from your shell. See [Quickstart](quickstart.md) for the full service account creation walkthrough.
 
 If Claude is launched without your shell env, pass them explicitly:
 

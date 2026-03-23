@@ -56,7 +56,7 @@ Or install with npm (Node.js):
 npm install -g ascend-tools
 ```
 
-See [Installation](INSTALLATION.md) for other methods (Cargo, pre-built binaries).
+See [Installation](installation.md) for other methods (Cargo, pre-built binaries).
 
 ## Verify your setup
 
@@ -104,4 +104,4 @@ const result = await client.runFlow(flows[0].name, workspaces[0].title);
 - [JavaScript SDK guide](javascript.md): async Client, streaming, TypeScript types
 - [Rust SDK guide](rust.md): typed client with structs and error handling
 - [MCP server guide](mcp.md): set up AI assistants with Ascend tools
-- [Installation](INSTALLATION.md): all install methods
+- [Installation](installation.md): all install methods

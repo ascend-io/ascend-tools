@@ -14,7 +14,7 @@ Upgrade to the latest version:
 uv add --upgrade ascend-tools
 ```
 
-See [Installation](INSTALLATION.md) for all install methods.
+See [Installation](installation.md) for all install methods.
 
 ## Authenticate
 
@@ -26,7 +26,7 @@ from ascend_tools import Client
 client = Client()  # reads ASCEND_SERVICE_ACCOUNT_ID, etc. from env
 ```
 
-See [Quickstart](QUICKSTART.md) for the full service account creation walkthrough.
+See [Quickstart](quickstart.md) for the full service account creation walkthrough.
 
 ### With explicit credentials
 
@@ -82,23 +82,85 @@ Returns `list[str]` of profile names. Provide exactly one of workspace/deploymen
 
 ## Manage workspaces and deployments
 
-### Workspaces
+### List and get workspaces
 
 ```python
 client.list_workspaces()
 client.list_workspaces(environment="Production", project="My Project")
 client.get_workspace(title="My Workspace")
+```
+
+### Create a workspace
+
+```python
+ws = client.create_workspace(
+    title="My Workspace",
+    environment="Production",
+    project="My Project",
+    profile="default",
+    git_branch="main",
+)
+```
+
+Optional parameters: `git_branch_base`, `size`, `storage_size`, `auto_snooze_timeout_minutes`.
+
+### Update a workspace
+
+```python
+ws = client.update_workspace(
+    title="My Workspace",
+    git_branch="feature/abc",
+)
+```
+
+Only provided fields are changed. Optional parameters: `new_title`, `git_branch`, `git_branch_base`, `profile`, `size`, `storage_size`, `auto_snooze_timeout_minutes`.
+
+### Pause, resume, delete workspaces
+
+```python
 client.pause_workspace(title="My Workspace")
 client.resume_workspace(title="My Workspace")
 client.delete_workspace(title="My Workspace")
 ```
 
-### Deployments
+### List and get deployments
 
 ```python
 client.list_deployments()
-client.list_deployments(environment="Production")
+client.list_deployments(environment="Production", project="My Project")
 client.get_deployment(title="My Deployment")
+```
+
+### Create a deployment
+
+```python
+dep = client.create_deployment(
+    title="My Deployment",
+    environment="Production",
+    project="My Project",
+    profile="default",
+    git_branch="main",
+)
+```
+
+Optional parameters: `git_branch_base`, `size`, `storage_size`, `enable_automations`.
+
+### Update a deployment
+
+```python
+dep = client.update_deployment(
+    title="My Deployment",
+    enable_automations=True,
+)
+```
+
+Only provided fields are changed. Optional parameters: `new_title`, `git_branch`, `git_branch_base`, `profile`, `size`, `storage_size`, `enable_automations`.
+
+### Pause/resume automations, delete deployments
+
+```python
+client.pause_deployment_automations(title="My Deployment")
+client.resume_deployment_automations(title="My Deployment")
 client.delete_deployment(title="My Deployment")
 ```
 

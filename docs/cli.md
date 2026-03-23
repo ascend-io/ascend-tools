@@ -18,11 +18,11 @@ npm update -g ascend-tools                # Node.js
 cargo install ascend-tools-cli            # Rust (reinstalls latest)
 ```
 
-See [Installation](INSTALLATION.md) for other methods (pre-built binaries, `uvx`, `npx`).
+See [Installation](installation.md) for other methods (pre-built binaries, `uvx`, `npx`).
 
 ## Authenticate
 
-Set three environment variables (see [Quickstart](QUICKSTART.md) for the full service account creation walkthrough):
+Set three environment variables (see [Quickstart](quickstart.md) for the full service account creation walkthrough):
 
 ```bash
 export ASCEND_SERVICE_ACCOUNT_ID="<YOUR_SERVICE_ACCOUNT_ID>"
@@ -143,6 +143,7 @@ ascend-tools project get "My Project"
 
 # List profiles (requires a workspace/deployment or project+branch)
 ascend-tools profile list --workspace "My Workspace"
+ascend-tools profile list --deployment "My Deployment"
 ascend-tools profile list --project "My Project" --git-branch main
 ```
 
@@ -235,6 +236,7 @@ Empty results print "No results." to stderr.
 # One-shot message
 ascend-tools otto run "What flows are running?"
 ascend-tools otto run "Describe the sales flow" --workspace "My Workspace"
+ascend-tools otto run "What flows are running?" --deployment "My Deployment"
 ascend-tools otto run "Help me debug this pipeline" --provider "OpenAI" --model gpt-4o
 
 # List providers and models
@@ -244,6 +246,7 @@ ascend-tools otto model list --provider "OpenAI"
 
 # Interactive chat (Ctrl+C to exit)
 ascend-tools otto tui --workspace "My Workspace"
+ascend-tools otto tui --deployment "My Deployment"
 ```
 
 ## Install AI assistant skills
