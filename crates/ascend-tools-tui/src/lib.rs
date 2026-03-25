@@ -130,6 +130,7 @@ enum StreamMsgKind {
     Delta(String),
     ToolCallStart {
         name: String,
+        arguments: String,
     },
     ToolCallOutput {
         name: String,
@@ -156,10 +157,17 @@ enum Role {
     System,
 }
 
+struct ToolCallData {
+    name: String,
+    arguments: String,
+    output: String,
+}
+
 struct Message {
     role: Role,
     content: String,
     timestamp: SystemTime,
+    tool_call: Option<ToolCallData>,
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +300,8 @@ struct App {
     completion_index: Option<usize>,
     history: History,
     show_timestamps: bool,
-    active_tool_call: Option<String>,
+    active_tool_call: Option<(String, String)>,
+    expand_tool_calls: bool,
     stream_generation: u64,
     /// Set when cancel fires; the main loop spawns a thread to stop the backend.
     /// The generation value is the *cancelled* generation (before advancement).
@@ -339,6 +348,7 @@ impl App {
             history: History::load(),
             show_timestamps: false,
             active_tool_call: None,
+            expand_tool_calls: false,
             stream_generation: 0,
             stop_pending: None,
             interrupting: false,
@@ -410,6 +420,12 @@ impl App {
                 return;
             }
             self.cancel_stream(cancelled_gen);
+            return;
+        }
+
+        // Ctrl+o: toggle tool call expand/collapse
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('o') {
+            self.expand_tool_calls = !self.expand_tool_calls;
             return;
         }
 
@@ -763,6 +779,7 @@ impl App {
             role: Role::User,
             content: text.clone(),
             timestamp: SystemTime::now(),
+            tool_call: None,
         });
 
         self.pending_request = Some(OttoChatRequest {
@@ -789,6 +806,7 @@ impl App {
             role: Role::System,
             content: content.into(),
             timestamp: SystemTime::now(),
+            tool_call: None,
         });
     }
 
@@ -852,6 +870,7 @@ impl App {
                     "  Up/Down       Input history\n",
                     "  PageUp/Down   Scroll chat\n",
                     "  Tab           Complete /command\n",
+                    "  Ctrl+o        Toggle tool call details\n",
                     "  Ctrl+C        Cancel stream / Exit",
                 ));
             }
@@ -910,14 +929,27 @@ impl App {
             StreamMsgKind::Delta(text) => {
                 self.stream_pending.extend(text.chars());
             }
-            StreamMsgKind::ToolCallStart { name, .. } => {
+            StreamMsgKind::ToolCallStart { name, arguments } => {
                 self.flush_stream_text();
-                self.active_tool_call = Some(name);
+                self.active_tool_call = Some((name, arguments));
             }
             StreamMsgKind::ToolCallOutput { name, output } => {
-                self.active_tool_call = None;
+                let arguments = self
+                    .active_tool_call
+                    .take()
+                    .map(|(_, args)| args)
+                    .unwrap_or_default();
                 let output_summary = truncate(&output, 80);
-                self.push_system(format!("\u{2699} {name} \u{2192} {output_summary}"));
+                self.messages.push(Message {
+                    role: Role::System,
+                    content: format!("\u{2699} {name} \u{2192} {output_summary}"),
+                    timestamp: SystemTime::now(),
+                    tool_call: Some(ToolCallData {
+                        name,
+                        arguments,
+                        output,
+                    }),
+                });
             }
             StreamMsgKind::Finished { status, error } => match status {
                 OttoStreamStatus::Completed => {
@@ -961,6 +993,7 @@ impl App {
                 role: Role::Otto,
                 content,
                 timestamp: SystemTime::now(),
+                tool_call: None,
             });
         }
     }
@@ -1098,7 +1131,11 @@ impl App {
                 )));
             }
 
-            lines.extend(render_markdown(&msg.content, msg.role));
+            if let Some(tc) = &msg.tool_call {
+                lines.extend(render_tool_call(tc, self.expand_tool_calls));
+            } else {
+                lines.extend(render_markdown(&msg.content, msg.role));
+            }
         }
 
         // Streaming: show current buffer or spinner
@@ -1114,7 +1151,7 @@ impl App {
             if self.stream_buffer.is_empty() && self.stream_pending.is_empty() {
                 let label = if self.interrupting {
                     format!("  {} Stopping...", SPINNER[self.spinner_frame])
-                } else if let Some(tool) = &self.active_tool_call {
+                } else if let Some((tool, _)) = &self.active_tool_call {
                     format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame])
                 } else {
                     format!("  {} Ascending...", SPINNER[self.spinner_frame])
@@ -1129,7 +1166,7 @@ impl App {
                     format!("  {} Stopping...", SPINNER[self.spinner_frame]),
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
-            } else if let Some(tool) = &self.active_tool_call {
+            } else if let Some((tool, _)) = &self.active_tool_call {
                 lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
                 lines.push(Line::from(Span::styled(
                     format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame]),
@@ -1494,6 +1531,64 @@ fn render_markdown(text: &str, role: Role) -> Vec<Line<'static>> {
     lines
 }
 
+fn render_tool_call(tc: &ToolCallData, expanded: bool) -> Vec<Line<'static>> {
+    let indent = "  ";
+    let sys_style = Style::default().fg(SYSTEM_COLOR).italic();
+    let dim_style = Style::default().fg(DIM_COLOR);
+    let text_style = Style::default().fg(TEXT_COLOR);
+
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        format!("{indent}\u{2699} {}", tc.name),
+        sys_style,
+    )));
+
+    if !expanded {
+        let summary = truncate(&tc.output, 80);
+        lines.push(Line::from(vec![
+            Span::styled(format!("{indent}\u{2192} {summary}"), text_style),
+            Span::styled("  Ctrl+o to expand", dim_style),
+        ]));
+        return lines;
+    }
+
+    // Pretty-print a JSON string, falling back to raw text
+    let pretty = |raw: &str| -> String {
+        serde_json::from_str::<serde_json::Value>(raw)
+            .ok()
+            .and_then(|v| serde_json::to_string_pretty(&v).ok())
+            .unwrap_or_else(|| raw.to_string())
+    };
+
+    for (label, raw) in [("arguments", &tc.arguments), ("output", &tc.output)] {
+        if raw.is_empty() {
+            continue;
+        }
+        let content = pretty(raw);
+        lines.push(Line::from(Span::styled(
+            format!("{indent}\u{256d}\u{2500} {label} \u{2500}"),
+            dim_style,
+        )));
+        for line in content.lines() {
+            lines.push(Line::from(Span::styled(
+                format!("{indent}\u{2502} {line}"),
+                text_style,
+            )));
+        }
+        lines.push(Line::from(Span::styled(
+            format!("{indent}\u{2570}\u{2500}\u{2500}"),
+            dim_style,
+        )));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!("{indent}Ctrl+o to collapse"),
+        dim_style,
+    )));
+
+    lines
+}
+
 fn parse_inline(text: &str, indent: &str, role: Role) -> Line<'static> {
     let base_style = match role {
         Role::System => Style::default().fg(SYSTEM_COLOR).italic(),
@@ -1634,6 +1729,7 @@ fn conversation_to_messages(conv: &Conversation) -> Vec<Message> {
             role,
             content: text,
             timestamp,
+            tool_call: None,
         });
     }
     out
@@ -1803,9 +1899,13 @@ pub fn run_tui(
                                 StreamEvent::TextDelta(delta) => {
                                     send(StreamMsgKind::Delta(delta));
                                 }
-                                StreamEvent::ToolCallStart { call_id, name, .. } => {
+                                StreamEvent::ToolCallStart {
+                                    call_id,
+                                    name,
+                                    arguments,
+                                } => {
                                     tool_names.insert(call_id, name.clone());
-                                    send(StreamMsgKind::ToolCallStart { name });
+                                    send(StreamMsgKind::ToolCallStart { name, arguments });
                                 }
                                 StreamEvent::ToolCallOutput { call_id, output } => {
                                     let name =
@@ -2172,7 +2272,7 @@ mod tests {
         let mut app = test_app();
         app.streaming = true;
         app.stream_generation = 1;
-        app.active_tool_call = Some("read_file".into());
+        app.active_tool_call = Some(("read_file".into(), "{}".into()));
 
         let cancelled_gen = AtomicU64::new(0);
         app.cancel_stream(&cancelled_gen);
@@ -2443,6 +2543,7 @@ mod tests {
             generation: 1,
             kind: StreamMsgKind::ToolCallStart {
                 name: "stale_tool".into(),
+                arguments: "{}".into(),
             },
         });
         app.handle_stream_msg(StreamMsg::Stream {
@@ -2778,7 +2879,7 @@ mod tests {
         app.streaming = true;
         app.stream_generation = 1;
         app.stream_buffer = "Let me check that for you.".into();
-        app.active_tool_call = Some("list_workspaces".into());
+        app.active_tool_call = Some(("list_workspaces".into(), "{}".into()));
 
         let cancelled_gen = AtomicU64::new(0);
         app.cancel_stream(&cancelled_gen);
@@ -2805,10 +2906,14 @@ mod tests {
             generation: 1,
             kind: StreamMsgKind::ToolCallStart {
                 name: "list_flows".into(),
+                arguments: "{}".into(),
             },
         });
 
-        assert_eq!(app.active_tool_call.as_deref(), Some("list_flows"));
+        assert_eq!(
+            app.active_tool_call.as_ref().map(|(n, _)| n.as_str()),
+            Some("list_flows")
+        );
     }
 
     #[test]
@@ -2816,7 +2921,7 @@ mod tests {
         let mut app = test_app();
         app.streaming = true;
         app.stream_generation = 1;
-        app.active_tool_call = Some("list_flows".into());
+        app.active_tool_call = Some(("list_flows".into(), "{}".into()));
 
         app.handle_stream_msg(StreamMsg::Stream {
             generation: 1,
@@ -2893,6 +2998,7 @@ mod tests {
             role: Role::Otto,
             content: "old message".into(),
             timestamp: SystemTime::now(),
+            tool_call: None,
         });
 
         app.handle_command("/clear");
