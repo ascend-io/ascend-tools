@@ -451,6 +451,50 @@ impl Client {
         to_python(py, &run)
     }
 
+    // -- Conversation methods --
+
+    #[pyo3(signature = (*, offset=None, limit=None))]
+    fn list_conversations(
+        &self,
+        py: Python<'_>,
+        offset: Option<u64>,
+        limit: Option<u64>,
+    ) -> PyResult<Py<PyAny>> {
+        let result = py
+            .detach(|| {
+                let mut filters = models::ConversationFilters::default();
+                filters.offset = offset;
+                filters.limit = limit;
+                self.inner.list_conversations(filters)
+            })
+            .map_err(to_py_err)?;
+        to_python(py, &result)
+    }
+
+    #[pyo3(signature = (*, title=None, id=None))]
+    fn get_conversation(
+        &self,
+        py: Python<'_>,
+        title: Option<&str>,
+        id: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let result = py
+            .detach(|| {
+                if let Some(id) = id {
+                    self.inner.get_conversation(id)
+                } else if let Some(title) = title {
+                    self.inner.get_conversation_by_title(title)
+                } else {
+                    Err(ascend_tools::Error::MissingField {
+                        context: "get_conversation",
+                        field: "title or id",
+                    })
+                }
+            })
+            .map_err(to_py_err)?;
+        to_python(py, &result)
+    }
+
     #[pyo3(signature = ())]
     fn list_otto_providers(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let providers = py
@@ -459,7 +503,7 @@ impl Client {
         to_python(py, &providers)
     }
 
-    #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, model=None, provider=None))]
+    #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, conversation=None, model=None, provider=None))]
     #[allow(clippy::too_many_arguments)]
     fn otto(
         &self,
@@ -469,6 +513,7 @@ impl Client {
         deployment: Option<&str>,
         uuid: Option<&str>,
         thread_id: Option<&str>,
+        conversation: Option<&str>,
         model: Option<&str>,
         provider: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
@@ -478,10 +523,13 @@ impl Client {
                     .inner
                     .resolve_optional_runtime_target(workspace, deployment, uuid)?;
                 let otto_model = self.inner.resolve_otto_model(provider, model)?;
+                let thread_id = self
+                    .inner
+                    .resolve_otto_thread(conversation, thread_id.map(String::from))?;
                 let request = models::OttoChatRequest {
                     prompt: prompt.to_string(),
                     runtime_uuid,
-                    thread_id: thread_id.map(String::from),
+                    thread_id,
                     model: otto_model,
                 };
                 self.inner.otto(&request)

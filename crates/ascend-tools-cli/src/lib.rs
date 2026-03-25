@@ -2,6 +2,7 @@
 
 mod cli;
 mod common;
+mod conversation;
 mod deployment;
 mod environment;
 mod flow;

@@ -17,7 +17,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use crossterm::cursor::SetCursorStyle;
@@ -30,7 +30,9 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, OttoModel, OttoStreamStatus, StreamEvent};
+use ascend_tools::models::{
+    Conversation, OttoChatRequest, OttoModel, OttoStreamStatus, StreamEvent,
+};
 use std::ops::ControlFlow;
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,10 @@ enum StreamMsg {
     ProviderInfo {
         provider_label: Option<String>,
         model_label: String,
+    },
+    ConversationHistory {
+        generation: u64,
+        messages: Vec<Message>,
     },
     StopFinished {
         error: Option<String>,
@@ -289,7 +295,8 @@ struct App {
     active_tool_call: Option<String>,
     stream_generation: u64,
     /// Set when cancel fires; the main loop spawns a thread to stop the backend.
-    stop_pending: bool,
+    /// The generation value is the *cancelled* generation (before advancement).
+    stop_pending: Option<u64>,
     interrupting: bool,
     /// Set when user presses Ctrl+C during interrupting state — force exit.
     force_quit: bool,
@@ -302,6 +309,7 @@ impl App {
         provider_label: Option<String>,
         model_label: String,
         context_label: Option<String>,
+        thread_id: Option<String>,
     ) -> Self {
         Self {
             messages: Vec::new(),
@@ -315,7 +323,7 @@ impl App {
             stream_pending: VecDeque::new(),
             last_stream_tick: Instant::now(),
             stream_start: None,
-            thread_id: None,
+            thread_id,
             runtime_uuid,
             otto_model,
             provider_label,
@@ -332,7 +340,7 @@ impl App {
             show_timestamps: false,
             active_tool_call: None,
             stream_generation: 0,
-            stop_pending: false,
+            stop_pending: None,
             interrupting: false,
             force_quit: false,
         }
@@ -864,6 +872,14 @@ impl App {
                 self.provider_label = provider;
                 self.model_label = model;
             }
+            StreamMsg::ConversationHistory {
+                generation,
+                messages,
+            } => {
+                if generation == self.stream_generation && self.messages.is_empty() {
+                    self.messages = messages;
+                }
+            }
             StreamMsg::StopFinished { error } => {
                 // Only act if we're actually in interrupting state.
                 // A late StopFinished from a previous cancel is harmless.
@@ -956,12 +972,13 @@ impl App {
         // Store the generation being cancelled BEFORE advancing, so workers
         // for this generation see the cancellation even if a new request
         // resets nothing (cancelled_gen is never cleared).
-        cancelled_gen.store(self.stream_generation, Ordering::Release);
-        self.stream_generation = self.stream_generation.wrapping_add(1);
+        let cancelled_generation = self.stream_generation;
+        cancelled_gen.store(cancelled_generation, Ordering::Release);
+        self.stream_generation = cancelled_generation.wrapping_add(1);
         self.flush_stream_text();
         self.active_tool_call = None;
         self.interrupting = true;
-        self.stop_pending = true;
+        self.stop_pending = Some(cancelled_generation);
     }
 
     fn finish_stream(&mut self) {
@@ -1586,6 +1603,42 @@ fn resolve_provider_labels(
     }
 }
 
+/// Convert a fetched `Conversation` into TUI `Message`s.
+fn conversation_to_messages(conv: &Conversation) -> Vec<Message> {
+    let Some(messages) = &conv.messages else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for msg in messages {
+        let role_str = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        let role = match role_str {
+            "user" => Role::User,
+            "assistant" => Role::Otto,
+            _ => continue,
+        };
+        let text = Conversation::extract_message_text(msg);
+        if text.is_empty() {
+            continue;
+        }
+        let timestamp = msg
+            .get("created_at")
+            .and_then(|v| v.as_f64())
+            .map(|epoch| UNIX_EPOCH + Duration::from_secs_f64(epoch))
+            .or_else(|| {
+                msg.get("created_at")
+                    .and_then(|v| v.as_i64())
+                    .map(|epoch| UNIX_EPOCH + Duration::from_secs(epoch.try_into().unwrap_or(0)))
+            })
+            .unwrap_or(UNIX_EPOCH);
+        out.push(Message {
+            role,
+            content: text,
+            timestamp,
+        });
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1595,6 +1648,7 @@ pub fn run_tui(
     runtime_uuid: Option<String>,
     otto_model: Option<OttoModel>,
     context_label: Option<String>,
+    thread_id: Option<String>,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -1641,7 +1695,29 @@ pub fn run_tui(
             });
         });
 
-        let mut app = App::new(runtime_uuid, otto_model, None, String::new(), context_label);
+        let mut app = App::new(
+            runtime_uuid,
+            otto_model,
+            None,
+            String::new(),
+            context_label,
+            thread_id.clone(),
+        );
+
+        // If resuming a conversation, load its history in the background
+        if let Some(tid) = thread_id {
+            let history_tx = stream_tx.clone();
+            let history_gen = app.stream_generation;
+            scope.spawn(move || {
+                if let Ok(conv) = client.get_conversation(&tid) {
+                    let messages = conversation_to_messages(&conv);
+                    let _ = history_tx.send(StreamMsg::ConversationHistory {
+                        generation: history_gen,
+                        messages,
+                    });
+                }
+            });
+        }
 
         loop {
             app.tick_spinner();
@@ -1678,14 +1754,12 @@ pub fn run_tui(
 
             // If the user cancelled, tell the backend to stop the thread.
             // Spawns a background thread so the TUI stays responsive.
-            if app.stop_pending {
-                app.stop_pending = false;
-                let current_gen = app.stream_generation;
+            if let Some(cancelled_generation) = app.stop_pending.take() {
                 let tid = active_thread_id
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .as_ref()
-                    .filter(|(g, _)| *g == current_gen)
+                    .filter(|(g, _)| *g == cancelled_generation)
                     .map(|(_, tid)| tid.clone());
                 if let Some(tid) = tid {
                     let stop_tx = stream_tx.clone();
@@ -1825,7 +1899,7 @@ mod tests {
     use std::sync::atomic::AtomicU64;
 
     fn test_app() -> App {
-        App::new(None, None, None, String::new(), None)
+        App::new(None, None, None, String::new(), None, None)
     }
 
     // -- Stream lifecycle --------------------------------------------------
@@ -2022,8 +2096,8 @@ mod tests {
     // =====================================================================
     //
     // State diagram:
-    //   idle → [Ctrl+C] → cancel_stream() → interrupting=true, stop_pending=true
-    //        → [main loop] spawns stop thread → stop_pending=false
+    //   idle → [Ctrl+C] → cancel_stream() → interrupting=true, stop_pending=Some(gen)
+    //        → [main loop] spawns stop thread → stop_pending=None
     //        → [stop thread] sends StopFinished{error} → finish_stream()
     //        → idle (ready for next message)
     //
@@ -2043,7 +2117,7 @@ mod tests {
         app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
-        assert!(app.stop_pending);
+        assert_eq!(app.stop_pending, Some(1)); // cancelled generation
         assert_eq!(cancelled_gen.load(Ordering::Acquire), 1);
         // Generation should advance to reject future messages from old stream
         assert_eq!(app.stream_generation, 2);
@@ -2068,7 +2142,7 @@ mod tests {
         app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
-        assert!(app.stop_pending);
+        assert_eq!(app.stop_pending, Some(1)); // cancelled generation
         // No Otto message should be flushed (nothing to flush)
         assert!(!app.messages.iter().any(|m| m.role == Role::Otto));
     }
@@ -2114,14 +2188,14 @@ mod tests {
         app.streaming = true;
         app.interrupting = true;
         app.stream_generation = 5;
-        app.stop_pending = false; // already dispatched
+        app.stop_pending = None; // already dispatched
 
         let cancelled_gen = AtomicU64::new(1);
         app.cancel_stream(&cancelled_gen);
 
         // Should not change anything — generation stays, no double stop
         assert_eq!(app.stream_generation, 5);
-        assert!(!app.stop_pending); // should NOT re-set stop_pending
+        assert_eq!(app.stop_pending, None); // should NOT re-set stop_pending
     }
 
     // -- 3. StopFinished: success ------------------------------------------
@@ -2243,12 +2317,12 @@ mod tests {
         app.cancel_stream(&cancelled_gen);
 
         assert!(app.interrupting);
-        assert!(app.stop_pending);
+        assert_eq!(app.stop_pending, Some(1)); // cancelled generation
 
-        // In the main loop, stop_pending=true but active_thread_id=None
+        // In the main loop, stop_pending=Some but active_thread_id=None
         // triggers immediate finish_stream + "Cancelled"
         // Simulate that path:
-        app.stop_pending = false;
+        app.stop_pending = None;
         app.finish_stream();
         app.push_system("Cancelled");
 
@@ -2416,10 +2490,10 @@ mod tests {
         let cancelled_gen = AtomicU64::new(0);
         app.cancel_stream(&cancelled_gen);
         assert!(app.interrupting);
-        assert!(app.stop_pending);
+        assert_eq!(app.stop_pending, Some(1)); // cancelled generation
 
         // 3. Stop thread succeeds
-        app.stop_pending = false;
+        app.stop_pending = None;
         app.handle_stream_msg(StreamMsg::StopFinished { error: None });
         assert!(!app.streaming);
         assert!(!app.interrupting);
@@ -2462,7 +2536,7 @@ mod tests {
         app.cancel_stream(&cancelled_gen);
 
         // 3. Stop times out (your screenshot scenario)
-        app.stop_pending = false;
+        app.stop_pending = None;
         app.handle_stream_msg(StreamMsg::StopFinished {
             error: Some(
                 "API error (HTTP 408): thread t-timeout did not stop within 30 seconds".into(),

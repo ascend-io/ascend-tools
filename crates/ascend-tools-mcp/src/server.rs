@@ -9,16 +9,18 @@ use rmcp::{
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
-    FlowRunFilters, OttoChatRequest, RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate,
+    ConversationFilters, FlowRunFilters, OttoChatRequest, RuntimeCreate, RuntimeFilters,
+    RuntimeKind, RuntimeUpdate,
 };
 
 use crate::params::{
     CreateDeploymentParams, CreateWorkspaceParams, DeleteDeploymentParams, DeleteWorkspaceParams,
-    GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams, GetProjectParams,
-    GetWorkspaceParams, ListDeploymentsParams, ListEnvironmentsParams, ListFlowRunsParams,
-    ListFlowsParams, ListProfilesParams, ListProjectsParams, ListWorkspacesParams, OttoParams,
-    PauseDeploymentAutomationsParams, PauseWorkspaceParams, ResumeDeploymentAutomationsParams,
-    ResumeWorkspaceParams, RunFlowParams, UpdateDeploymentParams, UpdateWorkspaceParams,
+    GetConversationParams, GetDeploymentParams, GetEnvironmentParams, GetFlowRunParams,
+    GetProjectParams, GetWorkspaceParams, ListConversationsParams, ListDeploymentsParams,
+    ListEnvironmentsParams, ListFlowRunsParams, ListFlowsParams, ListProfilesParams,
+    ListProjectsParams, ListWorkspacesParams, OttoParams, PauseDeploymentAutomationsParams,
+    PauseWorkspaceParams, ResumeDeploymentAutomationsParams, ResumeWorkspaceParams, RunFlowParams,
+    UpdateDeploymentParams, UpdateWorkspaceParams,
 };
 
 /// Run a blocking SDK call on a spawn_blocking task and serialize the result as JSON.
@@ -458,6 +460,41 @@ impl AscendMcpServer {
         .await
     }
 
+    // -- Conversations --
+
+    #[tool(description = "List recent Otto conversations, ordered by most recent first")]
+    async fn list_conversations(
+        &self,
+        Parameters(params): Parameters<ListConversationsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            let mut filters = ConversationFilters::default();
+            filters.offset = params.offset;
+            filters.limit = params.limit;
+            c.list_conversations(filters)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Get an Otto conversation by title or ID, including full message history. Auto-detects whether the input is a conversation ID or title (tries ID lookup first, then title search). Set use_id=true only as an optimization hint when you know the input is an ID."
+    )]
+    async fn get_conversation(
+        &self,
+        Parameters(params): Parameters<GetConversationParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.client()?;
+        blocking(client, move |c| {
+            if params.use_id.unwrap_or(false) {
+                c.get_conversation(&params.title_or_id)
+            } else {
+                c.get_conversation_by_title(&params.title_or_id)
+            }
+        })
+        .await
+    }
+
     // -- Otto --
 
     #[tool(description = "List Otto providers and their enabled models")]
@@ -480,10 +517,12 @@ impl AscendMcpServer {
             )?;
             let model =
                 c.resolve_otto_model(params.provider.as_deref(), params.model.as_deref())?;
+            let thread_id =
+                c.resolve_otto_thread(params.conversation.as_deref(), params.thread_id)?;
             c.otto(&OttoChatRequest {
                 prompt: params.prompt,
                 runtime_uuid,
-                thread_id: params.thread_id,
+                thread_id,
                 model,
             })
         })

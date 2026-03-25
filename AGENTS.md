@@ -80,10 +80,13 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
-  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--thread <ID>]
+  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID>]
   otto provider list
   otto model list [--provider <ID>]
-  otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>]
+  otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID>]
+  otto conversation list [--limit <N>] [--offset <N>]
+  otto conversation get <TITLE>
+  otto conversation get <ID> --id
 
   signup
 
@@ -176,6 +179,11 @@ client.get_flow_run(name="fr-...", workspace="My Workspace")
 # Otto (AI assistant)
 client.list_otto_providers()
 client.otto(prompt="What flows are running?", workspace="My Workspace")
+
+# Conversations
+client.list_conversations(limit=10)
+client.get_conversation(title="My conversation")
+client.get_conversation(id="thread-abc123")
 ```
 
 All methods return `dict` or `list[dict]`. All parameters are keyword-only.
@@ -225,6 +233,11 @@ await client.getFlowRun("fr-...", "My Workspace");
 // Otto (AI assistant)
 await client.listOttoProviders();
 await client.otto("What flows are running?", "My Workspace");
+
+// Conversations
+await client.listConversations(0, 10);
+await client.getConversation("My conversation");
+await client.getConversation("thread-abc123", true);  // by ID
 ```
 
 All methods are async (return Promises). All methods return plain objects/arrays. TypeScript type definitions are included (`index.d.cts`).
@@ -265,6 +278,8 @@ The `mcp` subcommand starts an MCP server exposing AscendClient methods as tools
 | `run_flow` | Trigger a flow run with typed spec (resume, full_refresh, components, parameters, etc.) |
 | `list_flow_runs` | List flow runs with filters (status, flow, since, until, offset, limit) |
 | `get_flow_run` | Get a flow run by name |
+| `list_conversations` | List recent Otto conversations |
+| `get_conversation` | Get an Otto conversation by title or ID |
 | `list_otto_providers` | List Otto providers and their enabled models |
 | `otto` | Chat with Otto, the Ascend AI assistant |
 
