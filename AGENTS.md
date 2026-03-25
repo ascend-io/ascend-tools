@@ -118,6 +118,7 @@ No subcommand prints help.
 - **Timestamps** — `/timestamps` toggles message timestamps.
 - **Cursor shape** — Block in vi normal, blinking bar in insert/emacs.
 - **Context indicator** — Workspace/deployment name shown in status bar.
+- **Tool call details** — Ctrl+o toggles expanded view of tool call arguments and output.
 - **Notification bell** — Terminal bell when responses take >3 seconds.
 
 ### slash commands
