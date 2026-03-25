@@ -327,6 +327,24 @@ pub struct GetFlowRunParams {
     pub uuid: Option<String>,
 }
 
+// -- Conversation params --
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListConversationsParams {
+    /// Pagination offset
+    pub offset: Option<u64>,
+    /// Maximum number of conversations to return (default 40)
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetConversationParams {
+    /// Conversation title or ID
+    pub title_or_id: String,
+    /// Optimization hint: if true, treat title_or_id as an ID directly (skip auto-detection). Not required — IDs are auto-detected when false.
+    pub use_id: Option<bool>,
+}
+
 // -- Otto params --
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -343,6 +361,8 @@ pub struct OttoParams {
     pub provider: Option<String>,
     /// LLM model (e.g. "gpt-4o")
     pub model: Option<String>,
-    /// Thread ID to continue a conversation
+    /// Thread ID to continue a conversation (use conversation instead for title lookup)
     pub thread_id: Option<String>,
+    /// Continue an existing conversation (by title or ID). Resolves title to ID automatically.
+    pub conversation: Option<String>,
 }

@@ -14,6 +14,28 @@ use napi_derive::napi;
 
 // --- Generic task for libuv thread pool ---
 
+/// Wrapper around `serde_json::Value` that implements napi's `TypeName` trait,
+/// allowing it to be used with `TypedTask` for returning dynamic JSON objects.
+pub struct JsonValue(pub serde_json::Value);
+
+#[allow(unsafe_code)]
+impl ToNapiValue for JsonValue {
+    unsafe fn to_napi_value(env: napi::sys::napi_env, val: Self) -> napi::Result<napi::sys::napi_value> {
+        // SAFETY: delegating to serde_json::Value's napi implementation which
+        // requires the env pointer to be valid (guaranteed by napi framework).
+        unsafe { serde_json::Value::to_napi_value(env, val.0) }
+    }
+}
+
+impl TypeName for JsonValue {
+    fn type_name() -> &'static str {
+        "object"
+    }
+    fn value_type() -> napi::ValueType {
+        napi::ValueType::Object
+    }
+}
+
 pub struct TypedTask<T>(Option<Box<dyn FnOnce() -> napi::Result<T> + Send>>);
 
 impl<T> TypedTask<T> {
@@ -311,6 +333,33 @@ impl Client {
         }))
     }
 
+    // -- Conversation methods --
+
+    #[napi(ts_return_type = "Promise<{ threads: object[], total: number }>")]
+    pub fn list_conversations(&self, offset: Option<u32>, limit: Option<u32>) -> AsyncTask<TypedTask<JsonValue>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let mut filters = models::ConversationFilters::default();
+            filters.offset = offset.map(u64::from);
+            filters.limit = limit.map(u64::from);
+            let result = client.list_conversations(filters).map_err(to_napi_err)?;
+            Ok(JsonValue(serde_json::to_value(&result).map_err(to_napi_err)?))
+        }))
+    }
+
+    #[napi(ts_return_type = "Promise<object>")]
+    pub fn get_conversation(&self, title_or_id: String, use_id: Option<bool>) -> AsyncTask<TypedTask<JsonValue>> {
+        let client = self.inner.clone();
+        AsyncTask::new(TypedTask::new(move || {
+            let result = if use_id.unwrap_or(false) {
+                client.get_conversation(&title_or_id)
+            } else {
+                client.get_conversation_by_title(&title_or_id)
+            }.map_err(to_napi_err)?;
+            Ok(JsonValue(serde_json::to_value(&result).map_err(to_napi_err)?))
+        }))
+    }
+
     // -- Otto methods --
 
     #[napi(ts_return_type = "Promise<OttoProvider[]>")]
@@ -321,11 +370,12 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
             let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
             client.otto(&request).map_err(to_napi_err)
         }))
@@ -333,11 +383,12 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
+            let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
             let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
             client.otto_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))

@@ -11,9 +11,10 @@ use crate::auth::Auth;
 use crate::config::Config;
 use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
-    Deployment, Environment, Flow, FlowRun, FlowRunFilters, FlowRunList, FlowRunTrigger,
-    OttoChatRequest, OttoChatResponse, OttoModel, OttoProvider, OttoStreamStatus, Project, Runtime,
-    RuntimeCreate, RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
+    Conversation, ConversationFilters, ConversationList, Deployment, Environment, Flow, FlowRun,
+    FlowRunFilters, FlowRunList, FlowRunTrigger, OttoChatRequest, OttoChatResponse, OttoModel,
+    OttoProvider, OttoStreamStatus, Project, Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind,
+    RuntimeUpdate, StreamEvent, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -446,6 +447,102 @@ impl AscendClient {
             encode_path(name),
             encode_query_value(runtime_uuid)
         ))
+    }
+
+    // -- Conversations --
+
+    /// List conversations (threads), ordered by most recent first.
+    pub fn list_conversations(&self, filters: ConversationFilters) -> Result<ConversationList> {
+        let mut qs = QueryString::new();
+        qs.push_opt("offset", filters.offset);
+        qs.push_opt("limit", filters.limit);
+        qs.push_opt("title", filters.title.as_deref());
+        self.get(&format!("/api/v1/otto/threads{}", qs.finish()))
+    }
+
+    /// Get a conversation by ID, including full message history.
+    pub fn get_conversation(&self, id: &str) -> Result<Conversation> {
+        self.get(&format!("/api/v1/otto/threads/{}", encode_path(id)))
+    }
+
+    /// Get a conversation by title or ID, including full message history.
+    ///
+    /// Auto-detects whether the input is a conversation ID or title: tries an
+    /// ID lookup first, then falls back to title search. See
+    /// [`resolve_conversation_id`](Self::resolve_conversation_id) for details.
+    pub fn get_conversation_by_title(&self, title_or_id: &str) -> Result<Conversation> {
+        let id = self.resolve_conversation_id(title_or_id)?;
+        self.get_conversation(&id)
+    }
+
+    /// Resolve a conversation title or ID to an ID.
+    ///
+    /// Tries the input as a conversation ID first (cheap single-item fetch). If
+    /// that succeeds, returns the ID immediately. If it 404s, falls back to a
+    /// server-side title search. Errors with `AmbiguousTitle` if multiple
+    /// conversations share the same title.
+    pub fn resolve_conversation_id(&self, title_or_id: &str) -> Result<String> {
+        // Try as ID first — common case with --resume or pasted IDs.
+        match self.get_conversation(title_or_id) {
+            Ok(c) => return Ok(c.id),
+            Err(ref e) if e.http_status() == Some(404) => {}
+            Err(e) => return Err(e),
+        }
+
+        // Not a valid ID — use server-side title filter.
+        let list = self.list_conversations(ConversationFilters {
+            title: Some(title_or_id.to_string()),
+            ..Default::default()
+        })?;
+        match list.threads.len() {
+            0 => Err(Error::NotFound {
+                kind: "conversation".to_string(),
+                title: title_or_id.to_string(),
+            }),
+            1 => Ok(list.threads.into_iter().next().unwrap().id),
+            _ => Err(Error::AmbiguousTitle {
+                kind: "conversation".to_string(),
+                title: title_or_id.to_string(),
+                matches: list
+                    .threads
+                    .iter()
+                    .map(|c| (c.id.clone(), c.title.clone().unwrap_or_default()))
+                    .collect(),
+            }),
+        }
+    }
+
+    /// Get the ID of the most recent conversation.
+    pub fn latest_conversation_id(&self) -> Result<String> {
+        let list = self.list_conversations(ConversationFilters {
+            limit: Some(1),
+            ..Default::default()
+        })?;
+        list.threads
+            .into_iter()
+            .next()
+            .map(|c| c.id)
+            .ok_or_else(|| Error::NotFound {
+                kind: "conversation".to_string(),
+                title: "(most recent)".to_string(),
+            })
+    }
+
+    /// Resolve a `conversation` or `thread_id` parameter to an optional thread ID.
+    ///
+    /// If `conversation` is `Some`, resolves it via `resolve_conversation_id`.
+    /// Otherwise passes through `thread_id` as-is. Used by SDK bindings to
+    /// avoid duplicating the resolution logic.
+    pub fn resolve_otto_thread(
+        &self,
+        conversation: Option<&str>,
+        thread_id: Option<String>,
+    ) -> Result<Option<String>> {
+        if let Some(conv) = conversation {
+            Ok(Some(self.resolve_conversation_id(conv)?))
+        } else {
+            Ok(thread_id)
+        }
     }
 
     // -- Otto --

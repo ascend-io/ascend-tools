@@ -325,6 +325,64 @@ pub enum StreamEvent {
     ToolCallOutput { call_id: String, output: String },
 }
 
+/// An Otto conversation (thread).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub title: Option<String>,
+    pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window_stats: Option<serde_json::Value>,
+}
+
+impl Conversation {
+    /// Extract displayable text from a message JSON value.
+    ///
+    /// Handles string content, array content (with `text` or `output_text` items),
+    /// and top-level `text` fields. Returns an empty string for non-text messages.
+    pub fn extract_message_text(msg: &serde_json::Value) -> String {
+        if let Some(s) = msg.get("content").and_then(|v| v.as_str()) {
+            return s.to_string();
+        }
+        if let Some(arr) = msg.get("content").and_then(|v| v.as_array()) {
+            let parts: Vec<&str> = arr
+                .iter()
+                .filter_map(|item| {
+                    item.get("text")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| item.get("output_text").and_then(|v| v.as_str()))
+                })
+                .collect();
+            if !parts.is_empty() {
+                return parts.join("");
+            }
+        }
+        if let Some(s) = msg.get("text").and_then(|v| v.as_str()) {
+            return s.to_string();
+        }
+        String::new()
+    }
+}
+
+/// Paginated list of conversations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationList {
+    pub threads: Vec<Conversation>,
+    #[serde(default)]
+    pub total: u64,
+}
+
+/// Filters for listing conversations.
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct ConversationFilters {
+    pub offset: Option<u64>,
+    pub limit: Option<u64>,
+    pub title: Option<String>,
+}
+
 /// An Otto provider with its enabled models.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "jsts", napi_derive::napi(object))]

@@ -185,9 +185,17 @@ pub(crate) enum OttoCommands {
         #[arg(long)]
         model: Option<String>,
 
-        /// Thread ID to continue a conversation
-        #[arg(long)]
+        /// Thread ID to continue a conversation (hidden, use --conversation instead)
+        #[arg(long, hide = true)]
         thread: Option<String>,
+
+        /// Continue an existing conversation (by title or ID)
+        #[arg(long, conflicts_with_all = ["thread", "resume"])]
+        conversation: Option<String>,
+
+        /// Resume the most recent conversation
+        #[arg(long, conflicts_with_all = ["thread", "conversation"])]
+        resume: bool,
     },
     /// Manage Otto providers
     Provider {
@@ -198,6 +206,17 @@ pub(crate) enum OttoCommands {
     Model {
         #[command(subcommand)]
         command: Option<ModelCommands>,
+    },
+    /// Manage Otto conversations
+    #[command(long_about = "Manage Otto conversations.\n\n\
+            Examples:\n  \
+            ascend-tools otto conversation list\n  \
+            ascend-tools otto conversation list --limit 10\n  \
+            ascend-tools otto conversation get \"My conversation title\"\n  \
+            ascend-tools otto conversation get abc123 --id")]
+    Conversation {
+        #[command(subcommand)]
+        command: Option<crate::conversation::ConversationCommands>,
     },
     /// Interactive multi-turn conversation with Otto (Ctrl+C to exit)
     Tui {
@@ -220,6 +239,14 @@ pub(crate) enum OttoCommands {
         /// LLM model to use
         #[arg(long)]
         model: Option<String>,
+
+        /// Continue an existing conversation (by title or ID)
+        #[arg(long, conflicts_with = "resume")]
+        conversation: Option<String>,
+
+        /// Resume the most recent conversation
+        #[arg(long, conflicts_with = "conversation")]
+        resume: bool,
     },
 }
 
@@ -256,6 +283,8 @@ pub(crate) fn handle_otto_cmd(
             provider,
             model,
             thread,
+            conversation,
+            resume,
         } => {
             let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
@@ -263,10 +292,17 @@ pub(crate) fn handle_otto_cmd(
                 uuid.as_deref(),
             )?;
 
+            let thread_id = crate::conversation::resolve_conversation_flag(
+                client,
+                thread,
+                conversation,
+                resume,
+            )?;
+
             let request = OttoChatRequest {
                 prompt,
                 runtime_uuid,
-                thread_id: thread,
+                thread_id,
                 model: client.resolve_otto_model(provider.as_deref(), model.as_deref())?,
             };
 
@@ -387,12 +423,17 @@ pub(crate) fn handle_otto_cmd(
             }
             Ok(())
         }
+        OttoCommands::Conversation { command } => {
+            crate::conversation::handle_conversation(client, command, output)
+        }
         OttoCommands::Tui {
             workspace,
             deployment,
             uuid,
             provider,
             model,
+            conversation,
+            resume,
         } => {
             let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
@@ -404,7 +445,9 @@ pub(crate) fn handle_otto_cmd(
                 .as_deref()
                 .map(|w| format!("workspace:{w}"))
                 .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
-            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label)
+            let thread_id =
+                crate::conversation::resolve_conversation_flag(client, None, conversation, resume)?;
+            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label, thread_id)
         }
     }
 }

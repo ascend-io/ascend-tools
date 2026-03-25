@@ -175,6 +175,7 @@ dependencies = [
  "ascend-tools-core",
  "crossterm",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]
