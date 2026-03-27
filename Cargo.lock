@@ -178,6 +178,7 @@ dependencies = [
  "ratatui",
  "serde_json",
  "syntect",
+ "unicode-width",
 ]
 
 [[package]]

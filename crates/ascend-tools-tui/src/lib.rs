@@ -30,11 +30,13 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use pulldown_cmark::{
-    CodeBlockKind, Event as MdEvent, Options, Parser as MdParser, Tag as MdTag, TagEnd as MdTagEnd,
+    BlockQuoteKind, CodeBlockKind, Event as MdEvent, Options, Parser as MdParser, Tag as MdTag,
+    TagEnd as MdTagEnd,
 };
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
+use unicode_width::UnicodeWidthStr;
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
@@ -102,6 +104,10 @@ const LINK_COLOR: Color = Color::Rgb(100, 160, 240); // blue for link text
 const DIFF_ADD_COLOR: Color = Color::Rgb(80, 200, 120); // green for diff additions
 const DIFF_DEL_COLOR: Color = Color::Rgb(232, 80, 80); // red for diff deletions
 const DIFF_HUNK_COLOR: Color = Color::Rgb(130, 170, 255); // blue for diff hunk headers
+const NOTE_COLOR: Color = Color::Rgb(100, 160, 240); // blue for [!NOTE]
+const TIP_COLOR: Color = Color::Rgb(80, 200, 120); // green for [!TIP]
+const IMPORTANT_COLOR: Color = Color::Rgb(180, 130, 240); // purple for [!IMPORTANT]
+const CAUTION_COLOR: Color = Color::Rgb(232, 80, 80); // red for [!CAUTION]
 const TIMESTAMP_COLOR: Color = Color::Rgb(80, 80, 80);
 
 /// Characters per second for smoothed streaming output.
@@ -1637,6 +1643,7 @@ fn render_markdown_parsed(text: &str, role: Role) -> Vec<Line<'static>> {
         highlighter: None,
         blockquote_depth: 0,
         in_heading: false,
+        in_table: false,
         in_table_header: false,
         table_cell_spans: Vec::new(),
         table_cell_texts: Vec::new(),
@@ -1649,7 +1656,10 @@ fn render_markdown_parsed(text: &str, role: Role) -> Vec<Line<'static>> {
         link_text: String::new(),
     };
 
-    let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let opts = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_GFM;
     let parser = MdParser::new_ext(text, opts);
 
     for event in parser {
@@ -1668,19 +1678,27 @@ enum ListKind {
     Ordered { next: u64, max_digits: usize },
 }
 
+#[derive(Clone)]
+struct ListEntry {
+    kind: ListKind,
+    /// The `list_indent` that was active when this list was opened.
+    parent_indent: String,
+}
+
 struct MdRenderer {
     lines: Vec<Line<'static>>,
     spans: Vec<Span<'static>>,
     style_stack: Vec<Style>,
     base_indent: String,
     list_indent: String,
-    list_stack: Vec<ListKind>,
+    list_stack: Vec<ListEntry>,
     in_code_block: bool,
     code_block_lang: String,
     highlighter: Option<HighlightLines<'static>>,
     blockquote_depth: usize,
     in_heading: bool,
     // Table state — two-pass: buffer all rows, render at End(Table).
+    in_table: bool,
     in_table_header: bool,
     table_cell_spans: Vec<Span<'static>>,
     table_cell_texts: Vec<String>,
@@ -1699,7 +1717,7 @@ impl MdRenderer {
     }
 
     fn in_table(&self) -> bool {
-        !self.table_alignments.is_empty()
+        self.in_table
     }
 
     fn push_style(&mut self, modifier: impl FnOnce(Style) -> Style) {
@@ -1799,10 +1817,26 @@ impl MdRenderer {
                 self.flush_line();
             }
 
-            MdEvent::Start(MdTag::BlockQuote(_)) => {
+            MdEvent::Start(MdTag::BlockQuote(kind)) => {
                 self.blank_line_if_needed();
                 self.blockquote_depth += 1;
                 self.push_style(|s| s.italic());
+                // Render GFM admonition labels ([!NOTE], [!TIP], etc.).
+                if let Some(bqk) = kind {
+                    let (label, color) = match bqk {
+                        BlockQuoteKind::Note => ("NOTE", NOTE_COLOR),
+                        BlockQuoteKind::Tip => ("TIP", TIP_COLOR),
+                        BlockQuoteKind::Important => ("IMPORTANT", IMPORTANT_COLOR),
+                        BlockQuoteKind::Warning => ("WARNING", WARNING_COLOR),
+                        BlockQuoteKind::Caution => ("CAUTION", CAUTION_COLOR),
+                    };
+                    let mut label_spans = self.indent_spans();
+                    label_spans.push(Span::styled(
+                        label.to_string(),
+                        Style::default().fg(color).bold(),
+                    ));
+                    self.lines.push(Line::from(label_spans));
+                }
             }
             MdEvent::End(MdTagEnd::BlockQuote(_)) => {
                 self.flush_line();
@@ -1854,11 +1888,14 @@ impl MdRenderer {
                 let kind = match first {
                     Some(start) => ListKind::Ordered {
                         next: start,
-                        max_digits: 1,
+                        max_digits: start.to_string().len(),
                     },
                     None => ListKind::Unordered,
                 };
-                self.list_stack.push(kind);
+                self.list_stack.push(ListEntry {
+                    kind,
+                    parent_indent: self.list_indent.clone(),
+                });
             }
             MdEvent::End(MdTagEnd::List(_)) => {
                 self.list_stack.pop();
@@ -1872,7 +1909,7 @@ impl MdRenderer {
                 let depth = self.list_stack.len().saturating_sub(1);
                 let nested_indent = "  ".repeat(depth);
 
-                let bullet = match self.list_stack.last() {
+                let bullet = match self.list_stack.last().map(|e| &e.kind) {
                     Some(ListKind::Unordered) => format!("{nested_indent}\u{2022} "),
                     Some(ListKind::Ordered { next, max_digits }) => {
                         let num = *next;
@@ -1891,18 +1928,20 @@ impl MdRenderer {
             }
             MdEvent::End(MdTagEnd::Item) => {
                 self.flush_line();
-                if let Some(ListKind::Ordered { next, max_digits }) = self.list_stack.last_mut() {
+                if let Some(ListEntry {
+                    kind: ListKind::Ordered { next, max_digits },
+                    ..
+                }) = self.list_stack.last_mut()
+                {
                     *next += 1;
                     *max_digits = (*max_digits).max(next.to_string().len());
                 }
-                // Restore continuation indent for parent item (empty if top-level).
-                let depth = self.list_stack.len().saturating_sub(1);
-                self.list_indent = if depth > 0 {
-                    // Parent item's continuation indent.
-                    "  ".repeat(depth - 1) + "  "
-                } else {
-                    String::new()
-                };
+                // Restore the indent that was active when this list was opened.
+                self.list_indent = self
+                    .list_stack
+                    .last()
+                    .map(|entry| entry.parent_indent.clone())
+                    .unwrap_or_default();
             }
 
             // -- Inline start/end tags --
@@ -1960,6 +1999,7 @@ impl MdRenderer {
             // -- Table handling (two-pass: buffer all rows, render at End(Table)) --
             MdEvent::Start(MdTag::Table(alignments)) => {
                 self.blank_line_if_needed();
+                self.in_table = true;
                 self.table_alignments = alignments;
                 self.table_col_widths.clear();
                 self.table_header_spans.clear();
@@ -1967,6 +2007,7 @@ impl MdRenderer {
             }
             MdEvent::End(MdTagEnd::Table) => {
                 self.render_buffered_table();
+                self.in_table = false;
                 self.table_alignments.clear();
                 self.table_col_widths.clear();
             }
@@ -1979,7 +2020,7 @@ impl MdRenderer {
             MdEvent::End(MdTagEnd::TableHead) => {
                 self.in_table_header = false;
                 for (i, text) in self.table_cell_texts.iter().enumerate() {
-                    let w = text.len();
+                    let w = text.width();
                     if i < self.table_col_widths.len() {
                         self.table_col_widths[i] = self.table_col_widths[i].max(w);
                     } else {
@@ -1997,7 +2038,7 @@ impl MdRenderer {
             MdEvent::End(MdTagEnd::TableRow) => {
                 if !self.in_table_header {
                     for (i, text) in self.table_cell_texts.iter().enumerate() {
-                        let w = text.len();
+                        let w = text.width();
                         if i < self.table_col_widths.len() {
                             self.table_col_widths[i] = self.table_col_widths[i].max(w);
                         } else {
@@ -2140,7 +2181,7 @@ impl MdRenderer {
         let prefix = self.indent_prefix();
 
         // Header row (bold).
-        let header = self.table_header_spans.clone();
+        let header = std::mem::take(&mut self.table_header_spans);
         self.render_table_line(&prefix, &header, true);
 
         // Separator.
@@ -2156,7 +2197,7 @@ impl MdRenderer {
         )));
 
         // Body rows.
-        let body = self.table_body_spans.clone();
+        let body = std::mem::take(&mut self.table_body_spans);
         for row in &body {
             self.render_table_line(&prefix, row, false);
         }
@@ -2174,7 +2215,7 @@ impl MdRenderer {
                 ));
             }
 
-            let cell_text_len: usize = cell_spans.iter().map(|s| s.content.len()).sum();
+            let cell_text_len: usize = cell_spans.iter().map(|s| s.content.width()).sum();
             let col_width = self
                 .table_col_widths
                 .get(i)
@@ -4020,6 +4061,120 @@ mod tests {
         assert!(!code_lines.is_empty());
         let multi_span = code_lines.iter().filter(|l| l.spans.len() > 2).count();
         assert!(multi_span > 0, "Python should be syntax-highlighted");
+    }
+
+    #[test]
+    fn render_markdown_unicode_table_widths() {
+        // CJK characters are display-width 2 each; column width should reflect that.
+        let text = "| A | B |\n|---|---|\n| \u{4f60}\u{597d} | x |";
+        let lines = render_markdown(text, Role::Otto, false);
+        let sep_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains('\u{253c}')))
+            .expect("should have separator");
+        let sep_text: String = sep_line.spans.iter().map(|s| s.content.as_ref()).collect();
+        // "你好" is 4 display columns — separator first column should be at least 4 dashes.
+        let first_col = sep_text.split('\u{253c}').next().unwrap();
+        let dash_count = first_col.chars().filter(|&c| c == '\u{2500}').count();
+        assert!(
+            dash_count >= 4,
+            "separator should match CJK display width, got {dash_count}"
+        );
+    }
+
+    #[test]
+    fn render_markdown_ordered_list_high_start() {
+        let text = "99. first\n100. second";
+        let lines = render_markdown(text, Role::Otto, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // First item should show "99." with proper padding for the eventual 3-digit number.
+        assert!(texts.iter().any(|t| t.contains("99.")));
+        assert!(texts.iter().any(|t| t.contains("100.")));
+    }
+
+    #[test]
+    fn render_markdown_nested_blockquote() {
+        let text = "> > doubly quoted";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        // Should have two vertical bar characters for nested blockquote.
+        assert!(
+            full.matches('\u{2502}').count() >= 2,
+            "nested blockquote should have 2+ vertical bars"
+        );
+    }
+
+    #[test]
+    fn render_markdown_mixed_nested_lists() {
+        let text = "1. ordered\n   - unordered inside\n2. back";
+        let lines = render_markdown(text, Role::Otto, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // Should have both ordered number and bullet character.
+        assert!(texts.iter().any(|t| t.contains("1.")));
+        assert!(texts.iter().any(|t| t.contains('\u{2022}')));
+    }
+
+    #[test]
+    fn render_markdown_multi_paragraph_list_item() {
+        let text = "- first paragraph\n\n  second paragraph\n- next item";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("first paragraph"));
+        assert!(full.contains("second paragraph"));
+        assert!(full.contains("next item"));
+    }
+
+    #[test]
+    fn render_markdown_emoji_in_table() {
+        let text = "| Col |\n|---|\n| \u{1f600} |";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Should not panic and should produce output.
+        assert!(!lines.is_empty());
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{1f600}'));
+    }
+
+    #[test]
+    fn render_markdown_gfm_note_blockquote() {
+        let text = "> [!NOTE]\n> This is a note.";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("NOTE"), "should render NOTE label");
+        assert!(full.contains("This is a note."));
+    }
+
+    #[test]
+    fn render_markdown_gfm_warning_blockquote() {
+        let text = "> [!WARNING]\n> Be careful.";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Find the WARNING label span with the correct color.
+        let has_warning = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.content.as_ref() == "WARNING" && s.style.fg == Some(WARNING_COLOR))
+        });
+        assert!(
+            has_warning,
+            "should render WARNING label with correct color"
+        );
     }
 
     // -- Force quit (second Ctrl+C during interrupting) --------------------
