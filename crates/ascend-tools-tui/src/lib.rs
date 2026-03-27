@@ -1241,6 +1241,7 @@ impl App {
         let scroll_y = max_scroll.saturating_sub(clamped_scroll);
 
         let paragraph = paragraph.scroll((scroll_y.min(u16::MAX as usize) as u16, 0));
+        // Clear stale buffer cells — Paragraph doesn't overwrite unused positions.
         frame.render_widget(Clear, area);
         frame.render_widget(paragraph, area);
 
@@ -1716,10 +1717,6 @@ impl MdRenderer {
         self.style_stack.last().copied().unwrap_or_default()
     }
 
-    fn in_table(&self) -> bool {
-        self.in_table
-    }
-
     fn push_style(&mut self, modifier: impl FnOnce(Style) -> Style) {
         let new = modifier(self.current_style());
         self.style_stack.push(new);
@@ -1774,7 +1771,7 @@ impl MdRenderer {
         // Add blank line if previous line was non-empty content.
         if let Some(last) = self.lines.last()
             && !(last.spans.is_empty()
-                || last.spans.len() == 1 && last.spans[0].content.trim().is_empty())
+                || (last.spans.len() == 1 && last.spans[0].content.trim().is_empty()))
         {
             self.lines.push(Line::raw(""));
         }
@@ -2103,7 +2100,7 @@ impl MdRenderer {
                         }
                         self.lines.push(Line::from(spans));
                     }
-                } else if self.in_table() {
+                } else if self.in_table {
                     self.table_cell_spans
                         .push(Span::styled(text.to_string(), self.current_style()));
                 } else {
@@ -2122,7 +2119,7 @@ impl MdRenderer {
             MdEvent::Code(code) => {
                 let backtick_style = Style::default().fg(DIM_COLOR);
                 let code_style = Style::default().fg(CODE_COLOR);
-                let target = if self.in_table() {
+                let target = if self.in_table {
                     &mut self.table_cell_spans
                 } else {
                     if self.spans.is_empty() {
@@ -2139,12 +2136,21 @@ impl MdRenderer {
                 if self.in_code_block {
                     return;
                 }
-                self.spans.push(Span::raw(" "));
+                if self.in_table {
+                    self.table_cell_spans.push(Span::raw(" "));
+                } else {
+                    self.spans.push(Span::raw(" "));
+                }
             }
 
             MdEvent::HardBreak => {
-                self.flush_line();
-                self.spans.extend(self.indent_spans());
+                if self.in_table {
+                    // Tables are single-line cells; treat as space.
+                    self.table_cell_spans.push(Span::raw(" "));
+                } else {
+                    self.flush_line();
+                    self.spans.extend(self.indent_spans());
+                }
             }
 
             MdEvent::Rule => {
@@ -2264,6 +2270,7 @@ fn diff_line_color(line: &str) -> Color {
 
 /// Find a syntect syntax definition for a code block language tag.
 fn find_syntax(lang: &str) -> Option<&'static syntect::parsing::SyntaxReference> {
+    // Diff blocks use custom line-by-line coloring (diff_line_color), not syntect.
     if lang.is_empty() || lang == "diff" {
         return None;
     }
@@ -4175,6 +4182,20 @@ mod tests {
             has_warning,
             "should render WARNING label with correct color"
         );
+    }
+
+    #[test]
+    fn render_markdown_code_in_blockquote() {
+        let text = "> ```rust\n> fn x() {}\n> ```";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("fn x()"));
+        // Should have both blockquote bar and code border.
+        assert!(full.contains('\u{2502}'));
+        assert!(full.contains('\u{256d}'));
     }
 
     // -- Force quit (second Ctrl+C during interrupting) --------------------
