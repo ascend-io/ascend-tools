@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::mpsc;
@@ -7,6 +8,7 @@ use anyhow::Result;
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{OttoChatRequest, StreamEvent};
 use clap::Subcommand;
+use serde::Serialize;
 
 use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
@@ -17,6 +19,13 @@ use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 enum RenderMsg {
     Delta(String),
     Done,
+}
+
+#[derive(Serialize)]
+struct OttoRunJsonlRecord {
+    thread_id: String,
+    event_type: String,
+    data: serde_json::Value,
 }
 
 /// Renders Otto's streaming response with a spinner while waiting and
@@ -196,6 +205,10 @@ pub(crate) enum OttoCommands {
         /// Resume the most recent conversation
         #[arg(long, conflicts_with_all = ["thread", "conversation"])]
         resume: bool,
+
+        /// Emit the raw Otto per-thread event stream as JSONL
+        #[arg(long)]
+        jsonl: bool,
     },
     /// Manage Otto providers
     Provider {
@@ -285,7 +298,12 @@ pub(crate) fn handle_otto_cmd(
             thread,
             conversation,
             resume,
+            jsonl,
         } => {
+            if jsonl && *output != OutputMode::Text {
+                anyhow::bail!("--jsonl cannot be combined with -o json");
+            }
+
             let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
                 deployment.as_deref(),
@@ -306,33 +324,59 @@ pub(crate) fn handle_otto_cmd(
                 model: client.resolve_otto_model(provider.as_deref(), model.as_deref())?,
             };
 
-            match output {
-                OutputMode::Json => {
-                    let response = client.otto(&request)?;
-                    print_json(&serde_json::json!({
-                        "message": response.message,
-                        "thread_id": response.thread_id,
-                    }))?;
-                }
-                OutputMode::Text => {
-                    let mut renderer = StreamRenderer::start("");
-                    let mut thread_id = None;
-                    client.otto_streaming(
-                        &request,
-                        |event| {
-                            if let StreamEvent::TextDelta(delta) = event {
-                                renderer.send_delta(delta);
-                            }
-                            std::ops::ControlFlow::Continue(())
-                        },
-                        |tid| {
-                            thread_id = Some(tid.to_string());
-                        },
-                    )?;
-                    renderer.finish();
-                    println!();
-                    if let Some(tid) = &thread_id {
-                        eprintln!("thread: {tid}");
+            if jsonl {
+                let thread_id = RefCell::new(None::<String>);
+                client.otto_streaming_events(
+                    &request,
+                    |event| {
+                        let record = OttoRunJsonlRecord {
+                            thread_id: thread_id
+                                .borrow()
+                                .clone()
+                                .unwrap_or_else(|| "<unknown>".to_string()),
+                            event_type: event.event_type,
+                            data: event.data,
+                        };
+                        println!(
+                            "{}",
+                            serde_json::to_string(&record)
+                                .expect("otto jsonl record should always serialize")
+                        );
+                        std::ops::ControlFlow::Continue(())
+                    },
+                    |tid| {
+                        *thread_id.borrow_mut() = Some(tid.to_string());
+                    },
+                )?;
+            } else {
+                match output {
+                    OutputMode::Json => {
+                        let response = client.otto(&request)?;
+                        print_json(&serde_json::json!({
+                            "message": response.message,
+                            "thread_id": response.thread_id,
+                        }))?;
+                    }
+                    OutputMode::Text => {
+                        let mut renderer = StreamRenderer::start("");
+                        let mut thread_id = None;
+                        client.otto_streaming(
+                            &request,
+                            |event| {
+                                if let StreamEvent::TextDelta(delta) = event {
+                                    renderer.send_delta(delta);
+                                }
+                                std::ops::ControlFlow::Continue(())
+                            },
+                            |tid| {
+                                thread_id = Some(tid.to_string());
+                            },
+                        )?;
+                        renderer.finish();
+                        println!();
+                        if let Some(tid) = &thread_id {
+                            eprintln!("thread: {tid}");
+                        }
                     }
                 }
             }

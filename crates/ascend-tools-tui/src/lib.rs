@@ -114,6 +114,7 @@ enum StreamMsg {
         generation: u64,
         messages: Vec<Message>,
     },
+    ConversationHistoryError(String),
     StopFinished {
         error: Option<String>,
     },
@@ -897,6 +898,11 @@ impl App {
             } => {
                 if generation == self.stream_generation && self.messages.is_empty() {
                     self.messages = messages;
+                }
+            }
+            StreamMsg::ConversationHistoryError(error) => {
+                if self.messages.is_empty() {
+                    self.push_system(format!("Could not load recent history: {error}"));
                 }
             }
             StreamMsg::StopFinished { error } => {
@@ -1698,11 +1704,9 @@ fn resolve_provider_labels(
     }
 }
 
-/// Convert a fetched `Conversation` into TUI `Message`s.
-fn conversation_to_messages(conv: &Conversation) -> Vec<Message> {
-    let Some(messages) = &conv.messages else {
-        return Vec::new();
-    };
+fn raw_messages_to_messages<'a>(
+    messages: impl IntoIterator<Item = &'a serde_json::Value>,
+) -> Vec<Message> {
     let mut out = Vec::new();
     for msg in messages {
         let role_str = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
@@ -1733,6 +1737,13 @@ fn conversation_to_messages(conv: &Conversation) -> Vec<Message> {
         });
     }
     out
+}
+
+/// Convert a progressive conversation preview into TUI `Message`s.
+fn conversation_preview_to_messages(
+    preview: &ascend_tools::models::ConversationPreview,
+) -> Vec<Message> {
+    raw_messages_to_messages(preview.ordered_messages())
 }
 
 // ---------------------------------------------------------------------------
@@ -1804,13 +1815,16 @@ pub fn run_tui(
         if let Some(tid) = thread_id {
             let history_tx = stream_tx.clone();
             let history_gen = app.stream_generation;
-            scope.spawn(move || {
-                if let Ok(conv) = client.get_conversation(&tid) {
-                    let messages = conversation_to_messages(&conv);
+            scope.spawn(move || match client.get_conversation_preview(&tid) {
+                Ok(preview) => {
+                    let messages = conversation_preview_to_messages(&preview);
                     let _ = history_tx.send(StreamMsg::ConversationHistory {
                         generation: history_gen,
                         messages,
                     });
+                }
+                Err(err) => {
+                    let _ = history_tx.send(StreamMsg::ConversationHistoryError(err.to_string()));
                 }
             });
         }
@@ -2042,6 +2056,17 @@ mod tests {
         assert!(!app.streaming);
         assert!(app.pending_request.is_none());
         assert!(app.messages.is_empty());
+    }
+
+    #[test]
+    fn conversation_history_error_surfaces_when_history_is_empty() {
+        let mut app = test_app();
+
+        app.handle_stream_msg(StreamMsg::ConversationHistoryError("preview failed".into()));
+
+        assert!(app.messages.iter().any(|m| {
+            m.role == Role::System && m.content.contains("Could not load recent history")
+        }));
     }
 
     // -- Stream message handling -------------------------------------------

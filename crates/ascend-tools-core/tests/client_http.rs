@@ -4,7 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 use ascend_tools::error::Error;
-use ascend_tools::models::{FlowRunFilters, OttoChatRequest, OttoStreamStatus, StreamEvent};
+use ascend_tools::models::{
+    ConversationOpen, FlowRunFilters, OttoChatRequest, OttoStreamStatus, StreamEvent,
+};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use mockito::{Matcher, Server};
@@ -164,6 +166,273 @@ fn encodes_query_values_and_path_segments() {
     assert_eq!(run.name, "fr/with space#hash");
     flow_runs.assert();
     flow_run.assert();
+}
+
+#[test]
+fn get_conversation_preview_reads_progressive_preview() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-preview", now + 3600, 1);
+
+    let preview_body = serde_json::json!({
+        "id": "thread-preview",
+        "title": "Preview thread",
+        "messages": {
+            "msg-2": {
+                "id": "msg-2",
+                "role": "assistant",
+                "content": "Second",
+                "created_at": "2026-01-01T00:01:00Z"
+            },
+            "msg-1": {
+                "id": "msg-1",
+                "role": "user",
+                "content": "First",
+                "created_at": "2026-01-01T00:00:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:01:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 2,
+        "has_more": true,
+        "oldest_message_id": "msg-1",
+        "latest_message_id": "msg-2"
+    })
+    .to_string();
+
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-preview/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(format!("event: thread.preview\ndata: {preview_body}\n\n"))
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let preview = client.get_conversation_preview("thread-preview").unwrap();
+
+    updates.assert();
+    assert_eq!(preview.id, "thread-preview");
+    assert_eq!(preview.title.as_deref(), Some("Preview thread"));
+    assert!(preview.has_more);
+    assert_eq!(preview.oldest_message_id.as_deref(), Some("msg-1"));
+    assert_eq!(preview.latest_message_id.as_deref(), Some("msg-2"));
+    let ordered: Vec<_> = preview
+        .ordered_messages()
+        .iter()
+        .filter_map(|msg| msg.get("id").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(ordered, vec!["msg-1", "msg-2"]);
+}
+
+#[test]
+fn open_conversation_progressive_with_after_reads_delta() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-delta-open", now + 3600, 1);
+
+    let delta_body = serde_json::json!({
+        "title": "Delta thread",
+        "messages": {
+            "msg-2": {
+                "id": "msg-2",
+                "role": "assistant",
+                "content": "Catch-up",
+                "created_at": "2026-01-01T00:01:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:01:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "latest_message_id": "msg-2"
+    })
+    .to_string();
+
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-delta/updates")
+        .match_query(Matcher::UrlEncoded("after".into(), "msg-1".into()))
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(format!("event: thread.delta\ndata: {delta_body}\n\n"))
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let progressive = client
+        .open_conversation_progressive("thread-delta", Some("msg-1"))
+        .unwrap();
+
+    updates.assert();
+    match progressive {
+        ConversationOpen::Delta(delta) => {
+            assert_eq!(delta.title.as_deref(), Some("Delta thread"));
+            assert_eq!(delta.latest_message_id.as_deref(), Some("msg-2"));
+            let ordered: Vec<_> = delta
+                .ordered_messages()
+                .iter()
+                .filter_map(|msg| msg.get("id").and_then(|v| v.as_str()))
+                .collect();
+            assert_eq!(ordered, vec!["msg-2"]);
+        }
+        other => panic!("expected delta, got {other:?}"),
+    }
+}
+
+#[test]
+fn get_conversation_messages_before_requests_before_limit() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-history", now + 3600, 1);
+
+    let history = server
+        .mock("GET", "/api/v1/otto/threads/thread-history/messages")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("before".into(), "msg-20".into()),
+            Matcher::UrlEncoded("limit".into(), "2".into()),
+        ]))
+        .match_header("authorization", "Bearer token-history")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "messages": {
+                    "msg-19": {
+                        "id": "msg-19",
+                        "role": "assistant",
+                        "content": "Nineteen",
+                        "created_at": "2026-01-01T00:19:00Z"
+                    },
+                    "msg-18": {
+                        "id": "msg-18",
+                        "role": "user",
+                        "content": "Eighteen",
+                        "created_at": "2026-01-01T00:18:00Z"
+                    }
+                },
+                "has_more": true,
+                "oldest_message_id": "msg-18"
+            })
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let page = client
+        .get_conversation_messages_before("thread-history", "msg-20", Some(2))
+        .unwrap();
+
+    history.assert();
+    assert!(page.has_more);
+    assert_eq!(page.oldest_message_id.as_deref(), Some("msg-18"));
+    let ordered: Vec<_> = page
+        .ordered_messages()
+        .iter()
+        .filter_map(|msg| msg.get("id").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(ordered, vec!["msg-18", "msg-19"]);
+}
+
+#[test]
+fn otto_streaming_events_exposes_raw_updates() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-raw-stream", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer token-raw-stream")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-raw"}"#)
+        .expect(1)
+        .create();
+
+    let preview_body = serde_json::json!({
+        "id": "thread-raw",
+        "title": "Raw thread",
+        "messages": {
+            "msg-1": {
+                "id": "msg-1",
+                "role": "user",
+                "content": "hello",
+                "created_at": "2026-01-01T00:00:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": true,
+        "context_window_stats": null,
+        "total_message_count": 1,
+        "has_more": false,
+        "oldest_message_id": "msg-1",
+        "latest_message_id": "msg-1"
+    })
+    .to_string();
+    let sse_body = concat!(
+        "event: thread.preview\ndata: ",
+        "__PREVIEW__",
+        "\n\n",
+        "event: response.output_text.delta\ndata: {\"delta\":\"hi\",\"item_id\":\"item-1\",\"content_index\":0,\"output_index\":0,\"type\":\"response.output_text.delta\"}\n\n",
+        "event: thread.done\ndata: {\"latest_message_id\":\"msg-2\"}\n\n",
+    )
+    .replace("__PREVIEW__", &preview_body);
+
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-raw/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "hello".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+    };
+
+    let mut thread_id = None;
+    let mut event_types = Vec::new();
+    let response = client
+        .otto_streaming_events(
+            &request,
+            |event| {
+                event_types.push(event.event_type);
+                ControlFlow::Continue(())
+            },
+            |tid| {
+                thread_id = Some(tid.to_string());
+            },
+        )
+        .unwrap();
+
+    updates.assert();
+    assert_eq!(thread_id.as_deref(), Some("thread-raw"));
+    assert_eq!(
+        event_types,
+        vec![
+            "thread.preview",
+            "response.output_text.delta",
+            "thread.done",
+        ]
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("thread-raw"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
 }
 
 #[test]

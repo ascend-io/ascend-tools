@@ -224,6 +224,78 @@ fn deployment_list_filters_by_kind() {
 }
 
 #[test]
+fn otto_run_jsonl_emits_raw_thread_updates() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-jsonl"}"#)
+        .expect(1)
+        .create();
+
+    let preview_body = serde_json::json!({
+        "id": "thread-jsonl",
+        "title": "JSONL thread",
+        "messages": {
+            "msg-1": {
+                "id": "msg-1",
+                "role": "user",
+                "content": "hello",
+                "created_at": "2026-01-01T00:00:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": true,
+        "context_window_stats": null,
+        "total_message_count": 1,
+        "has_more": false,
+        "oldest_message_id": "msg-1",
+        "latest_message_id": "msg-1"
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: thread.preview\ndata: {preview_body}\n\n\
+         event: response.output_text.delta\ndata: {{\"delta\":\"hi\",\"item_id\":\"item-1\",\"content_index\":0,\"output_index\":0,\"type\":\"response.output_text.delta\"}}\n\n\
+         event: thread.done\ndata: {{\"latest_message_id\":\"msg-2\"}}\n\n"
+    );
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-jsonl/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args(["otto", "run", "hello", "--jsonl"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"thread_id\":\"thread-jsonl\""))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"thread.preview\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"response.output_text.delta\"",
+        ))
+        .stdout(predicate::str::contains("\"event_type\":\"thread.done\""));
+}
+
+#[test]
+fn otto_run_jsonl_rejects_json_output_mode() {
+    let server = Server::new();
+    let mut cmd = command_with_auth(&server);
+    cmd.args(["-o", "json", "otto", "run", "hello", "--jsonl"]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "--jsonl cannot be combined with -o json",
+    ));
+}
+
+#[test]
 fn skill_install_writes_skill_file_to_target() {
     let temp_dir = TempDir::new().unwrap();
     let target = temp_dir.path().join("skills");
