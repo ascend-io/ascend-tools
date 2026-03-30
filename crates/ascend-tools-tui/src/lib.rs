@@ -97,6 +97,7 @@ const STREAM_CPS: f64 = 200.0;
 const STREAM_BULK_THRESHOLD: usize = 200;
 /// Above this pending count, skip smoothing entirely.
 const STREAM_FAST_THRESHOLD: usize = 50;
+const RESUME_HISTORY_PAGE_SIZE: u64 = 200;
 
 const MAX_HISTORY: usize = 1000;
 const MAX_INPUT_LINES: u16 = 8;
@@ -896,13 +897,21 @@ impl App {
                 generation,
                 messages,
             } => {
-                if generation == self.stream_generation && self.messages.is_empty() {
-                    self.messages = messages;
+                if generation == self.stream_generation {
+                    if self.messages.is_empty() {
+                        self.messages = messages;
+                    } else if !messages.is_empty() {
+                        let mut combined = messages;
+                        combined.extend(std::mem::take(&mut self.messages));
+                        self.messages = combined;
+                    }
                 }
             }
             StreamMsg::ConversationHistoryError(error) => {
                 if self.messages.is_empty() {
                     self.push_system(format!("Could not load recent history: {error}"));
+                } else {
+                    self.push_system(format!("Could not load older history: {error}"));
                 }
             }
             StreamMsg::StopFinished { error } => {
@@ -1746,6 +1755,62 @@ fn conversation_preview_to_messages(
     raw_messages_to_messages(preview.ordered_messages())
 }
 
+fn stream_conversation_history_with_fetch<FPreview, FPage, FBatch>(
+    fetch_preview: FPreview,
+    mut fetch_page: FPage,
+    mut on_batch: FBatch,
+) -> Result<()>
+where
+    FPreview: FnOnce() -> Result<ascend_tools::models::ConversationPreview>,
+    FPage: FnMut(&str) -> Result<ascend_tools::models::ConversationMessagesPage>,
+    FBatch: FnMut(Vec<Message>),
+{
+    let preview = fetch_preview()?;
+    on_batch(conversation_preview_to_messages(&preview));
+
+    let mut cursor = if preview.has_more {
+        preview.oldest_message_id.clone()
+    } else {
+        None
+    };
+
+    while let Some(before) = cursor.take() {
+        let page = fetch_page(&before)?;
+        let older_messages = raw_messages_to_messages(page.ordered_messages());
+        if !older_messages.is_empty() {
+            on_batch(older_messages);
+        }
+        cursor = if page.has_more {
+            match page.oldest_message_id {
+                Some(next) if next != before => Some(next),
+                _ => None,
+            }
+        } else {
+            None
+        };
+    }
+
+    Ok(())
+}
+
+fn stream_conversation_history(
+    client: &AscendClient,
+    thread_id: &str,
+    on_batch: impl FnMut(Vec<Message>),
+) -> Result<()> {
+    stream_conversation_history_with_fetch(
+        || Ok(client.get_conversation_preview(thread_id)?),
+        |before| {
+            Ok(client.get_conversation_messages_before(
+                thread_id,
+                before,
+                Some(RESUME_HISTORY_PAGE_SIZE),
+            )?)
+        },
+        on_batch,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1815,15 +1880,14 @@ pub fn run_tui(
         if let Some(tid) = thread_id {
             let history_tx = stream_tx.clone();
             let history_gen = app.stream_generation;
-            scope.spawn(move || match client.get_conversation_preview(&tid) {
-                Ok(preview) => {
-                    let messages = conversation_preview_to_messages(&preview);
+            scope.spawn(move || {
+                let result = stream_conversation_history(client, &tid, |messages| {
                     let _ = history_tx.send(StreamMsg::ConversationHistory {
                         generation: history_gen,
                         messages,
                     });
-                }
-                Err(err) => {
+                });
+                if let Err(err) = result {
                     let _ = history_tx.send(StreamMsg::ConversationHistoryError(err.to_string()));
                 }
             });
@@ -2010,10 +2074,72 @@ pub fn run_tui(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use std::collections::BTreeMap;
     use std::sync::atomic::AtomicU64;
 
     fn test_app() -> App {
         App::new(None, None, None, String::new(), None, None)
+    }
+
+    fn test_history_message(
+        id: &str,
+        role: &str,
+        text: &str,
+        created_at: &str,
+    ) -> serde_json::Value {
+        json!({
+            "id": id,
+            "role": role,
+            "content": [{ "type": "output_text", "text": text }],
+            "created_at": created_at,
+        })
+    }
+
+    fn test_preview(
+        messages: Vec<(&str, serde_json::Value)>,
+        has_more: bool,
+        oldest_message_id: Option<&str>,
+    ) -> ascend_tools::models::ConversationPreview {
+        ascend_tools::models::ConversationPreview {
+            id: "thread-1".into(),
+            title: Some("Thread".into()),
+            messages: messages
+                .into_iter()
+                .map(|(id, message)| (id.to_string(), message))
+                .collect::<BTreeMap<_, _>>(),
+            updated_at: None,
+            is_processing: false,
+            context_window_stats: None,
+            total_message_count: 0,
+            has_more,
+            oldest_message_id: oldest_message_id.map(str::to_string),
+            latest_message_id: None,
+        }
+    }
+
+    fn test_page(
+        messages: Vec<(&str, serde_json::Value)>,
+        has_more: bool,
+        oldest_message_id: Option<&str>,
+    ) -> ascend_tools::models::ConversationMessagesPage {
+        ascend_tools::models::ConversationMessagesPage {
+            messages: messages
+                .into_iter()
+                .map(|(id, message)| (id.to_string(), message))
+                .collect::<BTreeMap<_, _>>(),
+            has_more,
+            oldest_message_id: oldest_message_id.map(str::to_string),
+        }
+    }
+
+    fn test_message(role: Role, content: &str) -> Message {
+        Message {
+            role,
+            content: content.into(),
+            timestamp: UNIX_EPOCH,
+            tool_call: None,
+        }
     }
 
     // -- Stream lifecycle --------------------------------------------------
@@ -2067,6 +2193,111 @@ mod tests {
         assert!(app.messages.iter().any(|m| {
             m.role == Role::System && m.content.contains("Could not load recent history")
         }));
+    }
+
+    #[test]
+    fn stream_conversation_history_fetches_preview_then_older_pages() {
+        let preview = test_preview(
+            vec![
+                (
+                    "msg-3",
+                    test_history_message(
+                        "msg-3",
+                        "user",
+                        "Recent question",
+                        "2026-03-29T03:00:00Z",
+                    ),
+                ),
+                (
+                    "msg-4",
+                    test_history_message(
+                        "msg-4",
+                        "assistant",
+                        "Recent answer",
+                        "2026-03-29T04:00:00Z",
+                    ),
+                ),
+            ],
+            true,
+            Some("msg-3"),
+        );
+        let first_page = test_page(
+            vec![(
+                "msg-2",
+                test_history_message("msg-2", "assistant", "Older answer", "2026-03-29T02:00:00Z"),
+            )],
+            true,
+            Some("msg-1"),
+        );
+        let second_page = test_page(
+            vec![(
+                "msg-1",
+                test_history_message("msg-1", "user", "Oldest question", "2026-03-29T01:00:00Z"),
+            )],
+            false,
+            None,
+        );
+
+        let mut fetched_before = Vec::new();
+        let mut batches = Vec::new();
+        stream_conversation_history_with_fetch(
+            || Ok(preview.clone()),
+            |before| {
+                fetched_before.push(before.to_string());
+                match before {
+                    "msg-3" => Ok(first_page.clone()),
+                    "msg-1" => Ok(second_page.clone()),
+                    other => panic!("unexpected cursor {other}"),
+                }
+            },
+            |messages| {
+                batches.push(
+                    messages
+                        .into_iter()
+                        .map(|message| message.content)
+                        .collect::<Vec<_>>(),
+                );
+            },
+        )
+        .unwrap();
+
+        assert_eq!(fetched_before, vec!["msg-3", "msg-1"]);
+        assert_eq!(
+            batches,
+            vec![
+                vec!["Recent question".to_string(), "Recent answer".to_string()],
+                vec!["Older answer".to_string()],
+                vec!["Oldest question".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn conversation_history_batches_prepend_older_messages() {
+        let mut app = test_app();
+        app.stream_generation = 7;
+
+        app.handle_stream_msg(StreamMsg::ConversationHistory {
+            generation: 7,
+            messages: vec![
+                test_message(Role::User, "Recent question"),
+                test_message(Role::Otto, "Recent answer"),
+            ],
+        });
+        app.handle_stream_msg(StreamMsg::ConversationHistory {
+            generation: 7,
+            messages: vec![test_message(Role::Otto, "Older answer")],
+        });
+
+        let ordered_contents = app
+            .messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ordered_contents,
+            vec!["Older answer", "Recent question", "Recent answer"]
+        );
     }
 
     // -- Stream message handling -------------------------------------------
