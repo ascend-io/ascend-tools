@@ -224,6 +224,126 @@ fn deployment_list_filters_by_kind() {
 }
 
 #[test]
+fn otto_run_jsonl_emits_request_event_and_terminal_records() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-jsonl"}"#)
+        .expect(1)
+        .create();
+
+    let reasoning_body = serde_json::json!({
+        "item_id": "rs_1",
+        "content_index": 0,
+        "delta": "Checking whether the failed flow needs a workspace restart."
+    })
+    .to_string();
+    let tool_added_body = serde_json::json!({
+        "item": {
+            "id": "fc_1",
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "get_flow_run",
+            "arguments": "{}"
+        }
+    })
+    .to_string();
+    let tool_args_body = serde_json::json!({
+        "item_id": "fc_1",
+        "delta": "{\"runtime\":\"workspace-prod\",\"flow\":\"orders/daily_sync\"}"
+    })
+    .to_string();
+    let tool_output_body = serde_json::json!({
+        "call_id": "call_1",
+        "output": "{\"status\":\"failed\",\"error\":\"warehouse timeout\"}"
+    })
+    .to_string();
+    let text_delta_body = serde_json::json!({
+        "delta": "The workspace is healthy; retry the flow once the warehouse is reachable."
+    })
+    .to_string();
+    let completed_details_body = serde_json::json!({
+        "id": "thread-jsonl",
+        "title": "Orders sync debug",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:05Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 2,
+        "has_more": false,
+        "oldest_message_id": "msg-user-1",
+        "latest_message_id": "msg-assistant-1"
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: response.reasoning_text.delta\ndata: {reasoning_body}\n\n\
+         event: response.output_item.added\ndata: {tool_added_body}\n\n\
+         event: response.function_call_arguments.delta\ndata: {tool_args_body}\n\n\
+         event: response.run_item_stream_event.tool_call_output_item\ndata: {tool_output_body}\n\n\
+         event: response.output_text.delta\ndata: {text_delta_body}\n\n\
+         event: thread.details\ndata: {completed_details_body}\n\n\
+         :ping\n\n"
+    );
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-jsonl/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "otto",
+        "run",
+        "Inspect the failed flow and explain whether it needs a restart.",
+        "--thinking",
+        "medium",
+        "--jsonl",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"record_type\":\"request\""))
+        .stdout(predicate::str::contains("\"thinking\":\"medium\""))
+        .stdout(predicate::str::contains("\"record_type\":\"event\""))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"response.reasoning_text.delta\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"response.output_item.added\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"response.function_call_arguments.delta\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"response.run_item_stream_event.tool_call_output_item\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"event_type\":\"thread.details\"",
+        ))
+        .stdout(predicate::str::contains("\"is_processing\":false"))
+        .stdout(predicate::str::contains("\"thread_id\":\"thread-jsonl\""))
+        .stdout(predicate::str::contains("\"record_type\":\"terminal\""))
+        .stdout(predicate::str::contains("\"stream_status\":\"completed\""));
+}
+
+#[test]
+fn otto_run_jsonl_rejects_json_output_mode() {
+    let server = Server::new();
+    let mut cmd = command_with_auth(&server);
+    cmd.args(["-o", "json", "otto", "run", "hello", "--jsonl"]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "--jsonl cannot be combined with -o json",
+    ));
+}
+
+#[test]
 fn skill_install_writes_skill_file_to_target() {
     let temp_dir = TempDir::new().unwrap();
     let target = temp_dir.path().join("skills");

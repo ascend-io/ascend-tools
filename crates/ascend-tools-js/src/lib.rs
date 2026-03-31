@@ -370,26 +370,26 @@ impl Client {
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto(&self, prompt: String, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>, thinking: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model, thinking };
             client.otto(&request).map_err(to_napi_err)
         }))
     }
 
     #[napi(ts_return_type = "Promise<OttoChatResponse>")]
     #[allow(clippy::too_many_arguments)]
-    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
+    pub fn otto_streaming(&self, prompt: String, on_delta: ThreadsafeFunction<String, UnknownReturnValue>, workspace: Option<String>, deployment: Option<String>, uuid: Option<String>, thread_id: Option<String>, model: Option<String>, provider: Option<String>, conversation: Option<String>, thinking: Option<String>) -> AsyncTask<TypedTask<models::OttoChatResponse>> {
         let client = self.inner.clone();
         AsyncTask::new(TypedTask::new(move || {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model, thinking };
             client.otto_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))
     }
