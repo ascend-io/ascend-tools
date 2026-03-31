@@ -9,7 +9,7 @@
 //! - Multi-line input (Alt+Enter for newline)
 //! - Input history (Up/Down, persisted to ~/.ascend-tools/history)
 //! - Slash commands with tab completion
-//! - Markdown rendering (code blocks, bold, inline code)
+//! - Markdown rendering (headings, lists, code blocks, tables, and more)
 //! - Message timestamps (`/timestamps` to toggle)
 //! - Clipboard copy (`/copy`)
 //! - Vi yank/paste registers
@@ -28,6 +28,15 @@ use crossterm::event::{
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+
+use pulldown_cmark::{
+    BlockQuoteKind, CodeBlockKind, Event as MdEvent, Options, Parser as MdParser, Tag as MdTag,
+    TagEnd as MdTagEnd,
+};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
+use unicode_width::UnicodeWidthStr;
 
 use ascend_tools::client::AscendClient;
 use ascend_tools::models::{
@@ -89,6 +98,16 @@ const WARNING_COLOR: Color = Color::Rgb(255, 200, 50); // yellow
 const DIM_OTTO_COLOR: Color = Color::Rgb(120, 45, 45); // muted ascend red
 const POPUP_BG: Color = Color::Rgb(50, 50, 50);
 const TEXT_COLOR: Color = Color::White;
+const HEADING_COLOR: Color = Color::Rgb(130, 170, 255); // light blue for headings
+const CHECK_COLOR: Color = Color::Rgb(80, 200, 120); // green for task checkmarks
+const LINK_COLOR: Color = Color::Rgb(100, 160, 240); // blue for link text
+const DIFF_ADD_COLOR: Color = Color::Rgb(80, 200, 120); // green for diff additions
+const DIFF_DEL_COLOR: Color = Color::Rgb(232, 80, 80); // red for diff deletions
+const DIFF_HUNK_COLOR: Color = Color::Rgb(130, 170, 255); // blue for diff hunk headers
+const NOTE_COLOR: Color = Color::Rgb(100, 160, 240); // blue for [!NOTE]
+const TIP_COLOR: Color = Color::Rgb(80, 200, 120); // green for [!TIP]
+const IMPORTANT_COLOR: Color = Color::Rgb(180, 130, 240); // purple for [!IMPORTANT]
+const CAUTION_COLOR: Color = Color::Rgb(232, 80, 80); // red for [!CAUTION]
 const TIMESTAMP_COLOR: Color = Color::Rgb(80, 80, 80);
 
 /// Characters per second for smoothed streaming output.
@@ -100,6 +119,14 @@ const STREAM_FAST_THRESHOLD: usize = 50;
 const RESUME_HISTORY_PAGE_SIZE: u64 = 200;
 
 const MAX_HISTORY: usize = 1000;
+
+/// Syntax highlighting for code blocks.
+static SYNTAX_SET: std::sync::LazyLock<SyntaxSet> =
+    std::sync::LazyLock::new(SyntaxSet::load_defaults_nonewlines);
+static THEME: std::sync::LazyLock<syntect::highlighting::Theme> = std::sync::LazyLock::new(|| {
+    let ts = ThemeSet::load_defaults();
+    ts.themes["base16-eighties.dark"].clone()
+});
 const MAX_INPUT_LINES: u16 = 8;
 
 // ---------------------------------------------------------------------------
@@ -311,6 +338,8 @@ struct App {
     interrupting: bool,
     /// Set when user presses Ctrl+C during interrupting state — force exit.
     force_quit: bool,
+    /// Show raw markdown source instead of rendered output (Ctrl+R toggle).
+    show_raw_markdown: bool,
 }
 
 impl App {
@@ -355,6 +384,7 @@ impl App {
             stop_pending: None,
             interrupting: false,
             force_quit: false,
+            show_raw_markdown: false,
         }
     }
 
@@ -413,6 +443,12 @@ impl App {
             } else {
                 self.should_quit = true;
             }
+            return;
+        }
+
+        // Ctrl+R: toggle raw markdown view
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+            self.show_raw_markdown = !self.show_raw_markdown;
             return;
         }
 
@@ -1149,7 +1185,11 @@ impl App {
             if let Some(tc) = &msg.tool_call {
                 lines.extend(render_tool_call(tc, self.expand_tool_calls));
             } else {
-                lines.extend(render_markdown(&msg.content, msg.role));
+                lines.extend(render_markdown(
+                    &msg.content,
+                    msg.role,
+                    self.show_raw_markdown,
+                ));
             }
         }
 
@@ -1176,19 +1216,31 @@ impl App {
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
             } else if self.interrupting {
-                lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
+                lines.extend(render_markdown(
+                    &self.stream_buffer,
+                    Role::Otto,
+                    self.show_raw_markdown,
+                ));
                 lines.push(Line::from(Span::styled(
                     format!("  {} Stopping...", SPINNER[self.spinner_frame]),
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
             } else if let Some((tool, _)) = &self.active_tool_call {
-                lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
+                lines.extend(render_markdown(
+                    &self.stream_buffer,
+                    Role::Otto,
+                    self.show_raw_markdown,
+                ));
                 lines.push(Line::from(Span::styled(
                     format!("  {} \u{2699} {tool}...", SPINNER[self.spinner_frame]),
                     Style::default().fg(DIM_OTTO_COLOR),
                 )));
             } else {
-                lines.extend(render_markdown(&self.stream_buffer, Role::Otto));
+                lines.extend(render_markdown(
+                    &self.stream_buffer,
+                    Role::Otto,
+                    self.show_raw_markdown,
+                ));
             }
         }
 
@@ -1204,6 +1256,8 @@ impl App {
         let scroll_y = max_scroll.saturating_sub(clamped_scroll);
 
         let paragraph = paragraph.scroll((scroll_y.min(u16::MAX as usize) as u16, 0));
+        // Clear stale buffer cells — Paragraph doesn't overwrite unused positions.
+        frame.render_widget(Clear, area);
         frame.render_widget(paragraph, area);
 
         // Scrollbar
@@ -1502,48 +1556,14 @@ fn format_time(time: SystemTime) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Markdown rendering (code blocks, inline code, bold)
+// Markdown rendering
 // ---------------------------------------------------------------------------
 
-fn render_markdown(text: &str, role: Role) -> Vec<Line<'static>> {
-    let indent = "  ";
-    let mut lines = Vec::new();
-    let mut in_code_block = false;
-
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") {
-            in_code_block = !in_code_block;
-            if in_code_block {
-                let lang = trimmed.trim_start_matches('`').trim();
-                let header = if lang.is_empty() {
-                    format!("{indent}\u{256d}\u{2500}\u{2500}")
-                } else {
-                    format!("{indent}\u{256d}\u{2500} {lang} \u{2500}")
-                };
-                lines.push(Line::from(Span::styled(
-                    header,
-                    Style::default().fg(DIM_COLOR),
-                )));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    format!("{indent}\u{2570}\u{2500}\u{2500}"),
-                    Style::default().fg(DIM_COLOR),
-                )));
-            }
-            continue;
-        }
-
-        if in_code_block {
-            lines.push(Line::from(Span::styled(
-                format!("{indent}\u{2502} {line}"),
-                Style::default().fg(TEXT_COLOR),
-            )));
-        } else {
-            lines.push(parse_inline(line, indent, role));
-        }
+fn render_markdown(text: &str, role: Role, raw: bool) -> Vec<Line<'static>> {
+    if raw {
+        return render_raw(text, role);
     }
-    lines
+    render_markdown_parsed(text, role)
 }
 
 fn render_tool_call(tc: &ToolCallData, expanded: bool) -> Vec<Line<'static>> {
@@ -1604,65 +1624,699 @@ fn render_tool_call(tc: &ToolCallData, expanded: bool) -> Vec<Line<'static>> {
     lines
 }
 
-fn parse_inline(text: &str, indent: &str, role: Role) -> Line<'static> {
+/// Raw mode: show literal markdown source with minimal styling.
+fn render_raw(text: &str, role: Role) -> Vec<Line<'static>> {
     let base_style = match role {
         Role::System => Style::default().fg(SYSTEM_COLOR).italic(),
         _ => Style::default(),
     };
-    let code_style = Style::default().fg(CODE_COLOR);
-    let bold_style = base_style.bold();
+    text.lines()
+        .map(|line| {
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(line.to_string(), base_style),
+            ])
+        })
+        .collect()
+}
 
-    let chars: Vec<char> = text.chars().collect();
-    let mut spans: Vec<Span<'static>> = vec![Span::raw(indent.to_string())];
-    let mut i = 0;
-    let mut buf = String::new();
+/// Rendered mode: parse markdown with pulldown-cmark and produce styled lines.
+fn render_markdown_parsed(text: &str, role: Role) -> Vec<Line<'static>> {
+    let base_style = match role {
+        Role::System => Style::default().fg(SYSTEM_COLOR).italic(),
+        _ => Style::default(),
+    };
 
-    while i < chars.len() {
-        // **bold**
-        if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
-            if !buf.is_empty() {
-                spans.push(Span::styled(std::mem::take(&mut buf), base_style));
-            }
-            i += 2;
-            let mut bold = String::new();
-            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '*') {
-                bold.push(chars[i]);
-                i += 1;
-            }
-            if i + 1 < chars.len() {
-                i += 2;
-            }
-            spans.push(Span::styled(bold, bold_style));
-            continue;
-        }
+    let mut md = MdRenderer {
+        lines: Vec::new(),
+        spans: Vec::new(),
+        style_stack: vec![base_style],
+        base_indent: "  ".to_string(),
+        list_indent: String::new(),
+        list_stack: Vec::new(),
+        in_code_block: false,
+        code_block_lang: String::new(),
+        highlighter: None,
+        blockquote_depth: 0,
+        in_heading: false,
+        in_table: false,
+        in_table_header: false,
+        table_cell_spans: Vec::new(),
+        table_cell_texts: Vec::new(),
+        table_row_spans: Vec::new(),
+        table_header_spans: Vec::new(),
+        table_body_spans: Vec::new(),
+        table_col_widths: Vec::new(),
+        table_alignments: Vec::new(),
+        link_url: None,
+        link_text: String::new(),
+    };
 
-        // `code`
-        if chars[i] == '`' {
-            if !buf.is_empty() {
-                spans.push(Span::styled(std::mem::take(&mut buf), base_style));
-            }
-            i += 1;
-            let mut code = String::new();
-            while i < chars.len() && chars[i] != '`' {
-                code.push(chars[i]);
-                i += 1;
-            }
-            if i < chars.len() {
-                i += 1;
-            }
-            spans.push(Span::styled(code, code_style));
-            continue;
-        }
+    let opts = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_GFM;
+    let parser = MdParser::new_ext(text, opts);
 
-        buf.push(chars[i]);
-        i += 1;
+    for event in parser {
+        md.process(event);
     }
 
-    if !buf.is_empty() {
-        spans.push(Span::styled(buf, base_style));
+    // Flush any remaining spans.
+    md.flush_line();
+
+    md.lines
+}
+
+#[derive(Clone)]
+enum ListKind {
+    Unordered,
+    Ordered { next: u64, max_digits: usize },
+}
+
+#[derive(Clone)]
+struct ListEntry {
+    kind: ListKind,
+    /// The `list_indent` that was active when this list was opened.
+    parent_indent: String,
+}
+
+struct MdRenderer {
+    lines: Vec<Line<'static>>,
+    spans: Vec<Span<'static>>,
+    style_stack: Vec<Style>,
+    base_indent: String,
+    list_indent: String,
+    list_stack: Vec<ListEntry>,
+    in_code_block: bool,
+    code_block_lang: String,
+    highlighter: Option<HighlightLines<'static>>,
+    blockquote_depth: usize,
+    in_heading: bool,
+    // Table state — two-pass: buffer all rows, render at End(Table).
+    in_table: bool,
+    in_table_header: bool,
+    table_cell_spans: Vec<Span<'static>>,
+    table_cell_texts: Vec<String>,
+    table_row_spans: Vec<Vec<Span<'static>>>,
+    table_header_spans: Vec<Vec<Span<'static>>>,
+    table_body_spans: Vec<Vec<Vec<Span<'static>>>>,
+    table_col_widths: Vec<usize>,
+    table_alignments: Vec<pulldown_cmark::Alignment>,
+    link_url: Option<String>,
+    link_text: String,
+}
+
+impl MdRenderer {
+    fn current_style(&self) -> Style {
+        self.style_stack.last().copied().unwrap_or_default()
     }
 
-    Line::from(spans)
+    fn push_style(&mut self, modifier: impl FnOnce(Style) -> Style) {
+        let new = modifier(self.current_style());
+        self.style_stack.push(new);
+    }
+
+    fn pop_style(&mut self) {
+        if self.style_stack.len() > 1 {
+            self.style_stack.pop();
+        }
+    }
+
+    /// Plain string indent — used for code blocks and other concatenation contexts.
+    fn indent_prefix(&self) -> String {
+        let mut prefix = self.base_indent.clone();
+        for _ in 0..self.blockquote_depth {
+            prefix.push_str("\u{2502} ");
+        }
+        prefix.push_str(&self.list_indent);
+        prefix
+    }
+
+    /// Styled indent spans — blockquote bars get DIM_COLOR, rest is unstyled.
+    fn indent_spans(&self) -> Vec<Span<'static>> {
+        let mut spans = Vec::new();
+        if self.blockquote_depth == 0 {
+            let mut prefix = self.base_indent.clone();
+            prefix.push_str(&self.list_indent);
+            spans.push(Span::raw(prefix));
+        } else {
+            spans.push(Span::raw(self.base_indent.clone()));
+            for _ in 0..self.blockquote_depth {
+                spans.push(Span::styled(
+                    "\u{2502} ".to_string(),
+                    Style::default().fg(DIM_COLOR),
+                ));
+            }
+            if !self.list_indent.is_empty() {
+                spans.push(Span::raw(self.list_indent.clone()));
+            }
+        }
+        spans
+    }
+
+    fn flush_line(&mut self) {
+        if !self.spans.is_empty() {
+            self.lines.push(Line::from(std::mem::take(&mut self.spans)));
+        }
+    }
+
+    fn blank_line_if_needed(&mut self) {
+        self.flush_line();
+        // Add blank line if previous line was non-empty content.
+        if let Some(last) = self.lines.last()
+            && !(last.spans.is_empty()
+                || (last.spans.len() == 1 && last.spans[0].content.trim().is_empty()))
+        {
+            self.lines.push(Line::raw(""));
+        }
+    }
+
+    fn process(&mut self, event: MdEvent<'_>) {
+        match event {
+            // -- Block-level start tags --
+            MdEvent::Start(MdTag::Heading { level, .. }) => {
+                self.blank_line_if_needed();
+                self.in_heading = true;
+                match level {
+                    pulldown_cmark::HeadingLevel::H1 => {
+                        self.push_style(|s| s.fg(HEADING_COLOR).bold().underlined());
+                    }
+                    pulldown_cmark::HeadingLevel::H2 => {
+                        self.push_style(|s| s.fg(HEADING_COLOR).bold());
+                    }
+                    pulldown_cmark::HeadingLevel::H3 => {
+                        self.push_style(|s| s.bold());
+                    }
+                    _ => {
+                        self.push_style(|s| s.bold().italic());
+                    }
+                }
+                self.spans.extend(self.indent_spans());
+            }
+            MdEvent::End(MdTagEnd::Heading(_)) => {
+                self.in_heading = false;
+                self.pop_style();
+                self.flush_line();
+            }
+
+            MdEvent::Start(MdTag::Paragraph) => {
+                if !self.in_code_block && self.list_stack.is_empty() {
+                    self.blank_line_if_needed();
+                }
+            }
+            MdEvent::End(MdTagEnd::Paragraph) => {
+                self.flush_line();
+            }
+
+            MdEvent::Start(MdTag::BlockQuote(kind)) => {
+                self.blank_line_if_needed();
+                self.blockquote_depth += 1;
+                self.push_style(|s| s.italic());
+                // Render GFM admonition labels ([!NOTE], [!TIP], etc.).
+                if let Some(bqk) = kind {
+                    let (label, color) = match bqk {
+                        BlockQuoteKind::Note => ("NOTE", NOTE_COLOR),
+                        BlockQuoteKind::Tip => ("TIP", TIP_COLOR),
+                        BlockQuoteKind::Important => ("IMPORTANT", IMPORTANT_COLOR),
+                        BlockQuoteKind::Warning => ("WARNING", WARNING_COLOR),
+                        BlockQuoteKind::Caution => ("CAUTION", CAUTION_COLOR),
+                    };
+                    let mut label_spans = self.indent_spans();
+                    label_spans.push(Span::styled(
+                        label.to_string(),
+                        Style::default().fg(color).bold(),
+                    ));
+                    self.lines.push(Line::from(label_spans));
+                }
+            }
+            MdEvent::End(MdTagEnd::BlockQuote(_)) => {
+                self.flush_line();
+                self.blockquote_depth = self.blockquote_depth.saturating_sub(1);
+                self.pop_style();
+            }
+
+            MdEvent::Start(MdTag::CodeBlock(kind)) => {
+                self.blank_line_if_needed();
+                self.in_code_block = true;
+                // Extract just the language token (first word) from the info string.
+                // Fenced code blocks can have metadata after the language, e.g.:
+                //   ```sql title="file.sql" lines="1-15"
+                self.code_block_lang = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().unwrap_or("").to_string()
+                    }
+                    CodeBlockKind::Indented => String::new(),
+                };
+                // Try to find a syntax for highlighting.
+                self.highlighter =
+                    find_syntax(&self.code_block_lang).map(|syn| HighlightLines::new(syn, &THEME));
+                let prefix = self.indent_prefix();
+                let header = if self.code_block_lang.is_empty() {
+                    format!("{prefix}\u{256d}\u{2500}\u{2500}")
+                } else {
+                    format!("{prefix}\u{256d}\u{2500} {} \u{2500}", self.code_block_lang)
+                };
+                self.lines.push(Line::from(Span::styled(
+                    header,
+                    Style::default().fg(DIM_COLOR),
+                )));
+            }
+            MdEvent::End(MdTagEnd::CodeBlock) => {
+                let prefix = self.indent_prefix();
+                self.lines.push(Line::from(Span::styled(
+                    format!("{prefix}\u{2570}\u{2500}\u{2500}"),
+                    Style::default().fg(DIM_COLOR),
+                )));
+                self.in_code_block = false;
+                self.code_block_lang.clear();
+                self.highlighter = None;
+            }
+
+            MdEvent::Start(MdTag::List(first)) => {
+                if self.list_stack.is_empty() {
+                    self.blank_line_if_needed();
+                }
+                let kind = match first {
+                    Some(start) => ListKind::Ordered {
+                        next: start,
+                        max_digits: start.to_string().len(),
+                    },
+                    None => ListKind::Unordered,
+                };
+                self.list_stack.push(ListEntry {
+                    kind,
+                    parent_indent: self.list_indent.clone(),
+                });
+            }
+            MdEvent::End(MdTagEnd::List(_)) => {
+                self.list_stack.pop();
+                if self.list_stack.is_empty() {
+                    self.flush_line();
+                }
+            }
+
+            MdEvent::Start(MdTag::Item) => {
+                self.flush_line();
+                let depth = self.list_stack.len().saturating_sub(1);
+                let nested_indent = "  ".repeat(depth);
+
+                let bullet = match self.list_stack.last().map(|e| &e.kind) {
+                    Some(ListKind::Unordered) => format!("{nested_indent}\u{2022} "),
+                    Some(ListKind::Ordered { next, max_digits }) => {
+                        let num = *next;
+                        // Pad to max_digits for consistent indentation.
+                        let d = (*max_digits).max(num.to_string().len());
+                        format!("{nested_indent}{num:>d$}. ")
+                    }
+                    None => String::new(),
+                };
+
+                // Set bullet prefix for first line, render the indent+bullet.
+                self.list_indent = bullet.clone();
+                self.spans.extend(self.indent_spans());
+                // Set continuation indent matching the bullet width.
+                self.list_indent = " ".repeat(bullet.len());
+            }
+            MdEvent::End(MdTagEnd::Item) => {
+                self.flush_line();
+                if let Some(ListEntry {
+                    kind: ListKind::Ordered { next, max_digits },
+                    ..
+                }) = self.list_stack.last_mut()
+                {
+                    *next += 1;
+                    *max_digits = (*max_digits).max(next.to_string().len());
+                }
+                // Restore the indent that was active when this list was opened.
+                self.list_indent = self
+                    .list_stack
+                    .last()
+                    .map(|entry| entry.parent_indent.clone())
+                    .unwrap_or_default();
+            }
+
+            // -- Inline start/end tags --
+            MdEvent::Start(MdTag::Strong) => {
+                self.push_style(|s| s.bold());
+            }
+            MdEvent::End(MdTagEnd::Strong) => {
+                self.pop_style();
+            }
+
+            MdEvent::Start(MdTag::Emphasis) => {
+                self.push_style(|s| s.italic());
+            }
+            MdEvent::End(MdTagEnd::Emphasis) => {
+                self.pop_style();
+            }
+
+            MdEvent::Start(MdTag::Strikethrough) => {
+                self.push_style(|s| s.crossed_out());
+            }
+            MdEvent::End(MdTagEnd::Strikethrough) => {
+                self.pop_style();
+            }
+
+            MdEvent::Start(MdTag::Link { dest_url, .. }) => {
+                self.push_style(|s| s.fg(LINK_COLOR).underlined());
+                self.link_url = Some(dest_url.to_string());
+                self.link_text.clear();
+            }
+            MdEvent::End(MdTagEnd::Link) => {
+                self.pop_style();
+                if let Some(url) = self.link_url.take() {
+                    let text = std::mem::take(&mut self.link_text);
+                    // Only show URL if it differs from the link text.
+                    if text != url {
+                        self.spans.push(Span::styled(
+                            format!(" ({url})"),
+                            Style::default().fg(DIM_COLOR),
+                        ));
+                    }
+                }
+            }
+
+            MdEvent::Start(MdTag::Image { dest_url, .. }) => {
+                if self.spans.is_empty() {
+                    self.spans.extend(self.indent_spans());
+                }
+                self.spans.push(Span::styled(
+                    format!("[image: {dest_url}]"),
+                    Style::default().fg(DIM_COLOR),
+                ));
+            }
+            MdEvent::End(MdTagEnd::Image) => {}
+
+            // -- Table handling (two-pass: buffer all rows, render at End(Table)) --
+            MdEvent::Start(MdTag::Table(alignments)) => {
+                self.blank_line_if_needed();
+                self.in_table = true;
+                self.table_alignments = alignments;
+                self.table_col_widths.clear();
+                self.table_header_spans.clear();
+                self.table_body_spans.clear();
+            }
+            MdEvent::End(MdTagEnd::Table) => {
+                self.render_buffered_table();
+                self.in_table = false;
+                self.table_alignments.clear();
+                self.table_col_widths.clear();
+            }
+
+            MdEvent::Start(MdTag::TableHead) => {
+                self.in_table_header = true;
+                self.table_cell_texts.clear();
+                self.table_row_spans.clear();
+            }
+            MdEvent::End(MdTagEnd::TableHead) => {
+                self.in_table_header = false;
+                for (i, text) in self.table_cell_texts.iter().enumerate() {
+                    let w = text.width();
+                    if i < self.table_col_widths.len() {
+                        self.table_col_widths[i] = self.table_col_widths[i].max(w);
+                    } else {
+                        self.table_col_widths.push(w);
+                    }
+                }
+                self.table_header_spans = std::mem::take(&mut self.table_row_spans);
+                self.table_cell_texts.clear();
+            }
+
+            MdEvent::Start(MdTag::TableRow) => {
+                self.table_cell_texts.clear();
+                self.table_row_spans.clear();
+            }
+            MdEvent::End(MdTagEnd::TableRow) => {
+                if !self.in_table_header {
+                    for (i, text) in self.table_cell_texts.iter().enumerate() {
+                        let w = text.width();
+                        if i < self.table_col_widths.len() {
+                            self.table_col_widths[i] = self.table_col_widths[i].max(w);
+                        } else {
+                            self.table_col_widths.push(w);
+                        }
+                    }
+                    self.table_body_spans
+                        .push(std::mem::take(&mut self.table_row_spans));
+                }
+                self.table_cell_texts.clear();
+            }
+
+            MdEvent::Start(MdTag::TableCell) => {
+                self.table_cell_spans.clear();
+            }
+            MdEvent::End(MdTagEnd::TableCell) => {
+                let plain: String = self
+                    .table_cell_spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect();
+                self.table_cell_texts.push(plain);
+                self.table_row_spans
+                    .push(std::mem::take(&mut self.table_cell_spans));
+            }
+
+            // -- Leaf events --
+            MdEvent::Text(text) => {
+                if self.in_code_block {
+                    let prefix = self.indent_prefix();
+                    let is_diff = self.code_block_lang == "diff";
+                    for line in text.lines() {
+                        let mut spans: Vec<Span<'static>> = Vec::new();
+                        spans.push(Span::styled(
+                            format!("{prefix}\u{2502} "),
+                            Style::default().fg(DIM_COLOR),
+                        ));
+                        if is_diff {
+                            spans.push(Span::styled(
+                                line.to_string(),
+                                Style::default().fg(diff_line_color(line)),
+                            ));
+                        } else if let Some(ref mut hl) = self.highlighter {
+                            if let Ok(highlighted) = hl.highlight_line(line, &SYNTAX_SET) {
+                                for (style, fragment) in highlighted {
+                                    spans.push(Span::styled(
+                                        fragment.to_string(),
+                                        syntect_to_ratatui_style(style),
+                                    ));
+                                }
+                            } else {
+                                spans.push(Span::styled(
+                                    line.to_string(),
+                                    Style::default().fg(TEXT_COLOR),
+                                ));
+                            }
+                        } else {
+                            spans.push(Span::styled(
+                                line.to_string(),
+                                Style::default().fg(TEXT_COLOR),
+                            ));
+                        }
+                        self.lines.push(Line::from(spans));
+                    }
+                } else if self.in_table {
+                    self.table_cell_spans
+                        .push(Span::styled(text.to_string(), self.current_style()));
+                } else {
+                    // Track link text for dedup.
+                    if self.link_url.is_some() {
+                        self.link_text.push_str(&text);
+                    }
+                    if self.spans.is_empty() && !self.in_heading {
+                        self.spans.extend(self.indent_spans());
+                    }
+                    self.spans
+                        .push(Span::styled(text.to_string(), self.current_style()));
+                }
+            }
+
+            MdEvent::Code(code) => {
+                let backtick_style = Style::default().fg(DIM_COLOR);
+                let code_style = Style::default().fg(CODE_COLOR);
+                let target = if self.in_table {
+                    &mut self.table_cell_spans
+                } else {
+                    if self.spans.is_empty() {
+                        self.spans.extend(self.indent_spans());
+                    }
+                    &mut self.spans
+                };
+                target.push(Span::styled("`".to_string(), backtick_style));
+                target.push(Span::styled(code.to_string(), code_style));
+                target.push(Span::styled("`".to_string(), backtick_style));
+            }
+
+            MdEvent::SoftBreak => {
+                if self.in_code_block {
+                    return;
+                }
+                if self.in_table {
+                    self.table_cell_spans.push(Span::raw(" "));
+                } else {
+                    self.spans.push(Span::raw(" "));
+                }
+            }
+
+            MdEvent::HardBreak => {
+                if self.in_table {
+                    // Tables are single-line cells; treat as space.
+                    self.table_cell_spans.push(Span::raw(" "));
+                } else {
+                    self.flush_line();
+                    self.spans.extend(self.indent_spans());
+                }
+            }
+
+            MdEvent::Rule => {
+                self.blank_line_if_needed();
+                let prefix = self.indent_prefix();
+                self.lines.push(Line::from(Span::styled(
+                    format!("{prefix}{}", "\u{2500}".repeat(40)),
+                    Style::default().fg(DIM_COLOR),
+                )));
+            }
+
+            MdEvent::TaskListMarker(checked) => {
+                if checked {
+                    self.spans.push(Span::styled(
+                        "[\u{2713}] ".to_string(),
+                        Style::default().fg(CHECK_COLOR),
+                    ));
+                } else {
+                    self.spans.push(Span::styled(
+                        "[ ] ".to_string(),
+                        Style::default().fg(DIM_COLOR),
+                    ));
+                }
+            }
+
+            // Ignore HTML and other events.
+            _ => {}
+        }
+    }
+
+    /// Render the fully-buffered table: header, separator, body rows.
+    /// Two-pass ensures column widths are correct across all rows.
+    fn render_buffered_table(&mut self) {
+        let prefix = self.indent_prefix();
+
+        // Header row (bold).
+        let header = std::mem::take(&mut self.table_header_spans);
+        self.render_table_line(&prefix, &header, true);
+
+        // Separator.
+        let sep = self
+            .table_col_widths
+            .iter()
+            .map(|&w| "\u{2500}".repeat(w))
+            .collect::<Vec<_>>()
+            .join("\u{2500}\u{253c}\u{2500}");
+        self.lines.push(Line::from(Span::styled(
+            format!("{prefix}{sep}"),
+            Style::default().fg(DIM_COLOR),
+        )));
+
+        // Body rows.
+        let body = std::mem::take(&mut self.table_body_spans);
+        for row in &body {
+            self.render_table_line(&prefix, row, false);
+        }
+    }
+
+    /// Render one table row as a Line with per-cell styled Spans and padding.
+    fn render_table_line(&mut self, prefix: &str, cells: &[Vec<Span<'static>>], bold: bool) {
+        let mut line_spans: Vec<Span<'static>> = vec![Span::raw(prefix.to_string())];
+
+        for (i, cell_spans) in cells.iter().enumerate() {
+            if i > 0 {
+                line_spans.push(Span::styled(
+                    " \u{2502} ".to_string(),
+                    Style::default().fg(DIM_COLOR),
+                ));
+            }
+
+            let cell_text_len: usize = cell_spans.iter().map(|s| s.content.width()).sum();
+            let col_width = self
+                .table_col_widths
+                .get(i)
+                .copied()
+                .unwrap_or(cell_text_len);
+            let pad = col_width.saturating_sub(cell_text_len);
+            let align = self.table_alignments.get(i).copied();
+
+            let (left_pad, right_pad) = match align {
+                Some(pulldown_cmark::Alignment::Center) => (pad / 2, pad - pad / 2),
+                Some(pulldown_cmark::Alignment::Right) => (pad, 0),
+                _ => (0, pad),
+            };
+
+            if left_pad > 0 {
+                line_spans.push(Span::raw(" ".repeat(left_pad)));
+            }
+            for span in cell_spans {
+                if bold {
+                    line_spans.push(Span::styled(span.content.clone(), span.style.bold()));
+                } else {
+                    line_spans.push(span.clone());
+                }
+            }
+            if right_pad > 0 {
+                line_spans.push(Span::raw(" ".repeat(right_pad)));
+            }
+        }
+
+        self.lines.push(Line::from(line_spans));
+    }
+}
+
+/// Pick a color for a line inside a `diff` code block.
+fn diff_line_color(line: &str) -> Color {
+    if line.starts_with("@@") {
+        DIFF_HUNK_COLOR
+    } else if line.starts_with('+') {
+        DIFF_ADD_COLOR
+    } else if line.starts_with('-') {
+        DIFF_DEL_COLOR
+    } else {
+        TEXT_COLOR
+    }
+}
+
+/// Find a syntect syntax definition for a code block language tag.
+fn find_syntax(lang: &str) -> Option<&'static syntect::parsing::SyntaxReference> {
+    // Diff blocks use custom line-by-line coloring (diff_line_color), not syntect.
+    if lang.is_empty() || lang == "diff" {
+        return None;
+    }
+    SYNTAX_SET
+        .find_syntax_by_token(lang)
+        .filter(|s| s.name != "Plain Text")
+}
+
+/// Convert a syntect highlighting style to a ratatui style.
+fn syntect_to_ratatui_style(style: syntect::highlighting::Style) -> Style {
+    let fg = style.foreground;
+    let mut s = Style::default().fg(Color::Rgb(fg.r, fg.g, fg.b));
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::BOLD)
+    {
+        s = s.bold();
+    }
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::ITALIC)
+    {
+        s = s.italic();
+    }
+    if style
+        .font_style
+        .contains(syntect::highlighting::FontStyle::UNDERLINE)
+    {
+        s = s.underlined();
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -3374,18 +4028,430 @@ mod tests {
     #[test]
     fn render_markdown_handles_code_blocks() {
         let text = "text\n```rust\nfn main() {}\n```\nmore text";
-        let lines = render_markdown(text, Role::Otto);
-        // Should have: text, code block header, code line, code block footer, more text
+        let lines = render_markdown(text, Role::Otto, false);
+        // Should have: text, blank, code block header, code line, code block footer, blank, more text
         assert!(lines.len() >= 5);
     }
 
     #[test]
     fn render_markdown_handles_inline_code() {
         let text = "use `foo()` here";
-        let lines = render_markdown(text, Role::Otto);
+        let lines = render_markdown(text, Role::Otto, false);
+        // Line should contain multiple spans (indent, text, code, text)
+        // pulldown-cmark wraps in paragraph, so we may have blank lines
+        let content_lines: Vec<_> = lines.iter().filter(|l| !l.spans.is_empty()).collect();
+        assert!(!content_lines.is_empty());
+        assert!(content_lines[0].spans.len() >= 3);
+    }
+
+    #[test]
+    fn render_markdown_raw_mode_shows_source() {
+        let text = "**bold** and `code`";
+        let lines = render_markdown(text, Role::Otto, true);
         assert_eq!(lines.len(), 1);
-        // Line should have multiple spans (indent, text, code, text)
-        assert!(lines[0].spans.len() >= 3);
+        let full_text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(full_text.contains("**bold**"));
+        assert!(full_text.contains("`code`"));
+    }
+
+    #[test]
+    fn render_markdown_headings_are_styled() {
+        let text = "# Title\n\n## Subtitle";
+        let lines = render_markdown(text, Role::Otto, false);
+        let content: Vec<_> = lines
+            .iter()
+            .filter(|l| {
+                !l.spans.is_empty() && !(l.spans.len() == 1 && l.spans[0].content.trim().is_empty())
+            })
+            .collect();
+        assert!(content.len() >= 2);
+        // H1 should be bold
+        assert!(
+            content[0]
+                .spans
+                .iter()
+                .any(|s| s.style.add_modifier.contains(Modifier::BOLD))
+        );
+    }
+
+    #[test]
+    fn render_markdown_unordered_list() {
+        let text = "- one\n- two\n- three";
+        let lines = render_markdown(text, Role::Otto, false);
+        let text_lines: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // Should contain bullet character
+        assert!(text_lines.iter().any(|l| l.contains('\u{2022}')));
+    }
+
+    #[test]
+    fn render_markdown_link_dedup() {
+        // When link text matches URL, should not show URL twice.
+        let text = "[https://example.com](https://example.com)";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        // URL should appear exactly once, not duplicated in parens.
+        assert_eq!(full.matches("example.com").count(), 1);
+    }
+
+    #[test]
+    fn render_markdown_link_shows_url() {
+        // When link text differs from URL, should show URL in parens.
+        let text = "[click here](https://example.com)";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("click here"));
+        assert!(full.contains("(https://example.com)"));
+    }
+
+    #[test]
+    fn render_markdown_blockquote() {
+        let text = "> quoted text";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{2502}')); // vertical bar
+        assert!(full.contains("quoted text"));
+    }
+
+    #[test]
+    fn render_markdown_task_list() {
+        let text = "- [x] done\n- [ ] todo";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{2713}')); // checkmark
+        assert!(full.contains("[ ]"));
+    }
+
+    #[test]
+    fn render_markdown_inline_code_has_backtick_delimiters() {
+        let text = "use `foo()` here";
+        let lines = render_markdown(text, Role::Otto, false);
+        let content_lines: Vec<_> = lines.iter().filter(|l| !l.spans.is_empty()).collect();
+        assert!(!content_lines.is_empty());
+        // Should have dim backtick spans around the code span.
+        let spans = &content_lines[0].spans;
+        let backtick_count = spans.iter().filter(|s| s.content.as_ref() == "`").count();
+        assert_eq!(backtick_count, 2);
+    }
+
+    #[test]
+    fn render_markdown_table() {
+        let text = "| A | B |\n|---|---|\n| 1 | 2 |";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{2502}'));
+        assert!(full.contains('\u{2500}'));
+    }
+
+    #[test]
+    fn render_markdown_table_alignment_consistent_widths() {
+        // Body cell "longer" is wider than header "A" — all rows should use the wider width.
+        let text = "| A | B |\n|---|---|\n| longer | x |";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Find the separator line — its column widths should match the widest cell.
+        let sep_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains('\u{253c}')))
+            .expect("should have separator");
+        let sep_text: String = sep_line.spans.iter().map(|s| s.content.as_ref()).collect();
+        // The first column separator should be at least 6 chars wide (len of "longer").
+        let first_col = sep_text.split('\u{253c}').next().unwrap();
+        let dash_count = first_col.chars().filter(|&c| c == '\u{2500}').count();
+        assert!(
+            dash_count >= 6,
+            "separator should match widest cell, got {dash_count}"
+        );
+    }
+
+    #[test]
+    fn render_markdown_table_inline_code_preserved() {
+        let text = "| Col |\n|---|\n| `code` |";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Should have a span with CODE_COLOR for inline code in the table.
+        let has_code_span = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.style.fg == Some(CODE_COLOR) && s.content.as_ref() == "code")
+        });
+        assert!(has_code_span, "inline code in table should be styled");
+    }
+
+    #[test]
+    fn render_markdown_nested_list() {
+        let text = "- outer\n  - inner\n- back to outer";
+        let lines = render_markdown(text, Role::Otto, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // Should have bullet characters at different indent levels.
+        assert!(texts.iter().any(|t| t.contains("inner")));
+        assert!(texts.iter().any(|t| t.contains("back to outer")));
+    }
+
+    #[test]
+    fn render_markdown_empty_input() {
+        let lines = render_markdown("", Role::Otto, false);
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn render_markdown_horizontal_rule() {
+        let text = "above\n\n---\n\nbelow";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{2500}'));
+    }
+
+    #[test]
+    fn render_markdown_strikethrough() {
+        let text = "~~deleted~~";
+        let lines = render_markdown(text, Role::Otto, false);
+        let has_strikethrough = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.style.add_modifier.contains(Modifier::CROSSED_OUT))
+        });
+        assert!(has_strikethrough);
+    }
+
+    #[test]
+    fn render_markdown_diff_coloring() {
+        let text = "```diff\n- removed\n+ added\n context\n@@ -1,3 +1,3 @@\n```";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Find the line with "- removed" — should be DIFF_DEL_COLOR (red).
+        let del_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains("- removed")))
+            .expect("should have a deletion line");
+        assert_eq!(
+            del_line.spans.last().unwrap().style.fg,
+            Some(DIFF_DEL_COLOR)
+        );
+        // Find the line with "+ added" — should be DIFF_ADD_COLOR (green).
+        let add_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains("+ added")))
+            .expect("should have an addition line");
+        assert_eq!(
+            add_line.spans.last().unwrap().style.fg,
+            Some(DIFF_ADD_COLOR)
+        );
+        // Find the hunk header — should be DIFF_HUNK_COLOR (blue).
+        let hunk_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains("@@")))
+            .expect("should have a hunk header line");
+        assert_eq!(
+            hunk_line.spans.last().unwrap().style.fg,
+            Some(DIFF_HUNK_COLOR)
+        );
+    }
+
+    #[test]
+    fn render_markdown_syntax_highlighting() {
+        let text = "```rust\nfn main() {\n    println!(\"hello\");\n}\n```";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Find a code content line (has │ border).
+        let code_lines: Vec<_> = lines
+            .iter()
+            .filter(|l| l.spans.iter().any(|s| s.content.contains('\u{2502}')))
+            .collect();
+        assert!(!code_lines.is_empty());
+        // With syntax highlighting, code lines should have >1 span
+        // (border span + multiple colored spans, not just border + single white span).
+        let multi_span_lines = code_lines.iter().filter(|l| l.spans.len() > 2).count();
+        assert!(multi_span_lines > 0, "expected syntax-highlighted spans");
+    }
+
+    #[test]
+    fn render_markdown_code_block_extracts_language_from_info_string() {
+        // Code fence with metadata after language: ```sql title="file.sql" lines="1-15"
+        let text = "```sql title=\"file.sql\" lines=\"1-15\"\nSELECT 1;\n```";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Header should only show "sql", not the full info string.
+        let header = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains('\u{256d}')))
+            .expect("should have code block header");
+        let header_text: String = header.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            header_text.contains("sql"),
+            "header should contain language"
+        );
+        assert!(
+            !header_text.contains("title"),
+            "header should NOT contain metadata"
+        );
+        // Code should have syntax highlighting (SQL matched).
+        let code_lines: Vec<_> = lines
+            .iter()
+            .filter(|l| l.spans.iter().any(|s| s.content.contains('\u{2502}')))
+            .collect();
+        assert!(!code_lines.is_empty());
+        let multi_span = code_lines.iter().filter(|l| l.spans.len() > 2).count();
+        assert!(multi_span > 0, "SQL should be syntax-highlighted");
+    }
+
+    #[test]
+    fn render_markdown_python_syntax_highlighting() {
+        let text = "```python\ndef hello():\n    print(\"hi\")\n```";
+        let lines = render_markdown(text, Role::Otto, false);
+        let code_lines: Vec<_> = lines
+            .iter()
+            .filter(|l| l.spans.iter().any(|s| s.content.contains('\u{2502}')))
+            .collect();
+        assert!(!code_lines.is_empty());
+        let multi_span = code_lines.iter().filter(|l| l.spans.len() > 2).count();
+        assert!(multi_span > 0, "Python should be syntax-highlighted");
+    }
+
+    #[test]
+    fn render_markdown_unicode_table_widths() {
+        // CJK characters are display-width 2 each; column width should reflect that.
+        let text = "| A | B |\n|---|---|\n| \u{4f60}\u{597d} | x |";
+        let lines = render_markdown(text, Role::Otto, false);
+        let sep_line = lines
+            .iter()
+            .find(|l| l.spans.iter().any(|s| s.content.contains('\u{253c}')))
+            .expect("should have separator");
+        let sep_text: String = sep_line.spans.iter().map(|s| s.content.as_ref()).collect();
+        // "你好" is 4 display columns — separator first column should be at least 4 dashes.
+        let first_col = sep_text.split('\u{253c}').next().unwrap();
+        let dash_count = first_col.chars().filter(|&c| c == '\u{2500}').count();
+        assert!(
+            dash_count >= 4,
+            "separator should match CJK display width, got {dash_count}"
+        );
+    }
+
+    #[test]
+    fn render_markdown_ordered_list_high_start() {
+        let text = "99. first\n100. second";
+        let lines = render_markdown(text, Role::Otto, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // First item should show "99." with proper padding for the eventual 3-digit number.
+        assert!(texts.iter().any(|t| t.contains("99.")));
+        assert!(texts.iter().any(|t| t.contains("100.")));
+    }
+
+    #[test]
+    fn render_markdown_nested_blockquote() {
+        let text = "> > doubly quoted";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        // Should have two vertical bar characters for nested blockquote.
+        assert!(
+            full.matches('\u{2502}').count() >= 2,
+            "nested blockquote should have 2+ vertical bars"
+        );
+    }
+
+    #[test]
+    fn render_markdown_mixed_nested_lists() {
+        let text = "1. ordered\n   - unordered inside\n2. back";
+        let lines = render_markdown(text, Role::Otto, false);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        // Should have both ordered number and bullet character.
+        assert!(texts.iter().any(|t| t.contains("1.")));
+        assert!(texts.iter().any(|t| t.contains('\u{2022}')));
+    }
+
+    #[test]
+    fn render_markdown_multi_paragraph_list_item() {
+        let text = "- first paragraph\n\n  second paragraph\n- next item";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("first paragraph"));
+        assert!(full.contains("second paragraph"));
+        assert!(full.contains("next item"));
+    }
+
+    #[test]
+    fn render_markdown_emoji_in_table() {
+        let text = "| Col |\n|---|\n| \u{1f600} |";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Should not panic and should produce output.
+        assert!(!lines.is_empty());
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains('\u{1f600}'));
+    }
+
+    #[test]
+    fn render_markdown_gfm_note_blockquote() {
+        let text = "> [!NOTE]\n> This is a note.";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("NOTE"), "should render NOTE label");
+        assert!(full.contains("This is a note."));
+    }
+
+    #[test]
+    fn render_markdown_gfm_warning_blockquote() {
+        let text = "> [!WARNING]\n> Be careful.";
+        let lines = render_markdown(text, Role::Otto, false);
+        // Find the WARNING label span with the correct color.
+        let has_warning = lines.iter().any(|l| {
+            l.spans
+                .iter()
+                .any(|s| s.content.as_ref() == "WARNING" && s.style.fg == Some(WARNING_COLOR))
+        });
+        assert!(
+            has_warning,
+            "should render WARNING label with correct color"
+        );
+    }
+
+    #[test]
+    fn render_markdown_code_in_blockquote() {
+        let text = "> ```rust\n> fn x() {}\n> ```";
+        let lines = render_markdown(text, Role::Otto, false);
+        let full: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(full.contains("fn x()"));
+        // Should have both blockquote bar and code border.
+        assert!(full.contains('\u{2502}'));
+        assert!(full.contains('\u{256d}'));
     }
 
     // -- Force quit (second Ctrl+C during interrupting) --------------------
