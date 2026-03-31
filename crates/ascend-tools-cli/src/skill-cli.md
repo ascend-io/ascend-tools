@@ -40,6 +40,14 @@ export ASCEND_SERVICE_ACCOUNT_KEY="..."
 export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 ```
 
+For local-dev workspaces, prefer:
+
+```bash
+export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.dev"
+```
+
+If you accidentally pass the matching `...-instance.app.local.ascend.dev` host instead, the shared config path will correct that specific local-dev confusion to the `instance.api.local` host automatically.
+
 ## Commands
 
 ### Workspaces
@@ -100,10 +108,10 @@ ascend-tools flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 ### Otto
 
 ```bash
-ascend-tools otto run "<PROMPT>" [--workspace <TITLE>] [--provider <NAME>] [--model <ID>] [--conversation <TITLE_OR_ID>]
+ascend-tools otto run "<PROMPT>" [--workspace <TITLE> | --deployment <TITLE>] [--provider <NAME>] [--model <ID>] [--thinking <none|minimal|low|medium|high|max>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
 ascend-tools otto provider list
 ascend-tools otto model list [--provider <NAME>]
-ascend-tools otto tui [--workspace <TITLE>] [--conversation <TITLE_OR_ID>]
+ascend-tools otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <NAME>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume]
 ```
 
 ### Conversations
@@ -112,6 +120,8 @@ ascend-tools otto tui [--workspace <TITLE>] [--conversation <TITLE_OR_ID>]
 ascend-tools otto conversation list [--limit <N>] [--offset <N>]
 ascend-tools otto conversation get <TITLE>
 ascend-tools otto conversation get <ID> --id
+ascend-tools otto conversation open <TITLE_OR_ID> [--id] [--after <MESSAGE_ID>]
+ascend-tools otto conversation history <TITLE_OR_ID> [--id] --before <MESSAGE_ID> [--limit <N>]
 ```
 
 ### Signup

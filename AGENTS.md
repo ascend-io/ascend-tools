@@ -46,6 +46,8 @@ Auth params can also be passed as CLI flags (`--service-account-id`, `--service-
 export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.dev"
 ```
 
+If you accidentally use the matching `https://<workspace>-instance.app.local.ascend.dev` host instead, the shared config path will correct that specific local-dev confusion to the `instance.api.local` host automatically.
+
 ## CLI reference
 
 ```
@@ -80,13 +82,15 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
-  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID>]
+  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--thinking <none|minimal|low|medium|high|max>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
   otto provider list
   otto model list [--provider <ID>]
-  otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID>]
+  otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume]
   otto conversation list [--limit <N>] [--offset <N>]
   otto conversation get <TITLE>
   otto conversation get <ID> --id
+  otto conversation open <TITLE_OR_ID> [--id] [--after <MESSAGE_ID>]
+  otto conversation history <TITLE_OR_ID> [--id] --before <MESSAGE_ID> [--limit <N>]
 
   signup
 

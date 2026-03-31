@@ -9,12 +9,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-CLI="uv run ascend-tools"
+CLI="uv run --project ascend-tools ascend-tools"
 PASS=0
 FAIL=0
+SKIP=0
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
+skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
 
 require_cmd() {
   if command -v "$1" >/dev/null 2>&1; then
@@ -26,10 +28,10 @@ require_cmd() {
 }
 
 print_summary() {
-  local total=$((PASS + FAIL))
+  local total=$((PASS + FAIL + SKIP))
   echo
   echo "=== results ==="
-  echo "$PASS passed, $FAIL failed (of $total)"
+  echo "$PASS passed, $FAIL failed, $SKIP skipped (of $total)"
   if [ "$FAIL" -gt 0 ]; then
     exit 1
   fi
@@ -67,6 +69,16 @@ run_otto_jsonl() {
   $CLI otto run "$prompt" --jsonl "$@"
 }
 
+run_conversation_list() {
+  local limit="${1:-5}"
+  $CLI otto conversation list --limit "$limit"
+}
+
+run_conversation_list_json() {
+  local limit="${1:-1}"
+  $CLI -o json otto conversation list --limit "$limit"
+}
+
 progressive_open() {
   local thread_id="$1"
   shift
@@ -90,8 +102,40 @@ done
 pass "env vars set"
 require_cmd jq
 
+echo "=== conversation list ==="
+set +e
+LIST_OUT="$(run_conversation_list 5 2>&1)"
+LIST_RC=$?
+set -e
+if [ "$LIST_RC" -eq 0 ]; then
+  pass "conversation list command succeeds with repo-local invocation"
+else
+  fail "conversation list" "$LIST_OUT"
+  print_summary
+fi
+
+LOCAL_DEV_API_SUFFIX="-instance.api.local.ascend.dev"
+LOCAL_DEV_APP_SUFFIX="-instance.app.local.ascend.dev"
+if [[ "$ASCEND_INSTANCE_API_URL" == *"$LOCAL_DEV_API_SUFFIX"* ]]; then
+  APP_HOST_URL="${ASCEND_INSTANCE_API_URL/$LOCAL_DEV_API_SUFFIX/$LOCAL_DEV_APP_SUFFIX}"
+  set +e
+  APP_HOST_OUT="$(ASCEND_INSTANCE_API_URL="$APP_HOST_URL" run_conversation_list_json 1 2>&1)"
+  APP_HOST_RC=$?
+  set -e
+  if [ "$APP_HOST_RC" -eq 0 ] && echo "$APP_HOST_OUT" | jq -e '.threads' >/dev/null 2>&1; then
+    pass "local-dev app host is normalized to the matching API host"
+  else
+    fail "local-dev host normalization proof" "$APP_HOST_OUT"
+  fi
+else
+  skip "local-dev host normalization proof not applicable for current ASCEND_INSTANCE_API_URL"
+fi
+
 echo "=== otto lifecycle ==="
 THREAD_ID="${ASCEND_OTTO_LIFECYCLE_THREAD_ID:-}"
+FOLLOWUP_PROVIDER="${ASCEND_OTTO_LIFECYCLE_PROVIDER:-OpenAI}"
+FOLLOWUP_MODEL="${ASCEND_OTTO_LIFECYCLE_MODEL:-gpt-5.2}"
+FOLLOWUP_PROMPT="${ASCEND_OTTO_LIFECYCLE_PROMPT:-Reply with exactly 'plan-proof'.}"
 if [ -n "$THREAD_ID" ]; then
   echo "  reusing thread: $THREAD_ID"
 else
@@ -151,8 +195,8 @@ else
 fi
 
 OLDEST_ID="$(echo "$PREVIEW_JSON" | jq -r '.data.oldest_message_id // empty')"
-LATEST_ID="$(echo "$PREVIEW_JSON" | jq -r '.data.latest_message_id // empty')"
-if [ -n "$OLDEST_ID" ] && [ -n "$LATEST_ID" ]; then
+LATEST_BEFORE_FOLLOWUP="$(echo "$PREVIEW_JSON" | jq -r '.data.latest_message_id // empty')"
+if [ -n "$OLDEST_ID" ] && [ -n "$LATEST_BEFORE_FOLLOWUP" ]; then
   pass "preview exposed oldest/latest message anchors"
 else
   fail "preview anchors" "missing oldest_message_id or latest_message_id"
@@ -173,19 +217,30 @@ else
   fail "history page anchor" "missing oldest_message_id"
 fi
 
-FOLLOW_OUT="$(run_otto_jsonl "Reply with exactly 'iter12-after'." --conversation "$THREAD_ID")"
+FOLLOW_OUT="$(run_otto_jsonl "$FOLLOWUP_PROMPT" --provider "$FOLLOWUP_PROVIDER" --model "$FOLLOWUP_MODEL" --conversation "$THREAD_ID")"
 if jsonl_request_present "$FOLLOW_OUT"; then
   pass "follow-up run emitted request provenance"
 else
   fail "follow-up request provenance" "missing request record"
+fi
+if echo "$FOLLOW_OUT" | jq -e --arg provider "$FOLLOWUP_PROVIDER" --arg model "$FOLLOWUP_MODEL" 'select(.record_type == "request") | .provider == $provider and .model == $model' >/dev/null; then
+  pass "follow-up run preserved explicit provider/model provenance"
+else
+  fail "follow-up provider/model provenance" "missing explicit provider/model in request record"
 fi
 if jsonl_thread_done_present "$FOLLOW_OUT" && jsonl_terminal_completed "$FOLLOW_OUT"; then
   pass "follow-up run completed through thread.done"
 else
   fail "follow-up completion" "missing thread.done or completed terminal record"
 fi
+LATEST_AFTER_FOLLOWUP="$(extract_thread_done_latest "$FOLLOW_OUT")"
+if [ -n "$LATEST_AFTER_FOLLOWUP" ]; then
+  pass "follow-up thread.done exposed latest_message_id"
+else
+  fail "follow-up latest_message_id" "thread.done missing latest_message_id"
+fi
 
-DELTA_JSON="$(progressive_open "$THREAD_ID" --after "$LATEST_ID")"
+DELTA_JSON="$(progressive_open "$THREAD_ID" --after "$LATEST_BEFORE_FOLLOWUP")"
 DELTA_KIND="$(echo "$DELTA_JSON" | jq -r '.kind')"
 DELTA_COUNT="$(echo "$DELTA_JSON" | jq '.data.messages | length')"
 NEW_LATEST="$(echo "$DELTA_JSON" | jq -r '.data.latest_message_id // empty')"
@@ -198,12 +253,12 @@ fi
 if [ "$DELTA_COUNT" -gt 0 ]; then
   pass "reopen delta returned $DELTA_COUNT new messages"
 else
-  fail "reopen delta messages" "no messages returned after $LATEST_ID"
+  fail "reopen delta messages" "no messages returned after $LATEST_BEFORE_FOLLOWUP"
 fi
-if [ -n "$NEW_LATEST" ] && [ "$NEW_LATEST" != "$LATEST_ID" ]; then
-  pass "reopen delta advanced latest_message_id"
+if [ -n "$NEW_LATEST" ] && [ "$NEW_LATEST" = "$LATEST_AFTER_FOLLOWUP" ]; then
+  pass "reopen delta latest_message_id matches follow-up thread.done"
 else
-  fail "reopen latest anchor" "latest_message_id did not advance"
+  fail "reopen latest anchor" "expected $LATEST_AFTER_FOLLOWUP, got ${NEW_LATEST:-<empty>}"
 fi
 
 print_summary
