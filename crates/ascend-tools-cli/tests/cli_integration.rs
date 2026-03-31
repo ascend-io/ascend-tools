@@ -224,7 +224,7 @@ fn deployment_list_filters_by_kind() {
 }
 
 #[test]
-fn otto_run_jsonl_emits_raw_thread_updates() {
+fn otto_run_jsonl_emits_request_event_and_terminal_records() {
     let mut server = Server::new();
     mock_auth(&mut server);
 
@@ -275,14 +275,22 @@ fn otto_run_jsonl_emits_raw_thread_updates() {
     cmd.args(["otto", "run", "hello", "--jsonl"]);
     cmd.assert()
         .success()
+        .stdout(predicate::str::contains("\"record_type\":\"request\""))
+        .stdout(predicate::str::contains(
+            "\"request_body\":{\"prompt\":\"hello\"}",
+        ))
+        .stdout(predicate::str::contains("\"record_type\":\"event\""))
         .stdout(predicate::str::contains("\"thread_id\":\"thread-jsonl\""))
+        .stdout(predicate::str::contains("\"sequence\":1"))
         .stdout(predicate::str::contains(
             "\"event_type\":\"thread.preview\"",
         ))
         .stdout(predicate::str::contains(
             "\"event_type\":\"response.output_text.delta\"",
         ))
-        .stdout(predicate::str::contains("\"event_type\":\"thread.done\""));
+        .stdout(predicate::str::contains("\"event_type\":\"thread.done\""))
+        .stdout(predicate::str::contains("\"record_type\":\"terminal\""))
+        .stdout(predicate::str::contains("\"stream_status\":\"completed\""));
 }
 
 #[test]
@@ -293,6 +301,177 @@ fn otto_run_jsonl_rejects_json_output_mode() {
     cmd.assert().failure().stderr(predicate::str::contains(
         "--jsonl cannot be combined with -o json",
     ));
+}
+
+#[test]
+fn otto_conversation_open_emits_progressive_preview_json() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    let preview_body = serde_json::json!({
+        "id": "thread-open",
+        "title": "Long thread",
+        "messages": {
+            "msg-1": {
+                "id": "msg-1",
+                "role": "user",
+                "content": "hello",
+                "created_at": "2026-01-01T00:00:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 72,
+        "has_more": true,
+        "oldest_message_id": "msg-1",
+        "latest_message_id": "msg-50"
+    })
+    .to_string();
+    let sse_body = format!("event: thread.preview\ndata: {preview_body}\n\n");
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-open/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "-o",
+        "json",
+        "otto",
+        "conversation",
+        "open",
+        "thread-open",
+        "--id",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"kind\": \"preview\""))
+        .stdout(predicate::str::contains("\"has_more\": true"))
+        .stdout(predicate::str::contains("\"oldest_message_id\": \"msg-1\""))
+        .stdout(predicate::str::contains(
+            "\"latest_message_id\": \"msg-50\"",
+        ));
+}
+
+#[test]
+fn otto_conversation_open_with_after_emits_delta_json() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    let delta_body = serde_json::json!({
+        "title": "Long thread",
+        "messages": {
+            "msg-51": {
+                "id": "msg-51",
+                "role": "assistant",
+                "content": "new text",
+                "created_at": "2026-01-01T00:01:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:01:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "latest_message_id": "msg-51"
+    })
+    .to_string();
+    let sse_body = format!("event: thread.delta\ndata: {delta_body}\n\n");
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-delta/updates")
+        .match_header("accept", "text/event-stream")
+        .match_query(mockito::Matcher::UrlEncoded(
+            "after".into(),
+            "msg-50".into(),
+        ))
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "-o",
+        "json",
+        "otto",
+        "conversation",
+        "open",
+        "thread-delta",
+        "--id",
+        "--after",
+        "msg-50",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"kind\": \"delta\""))
+        .stdout(predicate::str::contains(
+            "\"latest_message_id\": \"msg-51\"",
+        ))
+        .stdout(predicate::str::contains("\"msg-51\""));
+}
+
+#[test]
+fn otto_conversation_history_fetches_before_page() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    let history_body = serde_json::json!({
+        "messages": {
+            "msg-18": {
+                "id": "msg-18",
+                "role": "assistant",
+                "content": "older reply",
+                "created_at": "2026-01-01T00:00:18Z"
+            },
+            "msg-19": {
+                "id": "msg-19",
+                "role": "user",
+                "content": "older prompt",
+                "created_at": "2026-01-01T00:00:19Z"
+            }
+        },
+        "has_more": true,
+        "oldest_message_id": "msg-18"
+    })
+    .to_string();
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-history/messages")
+        .match_query(mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("before".into(), "msg-20".into()),
+            mockito::Matcher::UrlEncoded("limit".into(), "2".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(history_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "-o",
+        "json",
+        "otto",
+        "conversation",
+        "history",
+        "thread-history",
+        "--id",
+        "--before",
+        "msg-20",
+        "--limit",
+        "2",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"has_more\": true"))
+        .stdout(predicate::str::contains(
+            "\"oldest_message_id\": \"msg-18\"",
+        ))
+        .stdout(predicate::str::contains("\"msg-19\""));
 }
 
 #[test]

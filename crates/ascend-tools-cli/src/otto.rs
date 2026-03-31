@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{OttoChatRequest, StreamEvent};
+use ascend_tools::models::{OttoChatRequest, OttoStreamStatus, StreamEvent};
 use clap::Subcommand;
 use serde::Serialize;
 
@@ -22,10 +22,36 @@ enum RenderMsg {
 }
 
 #[derive(Serialize)]
-struct OttoRunJsonlRecord {
+struct OttoRunJsonlRequestRecord {
+    record_type: &'static str,
+    base_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    binary_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_thread_id: Option<String>,
+    request_body: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct OttoRunJsonlEventRecord {
+    record_type: &'static str,
     thread_id: String,
+    sequence: u64,
     event_type: String,
     data: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct OttoRunJsonlTerminalRecord {
+    record_type: &'static str,
+    thread_id: String,
+    stream_status: OttoStreamStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_error: Option<String>,
 }
 
 /// Renders Otto's streaming response with a spinner while waiting and
@@ -325,15 +351,36 @@ pub(crate) fn handle_otto_cmd(
             };
 
             if jsonl {
+                let request_record = OttoRunJsonlRequestRecord {
+                    record_type: "request",
+                    base_url: client.instance_api_url().to_string(),
+                    binary_path: std::env::current_exe()
+                        .ok()
+                        .map(|path| path.display().to_string()),
+                    provider: provider.clone(),
+                    model: request.model.as_ref().map(|model| model.id().to_string()),
+                    request_thread_id: request.thread_id.clone(),
+                    request_body: serde_json::to_value(&request)?,
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string(&request_record)
+                        .expect("otto jsonl request record should always serialize")
+                );
+
                 let thread_id = RefCell::new(None::<String>);
-                client.otto_streaming_events(
+                let mut sequence = 0u64;
+                let response = client.otto_streaming_events(
                     &request,
                     |event| {
-                        let record = OttoRunJsonlRecord {
+                        sequence += 1;
+                        let record = OttoRunJsonlEventRecord {
+                            record_type: "event",
                             thread_id: thread_id
                                 .borrow()
                                 .clone()
                                 .unwrap_or_else(|| "<unknown>".to_string()),
+                            sequence,
                             event_type: event.event_type,
                             data: event.data,
                         };
@@ -348,6 +395,22 @@ pub(crate) fn handle_otto_cmd(
                         *thread_id.borrow_mut() = Some(tid.to_string());
                     },
                 )?;
+
+                let terminal_record = OttoRunJsonlTerminalRecord {
+                    record_type: "terminal",
+                    thread_id: response
+                        .thread_id
+                        .clone()
+                        .or_else(|| thread_id.borrow().clone())
+                        .unwrap_or_else(|| "<unknown>".to_string()),
+                    stream_status: response.stream_status,
+                    stream_error: response.stream_error,
+                };
+                println!(
+                    "{}",
+                    serde_json::to_string(&terminal_record)
+                        .expect("otto jsonl terminal record should always serialize")
+                );
             } else {
                 match output {
                     OutputMode::Json => {
