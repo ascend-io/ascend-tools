@@ -83,6 +83,55 @@ def run_flow_with_retry(
     raise RuntimeError("run_flow retry exhausted")
 
 
+def run_otto_with_retry(
+    client: Client,
+    *,
+    workspace: str,
+    prompt: str,
+    model: str | None = None,
+    thinking: str | None = None,
+) -> dict:
+    """Run Otto with retries for paused or still-starting local workspaces."""
+    last_error: Exception | None = None
+    for delay in (0, 2, 5, 10, 15):
+        if delay:
+            time.sleep(delay)
+        try:
+            kwargs = {"prompt": prompt, "workspace": workspace}
+            if model is not None:
+                kwargs["model"] = model
+            if thinking is not None:
+                kwargs["thinking"] = thinking
+            return client.otto(**kwargs)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            if "paused" in msg:
+                client.resume_workspace(title=workspace)
+                last_error = e
+                continue
+            if "starting" in msg or "no health status" in msg or "initializing" in msg:
+                last_error = e
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("otto retry exhausted")
+
+
+def pick_reasoning_model(providers: list[dict]) -> str | None:
+    for provider in providers:
+        for model in provider.get("models", []):
+            model_id = model.get("id", "")
+            if any(
+                token in model_id.lower() for token in ("claude", "gpt-5", "gemini")
+            ):
+                return model_id
+            if model_id.lower().startswith("o"):
+                return model_id
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="ascend-tools Python SDK integration tests"
@@ -229,11 +278,35 @@ def main():
 
     print("=== otto chat ===")
 
+    reasoning_model = None
+    if got.get("paused") is True:
+        resumed = client.resume_workspace(title=ws_title)
+        check(
+            resumed.get("paused") is False,
+            "resume_workspace clears paused before otto",
+        )
     try:
-        otto_resp = client.otto(prompt="ping", workspace=ws_title)
+        provider_probe = client.list_otto_providers()
+        if isinstance(provider_probe, list):
+            reasoning_model = pick_reasoning_model(provider_probe)
+    except Exception:
+        pass
+
+    try:
+        otto_resp = run_otto_with_retry(
+            client,
+            prompt="ping",
+            workspace=ws_title,
+            model=reasoning_model,
+            thinking="medium" if reasoning_model else None,
+        )
         check(isinstance(otto_resp, dict), "otto returns dict")
         check("message" in otto_resp, "otto response has 'message' key")
         check("thread_id" in otto_resp, "otto response has 'thread_id' key")
+        if reasoning_model:
+            check(True, f"otto accepts explicit thinking for {reasoning_model}")
+        else:
+            skip("no reasoning-capable otto model found for explicit thinking request")
     except Exception as e:  # noqa: BLE001
         msg = str(e).lower()
         if "not found" in msg or "not implemented" in msg or "404" in msg:
@@ -245,6 +318,7 @@ def main():
 
     print("=== otto provider ===")
 
+    providers = None
     try:
         providers = client.list_otto_providers()
         check(isinstance(providers, list), "list_otto_providers returns list")

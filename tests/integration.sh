@@ -49,6 +49,51 @@ run_flow_retry() {
   return "$rc"
 }
 
+# Run `otto run` with retries for paused or still-starting local workspaces.
+run_otto_retry() {
+  local workspace_title="$1"
+  local model_id="$2"
+  local provider_id="${3:-}"
+
+  local out=""
+  local rc=1
+  local delay
+  for delay in 0 2 5 10 15; do
+    if [ "$delay" -gt 0 ]; then
+      sleep "$delay"
+    fi
+
+    set +e
+    if [ -n "$provider_id" ]; then
+      out=$($CLI otto run "ping" --workspace "$workspace_title" --provider "$provider_id" --model "$model_id" --thinking medium --jsonl 2>&1)
+    else
+      out=$($CLI otto run "ping" --workspace "$workspace_title" --model "$model_id" --thinking medium --jsonl 2>&1)
+    fi
+    rc=$?
+    set -e
+
+    if [ "$rc" -eq 0 ]; then
+      echo "$out"
+      return 0
+    fi
+
+    if echo "$out" | grep -qi "paused"; then
+      $CLI -o json workspace resume "$workspace_title" >/dev/null 2>&1 || true
+      continue
+    fi
+
+    if echo "$out" | grep -qi "starting\|no health status\|initializing"; then
+      continue
+    fi
+
+    echo "$out"
+    return "$rc"
+  done
+
+  echo "$out"
+  return "$rc"
+}
+
 # ---------- preflight ----------
 
 echo "=== preflight ==="
@@ -110,6 +155,8 @@ else
   fail "workspace get" "expected $RUNTIME_UUID, got $GOT_UUID"
 fi
 
+RUNTIME_PAUSED=$(echo "$GET_JSON" | jq -r '.paused')
+
 # verify expected fields
 for field in uuid id title kind project_uuid environment_uuid created_at updated_at; do
   VAL=$(echo "$GET_JSON" | jq -r ".$field")
@@ -170,6 +217,121 @@ if [ "$PROFILE_COUNT" -gt 0 ]; then
   pass "profile list returned $PROFILE_COUNT profile(s)"
 else
   skip "no profiles found"
+fi
+
+# ---------- otto ----------
+
+echo "=== otto ==="
+
+set +e
+OTTO_PROVIDERS_JSON=$($CLI -o json otto provider list 2>&1)
+OTTO_PROVIDERS_RC=$?
+set -e
+if [ "$OTTO_PROVIDERS_RC" -ne 0 ]; then
+  if echo "$OTTO_PROVIDERS_JSON" | grep -qi "not found\|not implemented\|404"; then
+    skip "otto provider list not available"
+  else
+    fail "otto provider list" "$OTTO_PROVIDERS_JSON"
+  fi
+else
+  pass "otto provider list returns JSON"
+  FOUNDRY_GPT54_MODEL=$(echo "$OTTO_PROVIDERS_JSON" | jq -r '
+    [
+      .[] | select(.id == "microsoft_foundry") | .models[]? | .id
+      | select(. == "azure_ai/gpt-5.4")
+    ][0] // empty
+  ')
+  OTTO_MODEL=$(echo "$OTTO_PROVIDERS_JSON" | jq -r '
+    [
+      .[] | .models[]? | .id
+      | select(test("(claude|gpt-5|gemini|^o[0-9])"; "i"))
+    ][0] // empty
+  ')
+
+  if [ -z "$OTTO_MODEL" ]; then
+    skip "no reasoning-capable otto model found for CLI thinking test"
+  else
+    echo "  using otto model: $OTTO_MODEL"
+    if [ "$RUNTIME_PAUSED" = "true" ]; then
+      PRE_OTTO_RESUME=$($CLI -o json workspace resume "$RUNTIME_TITLE" 2>&1)
+      PRE_OTTO_PAUSED=$(echo "$PRE_OTTO_RESUME" | jq -r '.paused')
+      if [ "$PRE_OTTO_PAUSED" = "false" ]; then
+        pass "workspace resume clears paused before otto"
+      else
+        fail "workspace resume before otto" "expected paused=false, got $PRE_OTTO_PAUSED"
+      fi
+    fi
+
+    if [ -n "$FOUNDRY_GPT54_MODEL" ]; then
+      set +e
+      FOUNDRY_OTTO_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$FOUNDRY_GPT54_MODEL" "microsoft_foundry")
+      FOUNDRY_OTTO_RC=$?
+      set -e
+
+      if [ "$FOUNDRY_OTTO_RC" -ne 0 ]; then
+        fail "otto run foundry gpt-5.4 --thinking" "$FOUNDRY_OTTO_OUT"
+      else
+        if echo "$FOUNDRY_OTTO_OUT" | jq -e 'select(.record_type == "request") | .provider == "microsoft_foundry" and .model == "azure_ai/gpt-5.4"' >/dev/null; then
+          pass "foundry gpt-5.4 probe preserved provider/model provenance"
+        else
+          fail "foundry gpt-5.4 probe" "missing exact provider/model provenance"
+        fi
+
+        if echo "$FOUNDRY_OTTO_OUT" | jq -e 'select(.record_type == "terminal") | .stream_status == "completed"' >/dev/null; then
+          pass "foundry gpt-5.4 probe emitted completed terminal record"
+        else
+          fail "foundry gpt-5.4 probe" "missing completed terminal record"
+        fi
+
+        if echo "$FOUNDRY_OTTO_OUT" | jq -e 'select(.record_type == "event") | (.event_type == "response.reasoning_summary_text.delta" or .event_type == "response.reasoning_text.delta")' >/dev/null; then
+          pass "foundry gpt-5.4 probe surfaced reasoning events"
+        else
+          skip "foundry gpt-5.4 probe emitted no reasoning events"
+        fi
+      fi
+    else
+      skip "foundry gpt-5.4 model not available for exact-path probe"
+    fi
+
+    set +e
+    OTTO_RUN_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$OTTO_MODEL")
+    OTTO_RUN_RC=$?
+    set -e
+
+    if [ "$OTTO_RUN_RC" -ne 0 ]; then
+      fail "otto run --thinking" "$OTTO_RUN_OUT"
+    else
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "request") | .request_body.thinking == "medium"' >/dev/null; then
+        pass "otto run --jsonl preserves explicit thinking in request record"
+      else
+        fail "otto run --jsonl" "missing or incorrect thinking in request record"
+      fi
+
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "event")' >/dev/null; then
+        pass "otto run --jsonl emitted ordered event records"
+      else
+        fail "otto run --jsonl" "missing event records"
+      fi
+
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "terminal") | .stream_status == "completed"' >/dev/null; then
+        pass "otto run --jsonl emitted completed terminal record"
+      else
+        fail "otto run --jsonl" "missing completed terminal record"
+      fi
+
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "event") | (.event_type == "response.reasoning_summary_text.delta" or .event_type == "response.reasoning_text.delta")' >/dev/null; then
+        pass "otto run --jsonl surfaced reasoning events"
+      else
+        skip "otto run --jsonl emitted no reasoning events for chosen model/prompt"
+      fi
+
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "event") | .event_type == "response.function_call_arguments.delta"' >/dev/null; then
+        pass "otto run --jsonl surfaced tool argument deltas"
+      else
+        skip "otto run --jsonl emitted no tool argument deltas for chosen prompt"
+      fi
+    fi
+  fi
 fi
 
 # ---------- flows ----------

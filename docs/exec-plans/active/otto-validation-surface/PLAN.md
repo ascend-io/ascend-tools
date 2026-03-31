@@ -7,10 +7,14 @@ Extend the `ascend-tools` Otto surfaces so they provide a fast, text-native vali
 ## Success Contract
 
 - `ascend-tools` can exercise Otto with explicit thinking levels, not only default behavior.
-- The SDK/CLI/TUI/MCP surfaces expose enough structured stream information to validate reasoning and tool-call progress without going straight to a browser.
+- CLI (`tests/integration.sh` plus `ascend-tools otto run --jsonl`) is the current-wave public proof surface for exact request provenance and ordered stream inspection.
+- Python SDK (`tests/integration.py`) remains a current-wave request-contract surface, but it does not substitute for ordered-event proof until it exposes the same minimum contract.
+- Raw REST (`tests/rest.js`) is a supporting debug surface for backend isolation, not a substitute for missing CLI/SDK validation capabilities.
+- At least one higher-level public validation surface preserves ordered event inspection plus provenance metadata (`base URL`, provider, model, explicit `thinking`, thread/request identifiers, and terminal status) so the browser is not the first place a human has to inspect payload order.
+- TUI and MCP only count in the current wave if they can send explicit `thinking` and expose the same minimum ordered-event contract; otherwise they remain explicit follow-up surfaces rather than implicit proof.
 - Validation assets in this repo can help isolate whether a failure belongs to:
   - the backend contract
-  - the `ascend-tools` SDK/CLI/TUI/MCP layer
+  - the `ascend-tools` request/stream surface in use
   - a downstream UI consumer
 - This repo supplements browser/UI testing rather than trying to replace it.
 
@@ -32,12 +36,14 @@ Extend the `ascend-tools` Otto surfaces so they provide a fast, text-native vali
 ## Current State
 
 - `ascend-tools` already has:
-  - raw REST validation scripts
-  - SDK and CLI integration tests
-  - a TUI
-  - streaming support for text deltas and tool call start/output
-- `ascend-tools` does not yet appear to expose structured streamed reasoning events or progressive tool-call argument deltas as first-class validation surfaces.
-- The Otto request surface in this repo is still minimal compared with the explicit thinking-level contract being adopted in the coordinated workspace wave.
+  - a raw REST Otto SSE asset in `tests/rest.js`
+  - a Python SDK integration asset in `tests/integration.py`
+  - a CLI integration asset in `tests/integration.sh`
+  - deterministic request/stream parser tests in `crates/ascend-tools-core/tests/client_http.rs`
+  - a TUI and MCP surface
+- `tests/rest.py` is not the Otto streaming proof asset for this workspace wave.
+- The current heads widened request support and now add a structured CLI `--jsonl` path for raw ordered Otto updates; TUI and MCP still send `thinking: None` and therefore are not current-wave gating proof surfaces until widened.
+- Raw REST remains valuable for lower-level debugging, but the repo should reject "implementation complete" if CLI/SDK surfaces still cannot show the exact request/provenance and ordered events QA needs.
 
 ## Actor / Role Matrix
 
@@ -49,10 +55,10 @@ Extend the `ascend-tools` Otto surfaces so they provide a fast, text-native vali
 
 ## Execution Phases
 
-1. Define the public Otto validation contract this repo should expose
-2. Extend request and streaming surfaces where needed
-3. Add validation assets that isolate backend vs consumer issues
-4. Document the supported debugging / validation workflow
+1. Define the minimum public Otto validation contract this repo should expose, including which surfaces are current-wave gating versus deferred follow-up.
+2. Extend request and streaming surfaces where needed.
+3. Add validation assets that prove explicit `thinking` serialization, ordered event families, terminal classification, and cross-surface parity.
+4. Document the supported debugging / validation workflow, including provenance and environment-authority expectations.
 
 ## Plan Deltas
 
@@ -67,6 +73,7 @@ None at this repo-local scope.
 ## Deferred / Follow-up Work
 
 - Richer conversation/thread inspection helpers if later debugging needs them
+- Explicit `thinking` plus ordered-event parity for TUI and MCP if they are brought into the validation gate later
 - Additional structured event surfaces beyond the minimum needed for Otto validation
 - Broader tutorial/demo material once the validation contract stabilizes
 

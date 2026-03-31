@@ -8,7 +8,7 @@ The repo should let a user:
 
 - invoke Otto with explicit model and thinking selections
 - observe streamed text, reasoning/tool progress, and stream terminal state
-- validate backend behavior using raw REST, SDK, CLI, TUI, or MCP surfaces
+- validate backend behavior first through the public CLI/SDK surfaces, using raw REST only as a lower-level debugging fallback
 
 ## Actors
 
@@ -20,21 +20,21 @@ The repo should let a user:
 
 ## Primary Journeys
 
-### Journey 1: Raw backend check
+### Journey 1: Public-surface check
 
-1. User runs a raw REST validation script.
+1. User runs the Otto flow through the CLI or SDK.
+2. User inspects the exact request/provenance plus streamed text, tool-call progress, and thinking-related signals.
+3. If the public surface cannot expose enough detail for that inspection, the implementation is incomplete.
+
+### Journey 2: Raw backend comparison
+
+1. User runs a raw REST validation script after the public surface already showed a discrepancy or needs lower-level isolation.
 2. User verifies whether the backend itself already returns the wrong data.
-3. If raw REST fails, the issue is backend-side.
-
-### Journey 2: SDK/CLI/TUI check
-
-1. User runs the Otto flow through `ascend-tools`.
-2. User inspects streamed text, tool-call progress, and thinking-related signals.
 3. If raw REST passes but `ascend-tools` fails, the issue is in this repo's contract layer.
 
 ### Journey 3: Downstream UI escalation
 
-1. Raw REST and `ascend-tools` both behave correctly.
+1. `ascend-tools` behaves correctly and any supporting raw REST comparison agrees.
 2. The downstream consumer still misbehaves.
 3. The remaining issue is likely browser/UI-specific rather than backend-contract-specific.
 
@@ -44,10 +44,14 @@ The repo should let a user:
 
 - explicit model selection
 - explicit thinking-level selection
+- provenance metadata sufficient to prove what was exercised (`base URL` or instance, provider, model, explicit `thinking`, and thread/request identifiers where available)
 - streamed text deltas
+- reasoning-delta visibility
 - tool-call start/output details
 - progressive tool-call argument visibility when available
 - stream terminal status and error classification
+- at least one ordered event-inspection path that can show the same turn as a sequence rather than only a final response summary
+- explicit unknown/raw-event surfacing when a provider emits a family that the normalized surface does not yet understand, so validation surfaces do not silently drop evidence
 
 ## Non-goals
 

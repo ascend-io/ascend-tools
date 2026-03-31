@@ -12,10 +12,10 @@
 - `crates/ascend-tools-mcp/src/server.rs`
 - `crates/ascend-tools-py/src/lib.rs`
 - `crates/ascend-tools-js/src/lib.rs`
-- `tests/rest.py`
 - `tests/rest.js`
 - `tests/integration.py`
 - `tests/integration.sh`
+- `crates/ascend-tools-core/tests/client_http.rs`
 - relevant public docs under `docs/`
 
 ## Boundary Contracts
@@ -43,10 +43,14 @@ The public Otto streaming surface should expose enough structured events to supp
 - tool-call output
 - terminal status / error
 
+For the current wave, that contract must be available through the CLI itself, not only through direct raw REST scripts.
+
 ### 3. Surface layering
 
-- raw REST scripts validate the backend contract directly
-- SDK/CLI/TUI/MCP validate this repo's translation / exposure layer
+- CLI is the current-wave higher-level ordered-event proof surface for this repo's translation / exposure layer
+- Python SDK is a current-wave request-contract surface and should be explicit about any ordered-event limitations
+- raw REST scripts validate the backend contract directly and remain a debugging fallback rather than a substitute for missing CLI/SDK capabilities
+- TUI and MCP are follow-up surfaces until they can send explicit `thinking` and expose the minimum ordered-event contract
 - downstream browser/UIs remain separate consumers outside this repo's contract
 
 ## Ordered Phases
@@ -54,16 +58,18 @@ The public Otto streaming surface should expose enough structured events to supp
 ### Phase 1: Request widening
 
 - extend the Otto request model to carry explicit thinking-level selection
-- thread that selection through CLI, SDK, TUI, and MCP entrypoints as appropriate
+- thread that selection through the current-wave gating surfaces first (raw REST asset, Python SDK, and CLI), then widen TUI/MCP if they are kept in scope
 
 ### Phase 2: Streaming event widening
 
 - expand the structured event model beyond text deltas and coarse tool-call events where needed
-- ensure TUI/CLI/SDK/MCP consumers can inspect the new behavior without needing a browser
+- ensure the CLI can inspect the widened behavior without needing a browser, and do not credit TUI/MCP until they reach the same minimum contract
 
 ### Phase 3: Validation assets
 
-- add or extend raw REST and integration tests so they can prove backend behavior independently of a browser consumer
+- add or extend CLI/SDK validation assets so they can prove higher-level behavior independently of a browser consumer
+- keep raw REST available for backend-only debugging when CLI/SDK evidence reveals a discrepancy
+- keep validation assets explicit about which surfaces are merge-gating now versus deferred follow-up
 - keep the separation clear between backend failures and `ascend-tools`-layer failures
 
 ### Phase 4: Public docs
@@ -80,5 +86,6 @@ The public Otto streaming surface should expose enough structured events to supp
 ## Review-Readiness Conditions
 
 - The request and stream contracts are explicit enough for later agents or humans to use for debugging
+- The current-wave gate is explicit about which surfaces count now and which remain deferred
 - The repo can help distinguish backend failures from downstream consumer failures
 - Public docs remain free of private-repo references
