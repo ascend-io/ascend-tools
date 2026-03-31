@@ -32,6 +32,20 @@ export ASCEND_INSTANCE_API_URL="<YOUR_INSTANCE_API_URL>"
 
 You can also pass credentials as CLI flags: `--service-account-id`, `--service-account-key`, `--instance-api-url`. Flags override environment variables.
 
+For local-dev workspaces, the preferred instance API host is:
+
+```bash
+https://<workspace>-instance.api.local.ascend.dev
+```
+
+If you accidentally supply the matching local app host form instead:
+
+```bash
+https://<workspace>-instance.app.local.ascend.dev
+```
+
+`ascend-tools` will automatically correct that specific local-dev host confusion path to the matching `instance.api.local.ascend.dev` URL.
+
 ## Manage workspaces
 
 ### List workspaces
