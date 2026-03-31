@@ -11,6 +11,12 @@ Enable `ascend-tools` to work with large Otto thread lists and large conversatio
 - TUI resume and long-thread viewing no longer assume a full `get_conversation()` snapshot before the user can interact.
 - `otto run` can emit a machine-readable JSONL event stream that mirrors real Otto interactions closely enough to strengthen agentic testing and audit loops.
 - CLI, Python, JavaScript, and MCP contract surfaces stay aligned with the Rust core and with the public docs and type surfaces.
+- Tools-side validation proves the same lifecycle semantics the browser/raw API depend on:
+  - recent bootstrap
+  - older-history paging
+  - reopen `after=<message_id>`
+  - terminal completion
+- Where behavior differs by provider/model/request shape, representative variants are explicitly validated rather than assumed from the default path.
 - Persistence stays an explicit design choice. V1 may stay stateless or adopt TUI-local persistence only if the UX benefit is clear.
 
 ## Scope
@@ -108,7 +114,10 @@ Enable `ascend-tools` to work with large Otto thread lists and large conversatio
 
 ### Phase 5: Validation and rollout
 
-- Validate long-thread bootstrap, checkpoint reopen, and send-while-viewing behavior.
+- Validate long-thread bootstrap, checkpoint reopen, older-history paging, and send-while-viewing behavior on the same lifecycle rather than as disconnected checks.
+- Use at least one deterministic known-long-thread harness so tools-side proof really exercises `before=<message_id>`.
+- Compare raw API, tools JSONL/core traces, and relevant UI/browser evidence on the same thread when parity is part of the claim.
+- Cover representative provider/model/request variants when capability or semantics can differ.
 - Validate that no first-party consumer requires `thread.details`.
 - Align rollout with backend thread-details removal and UI contract changes.
 

@@ -108,7 +108,7 @@ ascend-tools flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 ### Otto
 
 ```bash
-ascend-tools otto run "<PROMPT>" [--workspace <TITLE> | --deployment <TITLE>] [--provider <NAME>] [--model <ID>] [--thinking <none|minimal|low|medium|high|max>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
+ascend-tools otto run "<PROMPT>" [--workspace <TITLE> | --deployment <TITLE>] [--provider <NAME>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
 ascend-tools otto provider list
 ascend-tools otto model list [--provider <NAME>]
 ascend-tools otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <NAME>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume]

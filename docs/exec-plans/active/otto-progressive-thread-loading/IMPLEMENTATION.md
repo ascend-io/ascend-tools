@@ -68,6 +68,11 @@ This follows the common “snapshot/base plus delta/replay” pattern used by la
 - `otto run` should support a machine-readable JSONL stream of Otto events.
 - The JSONL stream exists to make real request/response/event behavior observable in tests and agentic implementation loops.
 - It should complement, not replace, browser validation and higher-level SDK testing.
+- It should preserve enough raw contract detail to compare against UI and raw API behavior:
+  - event families
+  - anchors and thread identity
+  - terminal ordering
+  - payload fields that downstream surfaces depend on
 
 ### 5. Wrapper and docs alignment
 
@@ -106,7 +111,9 @@ This follows the common “snapshot/base plus delta/replay” pattern used by la
 ### Phase D: Validation and rollout
 
 - Validate that all first-party consumers survive `thread.details` removal.
-- Validate large-thread reopen behavior in the TUI.
+- Validate large-thread reopen behavior in the TUI on a deterministic known-long-thread harness that actually exercises `before=<message_id>`.
+- Validate the same lifecycle semantics across raw API, tools JSONL/core traces, and relevant UI/browser proof surfaces when parity is part of the claim.
+- Validate representative provider/model/request variants when behavior can differ.
 - Validate docs and type surfaces together with implementation changes.
 
 ## Allowed Change Boundaries
@@ -129,3 +136,4 @@ This follows the common “snapshot/base plus delta/replay” pattern used by la
 - The contract direction after `thread.details` removal is documented in the core client plan instead of only in backend notes.
 - Persistence remains an intentional decision, not an implied requirement.
 - Wrapper docs and public types are called out as implementation scope so they cannot silently drift.
+- The validation contract is explicit about maintained integrated lifecycle proof, raw event-order visibility, and which public surfaces can or cannot prove parity with the UI/backend contract.

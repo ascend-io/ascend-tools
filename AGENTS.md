@@ -82,7 +82,7 @@ ascend-tools [-o text|json] [-V]
   flow list-runs --workspace <TITLE> | --deployment <TITLE> [--status, -f/--flow, --since, --until, --offset, --limit]
   flow get-run <RUN_NAME> --workspace <TITLE> | --deployment <TITLE>
 
-  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--thinking <none|minimal|low|medium|high|max>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
+  otto run <PROMPT> [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume] [--jsonl]
   otto provider list
   otto model list [--provider <ID>]
   otto tui [--workspace <TITLE> | --deployment <TITLE>] [--provider <ID>] [--model <ID>] [--conversation <TITLE_OR_ID> | --resume]
