@@ -524,6 +524,7 @@ impl AscendMcpServer {
                 runtime_uuid,
                 thread_id,
                 model,
+                query_policy: None,
             })
         })
         .await

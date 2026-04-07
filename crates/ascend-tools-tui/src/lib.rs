@@ -318,6 +318,7 @@ struct App {
     provider_label: Option<String>,
     model_label: String,
     context_label: Option<String>,
+    query_policy: Option<String>,
     pending_request: Option<OttoChatRequest>,
     should_quit: bool,
     spinner_frame: usize,
@@ -348,6 +349,7 @@ impl App {
         model_label: String,
         context_label: Option<String>,
         thread_id: Option<String>,
+        query_policy: Option<String>,
     ) -> Self {
         Self {
             messages: Vec::new(),
@@ -367,6 +369,7 @@ impl App {
             provider_label,
             model_label,
             context_label,
+            query_policy,
             pending_request: None,
             should_quit: false,
             spinner_frame: 0,
@@ -823,6 +826,7 @@ impl App {
             runtime_uuid: self.runtime_uuid.clone(),
             thread_id: self.thread_id.clone(),
             model: self.otto_model.clone(),
+            query_policy: self.query_policy.clone(),
         });
         self.streaming = true;
         self.stream_buffer.clear();
@@ -2399,6 +2403,7 @@ pub fn run_tui(
     otto_model: Option<OttoModel>,
     context_label: Option<String>,
     thread_id: Option<String>,
+    query_policy: Option<String>,
 ) -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
@@ -2452,6 +2457,7 @@ pub fn run_tui(
             String::new(),
             context_label,
             thread_id.clone(),
+            query_policy,
         );
 
         // If resuming a conversation, load its history in the background
@@ -2653,7 +2659,7 @@ mod tests {
     use std::sync::atomic::AtomicU64;
 
     fn test_app() -> App {
-        App::new(None, None, None, String::new(), None, None)
+        App::new(None, None, None, String::new(), None, None, None)
     }
 
     // -- Stream lifecycle --------------------------------------------------
