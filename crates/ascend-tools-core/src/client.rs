@@ -652,11 +652,23 @@ impl AscendClient {
     /// use [`otto_streaming`] instead.
     pub fn otto(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
         let mut full_message = String::new();
-        let response = self.otto_streaming(
+        let mut completed_snapshot_message = String::new();
+        let response = self.otto_streaming_events(
             request,
-            |event| {
-                if let StreamEvent::TextDelta(delta) = event {
+            |raw_event| {
+                if let Some(StreamEvent::TextDelta(delta)) =
+                    raw_otto_stream_update_to_stream_event(&raw_event)
+                {
                     full_message.push_str(&delta);
+                }
+                if raw_event.event_type == "thread.details"
+                    && is_completed_thread_details_snapshot(raw_event.data.as_ref())
+                {
+                    let snapshot_message =
+                        extract_completed_thread_details_message(raw_event.data.as_ref());
+                    if !snapshot_message.is_empty() {
+                        completed_snapshot_message = snapshot_message;
+                    }
                 }
                 ControlFlow::Continue(())
             },
@@ -670,7 +682,11 @@ impl AscendClient {
             });
         }
         Ok(OttoChatResponse {
-            message: full_message,
+            message: if !completed_snapshot_message.is_empty() {
+                completed_snapshot_message
+            } else {
+                full_message
+            },
             thread_id: response.thread_id,
             stream_status: OttoStreamStatus::Completed,
             stream_error: None,
@@ -1039,6 +1055,56 @@ fn is_completed_thread_details_snapshot(data: Option<&Value>) -> bool {
     data.and_then(|value| value.get("is_processing"))
         .and_then(Value::as_bool)
         == Some(false)
+}
+
+fn extract_completed_thread_details_message(data: Option<&Value>) -> String {
+    let Some(details) = data else {
+        return String::new();
+    };
+    let Some(messages) = details.get("messages") else {
+        return String::new();
+    };
+
+    if let (Some(messages_by_id), Some(latest_message_id)) = (
+        messages.as_object(),
+        details.get("latest_message_id").and_then(Value::as_str),
+    ) && let Some(message) = messages_by_id.get(latest_message_id)
+        && let Some(text) = extract_assistant_message_text(message)
+    {
+        return text;
+    }
+
+    match messages {
+        Value::Array(messages_list) => messages_list
+            .iter()
+            .rev()
+            .find_map(extract_assistant_message_text)
+            .unwrap_or_default(),
+        Value::Object(messages_by_id) => {
+            let mut latest_text = String::new();
+            let mut latest_created_at: Option<&str> = None;
+            for message in messages_by_id.values() {
+                let Some(text) = extract_assistant_message_text(message) else {
+                    continue;
+                };
+                let created_at = message.get("_created_at").and_then(Value::as_str);
+                if latest_text.is_empty() || created_at > latest_created_at {
+                    latest_created_at = created_at;
+                    latest_text = text;
+                }
+            }
+            latest_text
+        }
+        _ => String::new(),
+    }
+}
+
+fn extract_assistant_message_text(message: &Value) -> Option<String> {
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let text = Conversation::extract_message_text(message);
+    if text.is_empty() { None } else { Some(text) }
 }
 
 fn extract_otto_stream_error(data: Option<&Value>) -> String {

@@ -367,6 +367,9 @@ function pickReasoningOttoModel(providers) {
   return null;
 }
 
+const OTTO_TOOL_PROMPT =
+  "Use a tool to inspect the current workspace root, confirm whether the repo contains both ascend-tools and ascend-backend, and answer in two short sentences with the names you found.";
+
 function parseSseFrame(rawFrame) {
   const lines = rawFrame.split(/\r?\n/);
   let event = "message";
@@ -390,6 +393,12 @@ function parseSseFrame(rawFrame) {
     parsed = data;
   }
   return { event, data: parsed };
+}
+
+function findSseFrameBoundary(buffer) {
+  const match = buffer.match(/\r\n\r\n|\n\n|\r\r/);
+  if (!match || match.index == null) return null;
+  return { index: match.index, length: match[0].length };
 }
 
 async function readSseEvents(resp, { timeoutMs = 20000 } = {}) {
@@ -420,10 +429,10 @@ async function readSseEvents(resp, { timeoutMs = 20000 } = {}) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      let frameEnd = buffer.indexOf("\n\n");
-      while (frameEnd !== -1) {
-        const rawFrame = buffer.slice(0, frameEnd);
-        buffer = buffer.slice(frameEnd + 2);
+      let boundary = findSseFrameBoundary(buffer);
+      while (boundary) {
+        const rawFrame = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary.length);
         const parsed = parseSseFrame(rawFrame);
         if (parsed) {
           events.push(parsed);
@@ -436,7 +445,7 @@ async function readSseEvents(resp, { timeoutMs = 20000 } = {}) {
             return events;
           }
         }
-        frameEnd = buffer.indexOf("\n\n");
+        boundary = findSseFrameBoundary(buffer);
       }
     }
   } finally {
@@ -646,8 +655,7 @@ async function main() {
       } else {
         console.log(`  using otto model: ${ottoModel}`);
         const thread = await createOttoThreadWithRetry(client, runtimeUuid, {
-          prompt:
-            "Briefly explain what ASCEND_INSTANCE_API_URL is used for in one sentence.",
+          prompt: OTTO_TOOL_PROMPT,
           model: ottoModel,
           thinking: "medium",
         });
@@ -688,26 +696,16 @@ async function main() {
           "otto SSE reached a terminal event",
           JSON.stringify(eventTypes),
         );
-
-        if (reasoningDeltas.length > 0) {
-          check(
-            true,
-            `otto SSE surfaced ${reasoningDeltas.length} reasoning delta event(s)`,
-          );
-        } else {
-          skip("otto SSE emitted no reasoning deltas for the chosen model/prompt");
-        }
-
-        if (toolArgDeltas.length > 0) {
-          check(
-            true,
-            `otto SSE surfaced ${toolArgDeltas.length} function_call_arguments delta event(s)`,
-          );
-        } else {
-          skip(
-            "otto SSE emitted no function_call_arguments deltas for the chosen prompt",
-          );
-        }
+        check(
+          reasoningDeltas.length > 0,
+          "otto SSE surfaced reasoning deltas for the required tool-use prompt",
+          JSON.stringify(eventTypes),
+        );
+        check(
+          toolArgDeltas.length > 0,
+          "otto SSE surfaced function_call_arguments deltas for the required tool-use prompt",
+          JSON.stringify(eventTypes),
+        );
       }
     }
   } catch (e) {

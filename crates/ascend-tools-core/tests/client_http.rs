@@ -1125,6 +1125,167 @@ fn otto_streaming_events_complete_on_completed_thread_details_snapshot() {
     assert!(response.stream_error.is_none());
 }
 
+#[test]
+fn otto_reconstructs_final_message_from_completed_thread_details_snapshot_without_latest_message_id()
+ {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-final-snapshot", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-final-snapshot"}"#)
+        .expect(1)
+        .create();
+
+    let completed_details_body = serde_json::json!({
+        "id": "t-final-snapshot",
+        "title": "Final snapshot",
+        "messages": {
+            "msg-user-1": {
+                "id": "msg-user-1",
+                "type": "message",
+                "role": "user",
+                "content": "Explain the API URL."
+            },
+            "msg-assistant-0": {
+                "id": "msg-assistant-0",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "Old reply that should not win."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:01Z"
+            },
+            "msg-assistant-1": {
+                "id": "msg-assistant-1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "ASCEND_INSTANCE_API_URL points ascend-tools at the instance API."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:02Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:02Z",
+        "is_processing": false
+    })
+    .to_string();
+    let sse_body = format!("event: thread.details\ndata: {completed_details_body}\n\n:ping\n\n");
+    server
+        .mock("GET", "/api/v1/otto/threads/t-final-snapshot/updates")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "Explain the API URL.".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let response = client.otto(&request).unwrap();
+
+    assert_eq!(
+        response.message,
+        "ASCEND_INSTANCE_API_URL points ascend-tools at the instance API."
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("t-final-snapshot"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+    assert!(response.stream_error.is_none());
+}
+
+#[test]
+fn otto_prefers_completed_thread_details_message_over_partial_text_deltas() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-partial-snapshot", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-partial-snapshot"}"#)
+        .expect(1)
+        .create();
+
+    let partial_delta_body = serde_json::json!({
+        "delta": "The warehouse timed out. "
+    })
+    .to_string();
+    let completed_details_body = serde_json::json!({
+        "id": "t-partial-snapshot",
+        "title": "Warehouse timeout",
+        "messages": {
+            "msg-assistant-1": {
+                "id": "msg-assistant-1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "The warehouse timed out during orders sync. Retry the flow after the warehouse recovers."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:03Z"
+            }
+        },
+        "latest_message_id": "msg-assistant-1",
+        "updated_at": "2026-01-01T00:00:03Z",
+        "is_processing": false
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: response.output_text.delta\ndata: {partial_delta_body}\n\n\
+         event: thread.details\ndata: {completed_details_body}\n\n"
+    );
+    server
+        .mock("GET", "/api/v1/otto/threads/t-partial-snapshot/updates")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "Why did the sync fail?".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let response = client.otto(&request).unwrap();
+
+    assert_eq!(
+        response.message,
+        "The warehouse timed out during orders sync. Retry the flow after the warehouse recovers."
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("t-partial-snapshot"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
 // ---------------------------------------------------------------------------
 // Otto streaming: SSE endpoint returns HTTP error
 // ---------------------------------------------------------------------------
