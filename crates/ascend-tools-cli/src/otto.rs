@@ -458,7 +458,14 @@ pub(crate) fn handle_otto_cmd(
                 .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
             let thread_id =
                 crate::conversation::resolve_conversation_flag(client, None, conversation, resume)?;
-            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label, thread_id, query_policy)
+            ascend_tools_tui::run_tui(
+                client,
+                runtime_uuid,
+                otto_model,
+                context_label,
+                thread_id,
+                query_policy,
+            )
         }
     }
 }
