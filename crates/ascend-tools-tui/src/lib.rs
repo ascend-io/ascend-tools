@@ -3521,6 +3521,7 @@ mod tests {
             runtime_uuid: None,
             thread_id: None,
             model: None,
+            query_policy: None,
         });
 
         // The main loop guard is: if !app.interrupting && let Some(req) = app.take_pending_request()
