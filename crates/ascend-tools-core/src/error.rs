@@ -8,13 +8,40 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[non_exhaustive]
 pub enum Error {
     #[error(
-        "{field} is required, set {env_var} or pass --{flag}\n\n  hint: if you don't have an Ascend Instance yet, run `ascend-tools signup`\n        then create a service account in Settings and set the env vars"
+        "{field} is required, set {env_var} or pass --{flag}\n\n  hint: configure an instance with `ascend-tools instance add` or set env vars\n        if you don't have an Ascend Instance yet, run `ascend-tools signup`"
     )]
     MissingConfig {
         field: String,
         env_var: String,
         flag: String,
     },
+
+    #[error("failed to read config file {}: {reason}", path.display())]
+    ConfigFileRead {
+        path: std::path::PathBuf,
+        reason: String,
+    },
+
+    #[error("failed to parse config file {}: {reason}", path.display())]
+    ConfigFileParse {
+        path: std::path::PathBuf,
+        reason: String,
+    },
+
+    #[error("failed to write config file {}: {reason}", path.display())]
+    ConfigFileWrite {
+        path: std::path::PathBuf,
+        reason: String,
+    },
+
+    #[error("instance '{name}' not found in config file, available: {}", available.join(", "))]
+    InstanceNotFound {
+        name: String,
+        available: Vec<String>,
+    },
+
+    #[error("service account key env var '{env_var}' (from instance '{instance}') is not set")]
+    KeyEnvNotSet { env_var: String, instance: String },
 
     #[error("failed to decode service account key from base64")]
     InvalidServiceAccountKeyEncoding,
