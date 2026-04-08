@@ -75,11 +75,13 @@ impl Client {
         service_account_id: Option<String>,
         service_account_key: Option<String>,
         instance_api_url: Option<String>,
+        instance: Option<String>,
     ) -> napi::Result<Self> {
-        let config = Config::with_overrides(
+        let config = Config::with_overrides_and_instance(
             service_account_id.as_deref(),
             service_account_key.as_deref(),
             instance_api_url.as_deref(),
+            instance.as_deref(),
         )
         .map_err(to_napi_err)?;
         let inner = AscendClient::new(config).map_err(to_napi_err)?;

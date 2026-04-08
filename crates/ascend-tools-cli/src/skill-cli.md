@@ -32,6 +32,27 @@ cargo install ascend-tools-cli            # Rust (reinstalls latest)
 
 ## Authentication
 
+### Option 1: Instance config (recommended)
+
+Configure named instances in `~/.ascend-tools/config.toml`:
+
+```bash
+ascend-tools instance add default \
+  --service-account-id "asc-sa-..." \
+  --instance-api-url "https://<instance-name>.api.instance.ascend.io" \
+  --service-account-key-env ASCEND_SERVICE_ACCOUNT_KEY
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+```
+
+Switch between instances with `--instance <name>` or `ASCEND_INSTANCE` env var:
+
+```bash
+ascend-tools workspace list                    # uses default instance
+ascend-tools --instance staging workspace list  # uses staging instance
+```
+
+### Option 2: Environment variables
+
 Set three environment variables (from Ascend UI > Settings > Users > Create Service Account):
 
 ```bash
@@ -41,6 +62,15 @@ export ASCEND_INSTANCE_API_URL="https://<instance-name>.api.instance.ascend.io"
 ```
 
 ## Commands
+
+### Instances
+
+```bash
+ascend-tools instance add <NAME> --service-account-id <ID> --instance-api-url <URL> [--service-account-key-env <ENV_VAR>]
+ascend-tools instance list
+ascend-tools instance remove <NAME>
+ascend-tools instance set-default <NAME>
+```
 
 ### Workspaces
 

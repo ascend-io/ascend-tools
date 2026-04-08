@@ -12,9 +12,15 @@ fn command_with_auth(server: &Server) -> Command {
         "ascend-tools"
     )));
     let key = URL_SAFE_NO_PAD.encode([11u8; 32]);
-    cmd.env("ASCEND_SERVICE_ACCOUNT_ID", "asc-sa-test");
-    cmd.env("ASCEND_SERVICE_ACCOUNT_KEY", key);
-    cmd.env("ASCEND_INSTANCE_API_URL", server.url());
+    // Pass auth as CLI flags (highest priority) so instance config files don't interfere.
+    cmd.args([
+        "--service-account-id",
+        "asc-sa-test",
+        "--service-account-key",
+        &key,
+        "--instance-api-url",
+        &server.url(),
+    ]);
     cmd
 }
 

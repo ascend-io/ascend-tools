@@ -14,15 +14,20 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    #[pyo3(signature = (*, service_account_id=None, service_account_key=None, instance_api_url=None))]
+    #[pyo3(signature = (*, service_account_id=None, service_account_key=None, instance_api_url=None, instance=None))]
     fn new(
         service_account_id: Option<&str>,
         service_account_key: Option<&str>,
         instance_api_url: Option<&str>,
+        instance: Option<&str>,
     ) -> PyResult<Self> {
-        let config =
-            Config::with_overrides(service_account_id, service_account_key, instance_api_url)
-                .map_err(to_py_err)?;
+        let config = Config::with_overrides_and_instance(
+            service_account_id,
+            service_account_key,
+            instance_api_url,
+            instance,
+        )
+        .map_err(to_py_err)?;
 
         let inner = AscendClient::new(config).map_err(to_py_err)?;
 
@@ -553,15 +558,21 @@ fn run_cli(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
 /// Call from a background thread (e.g. `asyncio.to_thread(run_mcp_http, "127.0.0.1:4201")`)
 /// since it blocks the calling thread.
 #[pyfunction]
-#[pyo3(signature = (bind_addr, *, service_account_id=None, service_account_key=None, instance_api_url=None))]
+#[pyo3(signature = (bind_addr, *, service_account_id=None, service_account_key=None, instance_api_url=None, instance=None))]
 fn run_mcp_http(
     py: Python<'_>,
     bind_addr: String,
     service_account_id: Option<&str>,
     service_account_key: Option<&str>,
     instance_api_url: Option<&str>,
+    instance: Option<&str>,
 ) -> PyResult<()> {
-    let config = Config::with_overrides(service_account_id, service_account_key, instance_api_url);
+    let config = Config::with_overrides_and_instance(
+        service_account_id,
+        service_account_key,
+        instance_api_url,
+        instance,
+    );
     py.detach(move || {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
