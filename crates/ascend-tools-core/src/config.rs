@@ -14,6 +14,8 @@ const INSTANCE_ENV: &str = "ASCEND_INSTANCE";
 
 const CONFIG_DIR: &str = ".ascend-tools";
 const CONFIG_FILE: &str = "config.toml";
+const DEFAULT_INSTANCE_KEY: &str = "default_instance";
+const DEFAULT_INSTANCE_NAME: &str = "default";
 
 #[derive(Clone)]
 #[non_exhaustive]
@@ -153,7 +155,8 @@ fn select_instance_entry(
         return Ok(None);
     };
 
-    let target = instance_name.unwrap_or_else(|| default_name.as_deref().unwrap_or("default"));
+    let target =
+        instance_name.unwrap_or_else(|| default_name.as_deref().unwrap_or(DEFAULT_INSTANCE_NAME));
 
     match instances.remove_entry(target) {
         Some((name, entry)) => Ok(Some((name, entry))),
@@ -206,11 +209,6 @@ pub fn config_file_path() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(CONFIG_DIR).join(CONFIG_FILE))
 }
 
-/// Returns the config directory path: `~/.ascend-tools/`.
-pub fn config_dir_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(CONFIG_DIR))
-}
-
 /// Load and parse the config file, returning (default_instance, instances).
 fn load_config_file() -> Result<Option<ConfigFileData>> {
     load_config_file_from_path(config_file_path())
@@ -247,13 +245,13 @@ fn parse_config_toml(contents: &str, path: &Path) -> Result<Option<ConfigFileDat
     };
 
     let default_instance = root
-        .get("default_instance")
+        .get(DEFAULT_INSTANCE_KEY)
         .and_then(|v| v.as_str())
         .map(String::from);
 
     let mut instances = BTreeMap::new();
     for (key, value) in &root {
-        if key == "default_instance" {
+        if key == DEFAULT_INSTANCE_KEY {
             continue;
         }
         if let toml::Value::Table(_) = value {
@@ -285,7 +283,7 @@ fn validate_instance_name(name: &str) -> Result<()> {
             reason: "must not be empty".to_string(),
         });
     }
-    if name == "default_instance" {
+    if name == DEFAULT_INSTANCE_KEY {
         return Err(Error::InvalidInstanceName {
             name: name.to_string(),
             reason: "reserved name".to_string(),
@@ -313,6 +311,52 @@ pub mod instance_config {
             path: PathBuf::from("~/.ascend-tools/config.toml"),
             reason: "could not determine home directory".to_string(),
         })
+    }
+
+    fn load_document(path: &Path) -> Result<toml_edit::DocumentMut> {
+        let contents = std::fs::read_to_string(path).map_err(|e| Error::ConfigFileRead {
+            path: path.to_path_buf(),
+            reason: e.to_string(),
+        })?;
+        contents
+            .parse()
+            .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
+                path: path.to_path_buf(),
+                reason: e.to_string(),
+            })
+    }
+
+    fn load_or_create_document(path: &Path) -> Result<toml_edit::DocumentMut> {
+        let contents = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => {
+                return Err(Error::ConfigFileRead {
+                    path: path.to_path_buf(),
+                    reason: e.to_string(),
+                });
+            }
+        };
+        contents
+            .parse()
+            .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
+                path: path.to_path_buf(),
+                reason: e.to_string(),
+            })
+    }
+
+    fn save_document(path: &Path, doc: &toml_edit::DocumentMut) -> Result<()> {
+        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
+            path: path.to_path_buf(),
+            reason: e.to_string(),
+        })
+    }
+
+    fn available_instances(doc: &toml_edit::DocumentMut) -> Vec<String> {
+        doc.iter()
+            .filter(|(k, v)| *k != DEFAULT_INSTANCE_KEY && v.is_table())
+            .map(|(k, _)| k.to_string())
+            .collect()
     }
 
     /// Add or update an instance in the config file.
@@ -347,7 +391,6 @@ pub mod instance_config {
     ) -> Result<()> {
         validate_instance_name(name)?;
 
-        // Ensure directory exists
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| Error::ConfigFileWrite {
                 path: path.to_path_buf(),
@@ -355,124 +398,62 @@ pub mod instance_config {
             })?;
         }
 
-        // Load existing or create new document
-        let contents = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => {
-                return Err(Error::ConfigFileRead {
-                    path: path.to_path_buf(),
-                    reason: e.to_string(),
-                });
-            }
-        };
-
-        let mut doc: toml_edit::DocumentMut =
-            contents
-                .parse()
-                .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.to_path_buf(),
-                    reason: e.to_string(),
-                })?;
+        let mut doc = load_or_create_document(path)?;
 
         // Auto-set default_instance when no default exists yet
-        if doc.get("default_instance").is_none() {
-            doc["default_instance"] = toml_edit::value(name);
+        if doc.get(DEFAULT_INSTANCE_KEY).is_none() {
+            doc[DEFAULT_INSTANCE_KEY] = toml_edit::value(name);
         }
 
-        // Create or update the instance table
         let table = doc[name].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
         table["service_account_id"] = toml_edit::value(sa_id);
         table["instance_api_url"] = toml_edit::value(url);
         table["service_account_key_env"] = toml_edit::value(key_env);
 
-        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })
+        save_document(path, &doc)
     }
 
     pub(super) fn remove_at(path: &Path, name: &str) -> Result<()> {
-        let contents = std::fs::read_to_string(path).map_err(|e| Error::ConfigFileRead {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })?;
-
-        let mut doc: toml_edit::DocumentMut =
-            contents
-                .parse()
-                .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.to_path_buf(),
-                    reason: e.to_string(),
-                })?;
+        let mut doc = load_document(path)?;
 
         if doc.remove(name).is_none() {
-            let available: Vec<String> = doc
-                .iter()
-                .filter(|(k, v)| *k != "default_instance" && v.is_table())
-                .map(|(k, _)| k.to_string())
-                .collect();
             return Err(Error::InstanceNotFound {
                 name: name.to_string(),
-                available,
+                available: available_instances(&doc),
             });
         }
 
-        // Clear default_instance if it pointed to the removed instance
         let is_default = doc
-            .get("default_instance")
+            .get(DEFAULT_INSTANCE_KEY)
             .and_then(|v| v.as_str())
             .is_some_and(|v| v == name);
         if is_default {
-            doc.remove("default_instance");
+            doc.remove(DEFAULT_INSTANCE_KEY);
         }
 
-        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })
+        save_document(path, &doc)
     }
 
     pub(super) fn list_at(path: Option<PathBuf>) -> Result<(String, Vec<(String, InstanceEntry)>)> {
         let (default_name, instances) = load_config_file_from_path(path)?.unwrap_or_default();
-        let default = default_name.unwrap_or_else(|| "default".to_string());
+        let default = default_name.unwrap_or_else(|| DEFAULT_INSTANCE_NAME.to_string());
         let entries: Vec<(String, InstanceEntry)> = instances.into_iter().collect();
         Ok((default, entries))
     }
 
     pub(super) fn set_default_at(path: &Path, name: &str) -> Result<()> {
-        let contents = std::fs::read_to_string(path).map_err(|e| Error::ConfigFileRead {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })?;
+        let mut doc = load_document(path)?;
 
-        let mut doc: toml_edit::DocumentMut =
-            contents
-                .parse()
-                .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.to_path_buf(),
-                    reason: e.to_string(),
-                })?;
-
-        // Verify the instance exists
         if !doc.contains_key(name) || !doc[name].is_table() {
-            let available: Vec<String> = doc
-                .iter()
-                .filter(|(k, v)| *k != "default_instance" && v.is_table())
-                .map(|(k, _)| k.to_string())
-                .collect();
             return Err(Error::InstanceNotFound {
                 name: name.to_string(),
-                available,
+                available: available_instances(&doc),
             });
         }
 
-        doc["default_instance"] = toml_edit::value(name);
+        doc[DEFAULT_INSTANCE_KEY] = toml_edit::value(name);
 
-        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })
+        save_document(path, &doc)
     }
 }
 

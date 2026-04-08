@@ -2,7 +2,7 @@ use anyhow::Result;
 use ascend_tools::config::{config_file_path, instance_config};
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_subcommand_help, print_table};
+use crate::common::{OutputMode, print_json, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum InstanceCommands {
@@ -89,7 +89,7 @@ pub(crate) fn handle_instance(
                             })
                         })
                         .collect();
-                    println!("{}", serde_json::to_string_pretty(&items)?);
+                    print_json(&items)?;
                 }
                 OutputMode::Text => {
                     let rows: Vec<Vec<String>> = entries
