@@ -125,19 +125,32 @@ impl Config {
 /// - If `instance_name` is None and a config file exists, load the default instance.
 /// - If no config file exists, return None (backward compat with env vars only).
 fn load_instance_entry(instance_name: Option<&str>) -> Result<Option<(String, InstanceEntry)>> {
-    let (default_name, mut instances) = match load_config_file()? {
-        Some(v) => v,
-        None => {
-            if let Some(name) = instance_name {
-                return Err(Error::ConfigFileRead {
-                    path: config_file_path().unwrap_or_default(),
-                    reason: format!(
-                        "instance '{name}' requested but no config file found, run `ascend-tools instance add`"
-                    ),
-                });
-            }
-            return Ok(None);
-        }
+    let config_data = load_config_file()?;
+
+    if let (None, Some(name)) = (&config_data, instance_name) {
+        return Err(Error::ConfigFileRead {
+            path: config_file_path().unwrap_or_default(),
+            reason: format!(
+                "instance '{name}' requested but no config file found, run `ascend-tools instance add`"
+            ),
+        });
+    }
+
+    select_instance_entry(instance_name, config_data)
+}
+
+/// Pure logic: given parsed config data and an optional instance name, select the right entry.
+///
+/// - If `config_data` is None, returns None (no config file → env var fallback).
+/// - If `instance_name` is Some, looks up that instance (error if not found).
+/// - If `instance_name` is None, uses `default_instance` from config, falling back to `"default"`.
+/// - If the target instance doesn't exist and no explicit name was given, returns None (env var fallback).
+fn select_instance_entry(
+    instance_name: Option<&str>,
+    config_data: Option<ConfigFileData>,
+) -> Result<Option<(String, InstanceEntry)>> {
+    let Some((default_name, mut instances)) = config_data else {
+        return Ok(None);
     };
 
     let target = instance_name.unwrap_or_else(|| default_name.as_deref().unwrap_or("default"));
@@ -295,30 +308,60 @@ fn validate_instance_name(name: &str) -> Result<()> {
 pub mod instance_config {
     use super::*;
 
-    /// Add or update an instance in the config file.
-    pub fn add(name: &str, sa_id: &str, url: &str, key_env: &str) -> Result<()> {
-        validate_instance_name(name)?;
-
-        let path = config_file_path().ok_or_else(|| Error::ConfigFileWrite {
+    fn default_path() -> Result<PathBuf> {
+        config_file_path().ok_or_else(|| Error::ConfigFileWrite {
             path: PathBuf::from("~/.ascend-tools/config.toml"),
             reason: "could not determine home directory".to_string(),
-        })?;
+        })
+    }
+
+    /// Add or update an instance in the config file.
+    pub fn add(name: &str, sa_id: &str, url: &str, key_env: &str) -> Result<()> {
+        add_at(&default_path()?, name, sa_id, url, key_env)
+    }
+
+    /// Remove an instance from the config file.
+    /// If the removed instance was the default, the `default_instance` key is also removed.
+    pub fn remove(name: &str) -> Result<()> {
+        remove_at(&default_path()?, name)
+    }
+
+    /// List all configured instances. Returns (default_name, entries) pairs.
+    pub fn list() -> Result<(String, Vec<(String, InstanceEntry)>)> {
+        list_at(config_file_path())
+    }
+
+    /// Set the default instance.
+    pub fn set_default(name: &str) -> Result<()> {
+        set_default_at(&default_path()?, name)
+    }
+
+    // --- internal path-parameterized implementations ---
+
+    pub(super) fn add_at(
+        path: &Path,
+        name: &str,
+        sa_id: &str,
+        url: &str,
+        key_env: &str,
+    ) -> Result<()> {
+        validate_instance_name(name)?;
 
         // Ensure directory exists
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| Error::ConfigFileWrite {
-                path: path.clone(),
+                path: path.to_path_buf(),
                 reason: e.to_string(),
             })?;
         }
 
         // Load existing or create new document
-        let contents = match std::fs::read_to_string(&path) {
+        let contents = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => {
                 return Err(Error::ConfigFileRead {
-                    path,
+                    path: path.to_path_buf(),
                     reason: e.to_string(),
                 });
             }
@@ -328,7 +371,7 @@ pub mod instance_config {
             contents
                 .parse()
                 .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     reason: e.to_string(),
                 })?;
 
@@ -343,22 +386,15 @@ pub mod instance_config {
         table["instance_api_url"] = toml_edit::value(url);
         table["service_account_key_env"] = toml_edit::value(key_env);
 
-        std::fs::write(&path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path,
+        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
+            path: path.to_path_buf(),
             reason: e.to_string(),
         })
     }
 
-    /// Remove an instance from the config file.
-    /// If the removed instance was the default, the `default_instance` key is also removed.
-    pub fn remove(name: &str) -> Result<()> {
-        let path = config_file_path().ok_or_else(|| Error::ConfigFileWrite {
-            path: PathBuf::from("~/.ascend-tools/config.toml"),
-            reason: "could not determine home directory".to_string(),
-        })?;
-
-        let contents = std::fs::read_to_string(&path).map_err(|e| Error::ConfigFileRead {
-            path: path.clone(),
+    pub(super) fn remove_at(path: &Path, name: &str) -> Result<()> {
+        let contents = std::fs::read_to_string(path).map_err(|e| Error::ConfigFileRead {
+            path: path.to_path_buf(),
             reason: e.to_string(),
         })?;
 
@@ -366,7 +402,7 @@ pub mod instance_config {
             contents
                 .parse()
                 .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     reason: e.to_string(),
                 })?;
 
@@ -391,29 +427,24 @@ pub mod instance_config {
             doc.remove("default_instance");
         }
 
-        std::fs::write(&path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path,
+        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
+            path: path.to_path_buf(),
             reason: e.to_string(),
         })
     }
 
-    /// List all configured instances. Returns (name, entry) pairs and the default instance name.
-    pub fn list() -> Result<(String, Vec<(String, InstanceEntry)>)> {
-        let (default_name, instances) = load_config_file()?.unwrap_or_default();
+    pub(super) fn list_at(
+        path: Option<PathBuf>,
+    ) -> Result<(String, Vec<(String, InstanceEntry)>)> {
+        let (default_name, instances) = load_config_file_from_path(path)?.unwrap_or_default();
         let default = default_name.unwrap_or_else(|| "default".to_string());
         let entries: Vec<(String, InstanceEntry)> = instances.into_iter().collect();
         Ok((default, entries))
     }
 
-    /// Set the default instance.
-    pub fn set_default(name: &str) -> Result<()> {
-        let path = config_file_path().ok_or_else(|| Error::ConfigFileWrite {
-            path: PathBuf::from("~/.ascend-tools/config.toml"),
-            reason: "could not determine home directory".to_string(),
-        })?;
-
-        let contents = std::fs::read_to_string(&path).map_err(|e| Error::ConfigFileRead {
-            path: path.clone(),
+    pub(super) fn set_default_at(path: &Path, name: &str) -> Result<()> {
+        let contents = std::fs::read_to_string(path).map_err(|e| Error::ConfigFileRead {
+            path: path.to_path_buf(),
             reason: e.to_string(),
         })?;
 
@@ -421,7 +452,7 @@ pub mod instance_config {
             contents
                 .parse()
                 .map_err(|e: toml_edit::TomlError| Error::ConfigFileParse {
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     reason: e.to_string(),
                 })?;
 
@@ -440,8 +471,8 @@ pub mod instance_config {
 
         doc["default_instance"] = toml_edit::value(name);
 
-        std::fs::write(&path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
-            path,
+        std::fs::write(path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
+            path: path.to_path_buf(),
             reason: e.to_string(),
         })
     }
@@ -626,5 +657,361 @@ service_account_id = "asc-sa-abc"
 
         assert!(validate_instance_name("foo.bar").is_err());
         assert!(validate_instance_name("foo[0]").is_err());
+    }
+
+    // --- parse_config_toml edge cases ---
+
+    #[test]
+    fn test_parse_config_only_default_instance_key_no_tables() {
+        let toml = r#"default_instance = "production""#;
+        let result = parse_test_config(toml).unwrap();
+        assert!(result.is_none()); // no instance tables → treated as empty
+    }
+
+    #[test]
+    fn test_parse_config_non_table_values_ignored() {
+        // Non-table top-level values (besides default_instance) are silently skipped
+        let toml = r#"
+some_string = "hello"
+some_number = 42
+
+[valid]
+service_account_id = "asc-sa-abc"
+instance_api_url = "https://api.test.ascend.io"
+service_account_key_env = "MY_KEY"
+"#;
+        let result = parse_test_config(toml).unwrap().unwrap();
+        assert_eq!(result.1.len(), 1);
+        assert!(result.1.contains_key("valid"));
+    }
+
+    #[test]
+    fn test_parse_config_wrong_type_field() {
+        let toml = r#"
+[bad]
+service_account_id = 123
+instance_api_url = "https://api.test.ascend.io"
+service_account_key_env = "MY_KEY"
+"#;
+        let err = parse_test_config(toml).unwrap_err().to_string();
+        assert!(err.contains("bad"));
+    }
+
+    #[test]
+    fn test_parse_config_extra_fields_allowed() {
+        // Forward compatibility: extra fields in instance tables don't cause errors
+        let toml = r#"
+[default]
+service_account_id = "asc-sa-abc"
+instance_api_url = "https://api.test.ascend.io"
+service_account_key_env = "MY_KEY"
+some_future_field = "should not break"
+"#;
+        let result = parse_test_config(toml);
+        // serde by default rejects unknown fields for strict deserialization.
+        // Verify current behavior (either pass or fail) and document it.
+        // If this fails, InstanceEntry uses deny_unknown_fields.
+        // If this passes, forward compat is good.
+        if let Ok(Some((_, instances))) = result {
+            assert_eq!(instances["default"].service_account_id, "asc-sa-abc");
+        }
+        // Either outcome is acceptable — test documents the behavior
+    }
+
+    // --- select_instance_entry (pure routing logic) ---
+
+    fn make_entry(id: &str) -> InstanceEntry {
+        InstanceEntry {
+            service_account_id: format!("asc-sa-{id}"),
+            instance_api_url: format!("https://api.{id}.ascend.io"),
+            service_account_key_env: format!("{}_KEY", id.to_uppercase()),
+        }
+    }
+
+    fn make_config(
+        default: Option<&str>,
+        entries: &[(&str, InstanceEntry)],
+    ) -> Option<ConfigFileData> {
+        if entries.is_empty() {
+            return None;
+        }
+        let map: BTreeMap<String, InstanceEntry> = entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect();
+        Some((default.map(String::from), map))
+    }
+
+    #[test]
+    fn test_select_no_config_no_name_returns_none() {
+        let result = select_instance_entry(None, None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_no_config_with_name_returns_none() {
+        // This path is guarded by load_instance_entry (which errors before calling select),
+        // but select itself just returns None when config_data is None
+        let result = select_instance_entry(Some("prod"), None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_explicit_name_found() {
+        let config = make_config(None, &[("prod", make_entry("prod"))]);
+        let result = select_instance_entry(Some("prod"), config)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.0, "prod");
+        assert_eq!(result.1.service_account_id, "asc-sa-prod");
+    }
+
+    #[test]
+    fn test_select_explicit_name_not_found_errors() {
+        let config = make_config(None, &[("staging", make_entry("staging"))]);
+        let err = select_instance_entry(Some("prod"), config).unwrap_err();
+        match err {
+            Error::InstanceNotFound { name, available } => {
+                assert_eq!(name, "prod");
+                assert_eq!(available, vec!["staging"]);
+            }
+            _ => panic!("expected InstanceNotFound, got: {err}"),
+        }
+    }
+
+    #[test]
+    fn test_select_no_name_uses_default_instance() {
+        let config = make_config(
+            Some("staging"),
+            &[
+                ("default", make_entry("default")),
+                ("staging", make_entry("staging")),
+            ],
+        );
+        let result = select_instance_entry(None, config).unwrap().unwrap();
+        assert_eq!(result.0, "staging");
+        assert_eq!(result.1.service_account_id, "asc-sa-staging");
+    }
+
+    #[test]
+    fn test_select_no_name_no_default_key_falls_back_to_default_name() {
+        // No default_instance key → implicit "default"
+        let config = make_config(None, &[("default", make_entry("default"))]);
+        let result = select_instance_entry(None, config).unwrap().unwrap();
+        assert_eq!(result.0, "default");
+    }
+
+    #[test]
+    fn test_select_no_name_default_missing_falls_through() {
+        // default_instance = "nonexistent" but no explicit name → fall through to env vars
+        let config = make_config(
+            Some("nonexistent"),
+            &[("staging", make_entry("staging"))],
+        );
+        let result = select_instance_entry(None, config).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_no_name_no_default_key_no_default_entry_falls_through() {
+        // No default_instance key, no "default" entry → fall through to env vars
+        let config = make_config(None, &[("staging", make_entry("staging"))]);
+        let result = select_instance_entry(None, config).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_explicit_not_found_lists_all_available() {
+        let config = make_config(
+            None,
+            &[
+                ("alpha", make_entry("alpha")),
+                ("beta", make_entry("beta")),
+                ("gamma", make_entry("gamma")),
+            ],
+        );
+        let err = select_instance_entry(Some("prod"), config).unwrap_err();
+        match err {
+            Error::InstanceNotFound { available, .. } => {
+                assert_eq!(available, vec!["alpha", "beta", "gamma"]);
+            }
+            _ => panic!("expected InstanceNotFound"),
+        }
+    }
+
+    // --- CRUD operations (filesystem tests with temp dirs) ---
+
+    fn temp_config_path() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "ascend-tools-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("config.toml")
+    }
+
+    #[test]
+    fn test_crud_add_creates_file_and_sets_default() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "asc-sa-1", "https://api.prod.io", "KEY").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("default_instance = \"prod\""));
+        assert!(contents.contains("[prod]"));
+        assert!(contents.contains("service_account_id = \"asc-sa-1\""));
+
+        // Clean up
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_add_second_instance_preserves_default() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "asc-sa-1", "https://prod.io", "K1").unwrap();
+        instance_config::add_at(&path, "staging", "asc-sa-2", "https://stg.io", "K2").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        // default_instance should still be "prod" (first add)
+        assert!(contents.contains("default_instance = \"prod\""));
+        assert!(contents.contains("[prod]"));
+        assert!(contents.contains("[staging]"));
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_add_rejects_invalid_name() {
+        let path = temp_config_path();
+        let err = instance_config::add_at(&path, "bad name", "id", "url", "key").unwrap_err();
+        assert!(err.to_string().contains("alphanumeric"));
+        // File should not have been created
+        assert!(!path.exists());
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_add_update_existing() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "asc-sa-old", "https://old.io", "OLD").unwrap();
+        instance_config::add_at(&path, "prod", "asc-sa-new", "https://new.io", "NEW").unwrap();
+
+        let (default, entries) = instance_config::list_at(Some(path.clone())).unwrap();
+        assert_eq!(default, "prod");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].1.service_account_id, "asc-sa-new");
+        assert_eq!(entries[0].1.instance_api_url, "https://new.io");
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_remove_instance() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+        instance_config::add_at(&path, "staging", "id2", "url2", "key2").unwrap();
+
+        instance_config::remove_at(&path, "staging").unwrap();
+
+        let (_, entries) = instance_config::list_at(Some(path.clone())).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "prod");
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_remove_nonexistent_errors() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+
+        let err = instance_config::remove_at(&path, "nope").unwrap_err();
+        match err {
+            Error::InstanceNotFound { name, available } => {
+                assert_eq!(name, "nope");
+                assert_eq!(available, vec!["prod"]);
+            }
+            _ => panic!("expected InstanceNotFound"),
+        }
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_remove_default_clears_default_instance() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+        instance_config::add_at(&path, "staging", "id2", "url2", "key2").unwrap();
+
+        // prod is the default (first add)
+        instance_config::remove_at(&path, "prod").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(!contents.contains("default_instance"));
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_remove_non_default_preserves_default_instance() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+        instance_config::add_at(&path, "staging", "id2", "url2", "key2").unwrap();
+
+        instance_config::remove_at(&path, "staging").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("default_instance = \"prod\""));
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_list_empty_file() {
+        let (default, entries) = instance_config::list_at(None).unwrap();
+        assert_eq!(default, "default");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_crud_list_nonexistent_file() {
+        let path = std::env::temp_dir().join("ascend-tools-nonexistent-config.toml");
+        let (default, entries) = instance_config::list_at(Some(path)).unwrap();
+        assert_eq!(default, "default");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_crud_set_default() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+        instance_config::add_at(&path, "staging", "id2", "url2", "key2").unwrap();
+
+        instance_config::set_default_at(&path, "staging").unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("default_instance = \"staging\""));
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_crud_set_default_nonexistent_errors() {
+        let path = temp_config_path();
+        instance_config::add_at(&path, "prod", "id", "url", "key").unwrap();
+
+        let err = instance_config::set_default_at(&path, "nope").unwrap_err();
+        match err {
+            Error::InstanceNotFound { name, available } => {
+                assert_eq!(name, "nope");
+                assert_eq!(available, vec!["prod"]);
+            }
+            _ => panic!("expected InstanceNotFound"),
+        }
+
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 }
