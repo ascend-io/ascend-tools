@@ -36,7 +36,7 @@ Configure named instances in `~/.ascend-tools/config.toml`:
 ascend-tools instance add default \
   --service-account-id "asc-sa-..." \
   --instance-api-url "https://api.instance.ascend.io" \
-  --service-account-key-env ASCEND_SERVICE_ACCOUNT_KEY
+  --key-env ASCEND_SERVICE_ACCOUNT_KEY
 export ASCEND_SERVICE_ACCOUNT_KEY="..."
 ```
 
@@ -92,7 +92,7 @@ export ASCEND_INSTANCE_API_URL="https://<workspace>-instance.api.local.ascend.de
 ```
 ascend-tools [-o text|json] [-V] [--instance <NAME>]
 
-  instance add <NAME> --service-account-id <ID> --instance-api-url <URL> [--service-account-key-env <ENV_VAR>]
+  instance add <NAME> --service-account-id <ID> --instance-api-url <URL> [--key-env <ENV_VAR>]
   instance list
   instance remove <NAME>
   instance set-default <NAME>

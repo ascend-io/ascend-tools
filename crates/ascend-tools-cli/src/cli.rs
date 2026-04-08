@@ -141,7 +141,7 @@ enum Commands {
     #[command(
         long_about = "Manage instance configurations stored in ~/.ascend-tools/config.toml.\n\n\
             Examples:\n  \
-            ascend-tools instance add production --service-account-id asc-sa-abc --instance-api-url https://api.prod.ascend.io --service-account-key-env ASCEND_PROD_KEY\n  \
+            ascend-tools instance add production --service-account-id asc-sa-abc --instance-api-url https://api.prod.ascend.io --key-env ASCEND_PROD_KEY\n  \
             ascend-tools instance list\n  \
             ascend-tools instance remove staging\n  \
             ascend-tools instance set-default production"
