@@ -56,9 +56,12 @@ pub(crate) fn handle_instance(
                 &service_account_key_env,
             )?;
             if let Some(path) = config_file_path() {
-                eprintln!("Instance '{name}' saved to {}", path.display());
+                eprintln!(
+                    "Instance '{name}' saved to {} (key env: {service_account_key_env})",
+                    path.display()
+                );
             } else {
-                eprintln!("Instance '{name}' saved.");
+                eprintln!("Instance '{name}' saved (key env: {service_account_key_env}).");
             }
             Ok(())
         }

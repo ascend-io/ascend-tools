@@ -43,6 +43,9 @@ pub enum Error {
     #[error("service account key env var '{env_var}' (from instance '{instance}') is not set")]
     KeyEnvNotSet { env_var: String, instance: String },
 
+    #[error("invalid instance name '{name}': {reason}")]
+    InvalidInstanceName { name: String, reason: String },
+
     #[error("failed to decode service account key from base64")]
     InvalidServiceAccountKeyEncoding,
 

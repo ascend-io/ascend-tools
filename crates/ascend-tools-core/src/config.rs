@@ -125,7 +125,7 @@ impl Config {
 /// - If `instance_name` is None and a config file exists, load the default instance.
 /// - If no config file exists, return None (backward compat with env vars only).
 fn load_instance_entry(instance_name: Option<&str>) -> Result<Option<(String, InstanceEntry)>> {
-    let (default_name, instances) = match load_config_file()? {
+    let (default_name, mut instances) = match load_config_file()? {
         Some(v) => v,
         None => {
             if let Some(name) = instance_name {
@@ -142,13 +142,11 @@ fn load_instance_entry(instance_name: Option<&str>) -> Result<Option<(String, In
 
     let target = instance_name.unwrap_or_else(|| default_name.as_deref().unwrap_or("default"));
 
-    match instances.into_iter().find(|(k, _)| k == target) {
+    match instances.remove_entry(target) {
         Some((name, entry)) => Ok(Some((name, entry))),
         None if instance_name.is_some() => {
             // User explicitly asked for an instance that doesn't exist
-            let available: Vec<String> = load_config_file()?
-                .map(|(_, m)| m.into_keys().collect())
-                .unwrap_or_default();
+            let available: Vec<String> = instances.into_keys().collect();
             Err(Error::InstanceNotFound {
                 name: target.to_string(),
                 available,
@@ -265,12 +263,42 @@ fn parse_config_toml(contents: &str, path: &Path) -> Result<Option<ConfigFileDat
     Ok(Some((default_instance, instances)))
 }
 
+/// Validate an instance name: must be non-empty, alphanumeric/hyphens/underscores,
+/// and not collide with the reserved `default_instance` key.
+fn validate_instance_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(Error::InvalidInstanceName {
+            name: name.to_string(),
+            reason: "must not be empty".to_string(),
+        });
+    }
+    if name == "default_instance" {
+        return Err(Error::InvalidInstanceName {
+            name: name.to_string(),
+            reason: "reserved name".to_string(),
+        });
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(Error::InvalidInstanceName {
+            name: name.to_string(),
+            reason: "must contain only alphanumeric characters, hyphens, or underscores"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Public API for managing the instance config file.
 pub mod instance_config {
     use super::*;
 
     /// Add or update an instance in the config file.
     pub fn add(name: &str, sa_id: &str, url: &str, key_env: &str) -> Result<()> {
+        validate_instance_name(name)?;
+
         let path = config_file_path().ok_or_else(|| Error::ConfigFileWrite {
             path: PathBuf::from("~/.ascend-tools/config.toml"),
             reason: "could not determine home directory".to_string(),
@@ -304,6 +332,11 @@ pub mod instance_config {
                     reason: e.to_string(),
                 })?;
 
+        // Auto-set default_instance when no default exists yet
+        if doc.get("default_instance").is_none() {
+            doc["default_instance"] = toml_edit::value(name);
+        }
+
         // Create or update the instance table
         let table = doc[name].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
         table["service_account_id"] = toml_edit::value(sa_id);
@@ -317,6 +350,7 @@ pub mod instance_config {
     }
 
     /// Remove an instance from the config file.
+    /// If the removed instance was the default, the `default_instance` key is also removed.
     pub fn remove(name: &str) -> Result<()> {
         let path = config_file_path().ok_or_else(|| Error::ConfigFileWrite {
             path: PathBuf::from("~/.ascend-tools/config.toml"),
@@ -346,6 +380,15 @@ pub mod instance_config {
                 name: name.to_string(),
                 available,
             });
+        }
+
+        // Clear default_instance if it pointed to the removed instance
+        let is_default = doc
+            .get("default_instance")
+            .and_then(|v| v.as_str())
+            .is_some_and(|v| v == name);
+        if is_default {
+            doc.remove("default_instance");
         }
 
         std::fs::write(&path, doc.to_string()).map_err(|e| Error::ConfigFileWrite {
@@ -550,5 +593,38 @@ service_account_id = "asc-sa-abc"
         // Missing instance_api_url and service_account_key_env
         let result = parse_test_config(toml);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_instance_name_valid() {
+        assert!(validate_instance_name("default").is_ok());
+        assert!(validate_instance_name("my-instance").is_ok());
+        assert!(validate_instance_name("prod_01").is_ok());
+        assert!(validate_instance_name("a").is_ok());
+    }
+
+    #[test]
+    fn test_validate_instance_name_empty() {
+        let err = validate_instance_name("").unwrap_err().to_string();
+        assert!(err.contains("must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_instance_name_reserved() {
+        let err = validate_instance_name("default_instance")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("reserved"));
+    }
+
+    #[test]
+    fn test_validate_instance_name_invalid_chars() {
+        let err = validate_instance_name("my instance")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("alphanumeric"));
+
+        assert!(validate_instance_name("foo.bar").is_err());
+        assert!(validate_instance_name("foo[0]").is_err());
     }
 }
