@@ -25,26 +25,16 @@ pub(crate) struct CliParser {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
 
-    /// Service account ID
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_ID",
-        hide_env_values = true
-    )]
+    /// Service account ID (overrides instance config and env var)
+    #[arg(long, global = true)]
     service_account_id: Option<String>,
 
-    /// Service account key
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_KEY",
-        hide_env_values = true
-    )]
+    /// Service account key (overrides instance config and env var)
+    #[arg(long, global = true)]
     service_account_key: Option<String>,
 
-    /// Instance API URL
-    #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
+    /// Instance API URL (overrides instance config and env var)
+    #[arg(long, global = true)]
     instance_api_url: Option<String>,
 
     /// Instance name from ~/.ascend-tools/config.toml
