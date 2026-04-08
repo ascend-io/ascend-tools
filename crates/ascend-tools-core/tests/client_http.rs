@@ -344,6 +344,97 @@ fn get_conversation_messages_before_requests_before_limit() {
 }
 
 #[test]
+fn resolve_otto_thread_reuses_known_id_via_progressive_preview() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-resolve-thread-id", now + 3600, 1);
+
+    let preview_body = serde_json::json!({
+        "id": "thread-known",
+        "title": "Known thread",
+        "messages": {},
+        "updated_at": "2026-01-01T00:01:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 0,
+        "has_more": false,
+        "oldest_message_id": null,
+        "latest_message_id": null
+    })
+    .to_string();
+
+    let full_get = server
+        .mock("GET", "/api/v1/otto/threads/thread-known")
+        .expect(0)
+        .create();
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-known/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(format!("event: thread.preview\ndata: {preview_body}\n\n"))
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let resolved = client
+        .resolve_otto_thread(Some("thread-known"), None)
+        .unwrap();
+
+    assert_eq!(resolved.as_deref(), Some("thread-known"));
+    updates.assert();
+    full_get.assert();
+}
+
+#[test]
+fn resolve_otto_thread_falls_back_to_title_search_after_preview_404() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-resolve-thread-title", now + 3600, 1);
+
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/Named%20thread/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(404)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"detail":"thread not found"}"#)
+        .expect(1)
+        .create();
+    let list = server
+        .mock("GET", "/api/v1/otto/threads")
+        .match_query(Matcher::UrlEncoded("title".into(), "Named thread".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "threads": [{
+                    "id": "thread-from-title",
+                    "title": "Named thread",
+                    "updated_at": "2026-01-01T00:00:00Z"
+                }],
+                "total": 1
+            })
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let resolved = client
+        .resolve_otto_thread(Some("Named thread"), None)
+        .unwrap();
+
+    assert_eq!(resolved.as_deref(), Some("thread-from-title"));
+    updates.assert();
+    list.assert();
+}
+
+#[test]
 fn otto_streaming_events_exposes_raw_updates() {
     let mut server = Server::new();
     let now = SystemTime::now()

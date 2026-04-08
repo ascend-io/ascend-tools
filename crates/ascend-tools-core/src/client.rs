@@ -559,20 +559,23 @@ impl AscendClient {
             Err(e) => return Err(e),
         }
 
-        // Not a valid ID — use server-side title filter.
+        self.resolve_conversation_title(title_or_id)
+    }
+
+    fn resolve_conversation_title(&self, title: &str) -> Result<String> {
         let list = self.list_conversations(ConversationFilters {
-            title: Some(title_or_id.to_string()),
+            title: Some(title.to_string()),
             ..Default::default()
         })?;
         match list.threads.len() {
             0 => Err(Error::NotFound {
                 kind: "conversation".to_string(),
-                title: title_or_id.to_string(),
+                title: title.to_string(),
             }),
             1 => Ok(list.threads.into_iter().next().unwrap().id),
             _ => Err(Error::AmbiguousTitle {
                 kind: "conversation".to_string(),
-                title: title_or_id.to_string(),
+                title: title.to_string(),
                 matches: list
                     .threads
                     .iter()
@@ -600,16 +603,23 @@ impl AscendClient {
 
     /// Resolve a `conversation` or `thread_id` parameter to an optional thread ID.
     ///
-    /// If `conversation` is `Some`, resolves it via `resolve_conversation_id`.
-    /// Otherwise passes through `thread_id` as-is. Used by SDK bindings to
-    /// avoid duplicating the resolution logic.
+    /// If `conversation` is `Some`, accepts a known thread ID via the
+    /// progressive preview path and falls back to title resolution when that
+    /// preview probe returns 404. Otherwise passes through `thread_id` as-is.
+    /// Used by SDK bindings to avoid duplicating the continuation logic.
     pub fn resolve_otto_thread(
         &self,
         conversation: Option<&str>,
         thread_id: Option<String>,
     ) -> Result<Option<String>> {
         if let Some(conv) = conversation {
-            Ok(Some(self.resolve_conversation_id(conv)?))
+            match self.get_conversation_preview(conv) {
+                Ok(_) => Ok(Some(conv.to_string())),
+                Err(ref e) if e.http_status() == Some(404) => {
+                    Ok(Some(self.resolve_conversation_title(conv)?))
+                }
+                Err(e) => Err(e),
+            }
         } else {
             Ok(thread_id)
         }

@@ -142,7 +142,10 @@ enum StreamMsg {
         generation: u64,
         messages: Vec<Message>,
     },
-    ConversationHistoryError(String),
+    ConversationHistoryError {
+        generation: u64,
+        error: String,
+    },
     StopFinished {
         error: Option<String>,
     },
@@ -943,11 +946,13 @@ impl App {
                     }
                 }
             }
-            StreamMsg::ConversationHistoryError(error) => {
-                if self.messages.is_empty() {
-                    self.push_system(format!("Could not load recent history: {error}"));
-                } else {
-                    self.push_system(format!("Could not load older history: {error}"));
+            StreamMsg::ConversationHistoryError { generation, error } => {
+                if generation == self.stream_generation {
+                    if self.messages.is_empty() {
+                        self.push_system(format!("Could not load recent history: {error}"));
+                    } else {
+                        self.push_system(format!("Could not load older history: {error}"));
+                    }
                 }
             }
             StreamMsg::StopFinished { error } => {
@@ -2542,7 +2547,10 @@ pub fn run_tui(
                     });
                 });
                 if let Err(err) = result {
-                    let _ = history_tx.send(StreamMsg::ConversationHistoryError(err.to_string()));
+                    let _ = history_tx.send(StreamMsg::ConversationHistoryError {
+                        generation: history_gen,
+                        error: err.to_string(),
+                    });
                 }
             });
         }
@@ -2842,11 +2850,31 @@ mod tests {
     fn conversation_history_error_surfaces_when_history_is_empty() {
         let mut app = test_app();
 
-        app.handle_stream_msg(StreamMsg::ConversationHistoryError("preview failed".into()));
+        app.handle_stream_msg(StreamMsg::ConversationHistoryError {
+            generation: 0,
+            error: "preview failed".into(),
+        });
 
         assert!(app.messages.iter().any(|m| {
             m.role == Role::System && m.content.contains("Could not load recent history")
         }));
+    }
+
+    #[test]
+    fn stale_conversation_history_error_is_discarded_after_generation_advances() {
+        let mut app = test_app();
+        app.stream_generation = 2;
+
+        app.handle_stream_msg(StreamMsg::ConversationHistoryError {
+            generation: 1,
+            error: "stale failure".into(),
+        });
+
+        assert!(
+            !app.messages
+                .iter()
+                .any(|m| m.role == Role::System && m.content.contains("stale failure"))
+        );
     }
 
     #[test]

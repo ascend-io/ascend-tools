@@ -304,6 +304,79 @@ fn otto_run_jsonl_rejects_json_output_mode() {
 }
 
 #[test]
+fn otto_run_with_known_conversation_id_avoids_full_thread_get() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    let preview_body = serde_json::json!({
+        "id": "thread-cli-cont",
+        "title": "Continuation thread",
+        "messages": {
+            "msg-1": {
+                "id": "msg-1",
+                "role": "user",
+                "content": "hello",
+                "created_at": "2026-01-01T00:00:00Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 1,
+        "has_more": false,
+        "oldest_message_id": "msg-1",
+        "latest_message_id": "msg-1"
+    })
+    .to_string();
+    let updates_body = format!(
+        "event: thread.preview\ndata: {preview_body}\n\n\
+         event: response.output_text.delta\ndata: {{\"delta\":\"continued\",\"item_id\":\"item-1\",\"content_index\":0,\"output_index\":0,\"type\":\"response.output_text.delta\"}}\n\n\
+         event: thread.done\ndata: {{\"latest_message_id\":\"msg-2\"}}\n\n"
+    );
+
+    let full_get = server
+        .mock("GET", "/api/v1/otto/threads/thread-cli-cont")
+        .expect(0)
+        .create();
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-cli-cont/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(updates_body)
+        .expect(2)
+        .create();
+    let send = server
+        .mock("POST", "/api/v1/otto/threads/thread-cli-cont/messages")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-cli-cont"}"#)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "-o",
+        "json",
+        "otto",
+        "run",
+        "continue",
+        "--conversation",
+        "thread-cli-cont",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"message\": \"continued\""))
+        .stdout(predicate::str::contains(
+            "\"thread_id\": \"thread-cli-cont\"",
+        ));
+
+    updates.assert();
+    send.assert();
+    full_get.assert();
+}
+
+#[test]
 fn otto_conversation_open_emits_progressive_preview_json() {
     let mut server = Server::new();
     mock_auth(&mut server);

@@ -301,7 +301,13 @@ pub(crate) fn resolve_conversation_flag(
     if resume {
         Ok(Some(client.latest_conversation_id()?))
     } else if let Some(conv) = conversation {
-        Ok(Some(resolve_conversation_id_interactive(client, &conv)?))
+        match client.resolve_otto_thread(Some(&conv), None) {
+            Ok(thread_id) => Ok(thread_id),
+            Err(Error::AmbiguousTitle { matches, .. }) => {
+                pick_from_matches(&conv, &matches).map(Some)
+            }
+            Err(e) => Err(e.into()),
+        }
     } else {
         Ok(thread)
     }
