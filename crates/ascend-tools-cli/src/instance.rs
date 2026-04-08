@@ -2,7 +2,7 @@ use anyhow::Result;
 use ascend_tools::config::{config_file_path, instance_config};
 use clap::Subcommand;
 
-use crate::common::{OutputMode, print_table};
+use crate::common::{OutputMode, print_subcommand_help, print_table};
 
 #[derive(Subcommand)]
 pub(crate) enum InstanceCommands {
@@ -39,8 +39,7 @@ pub(crate) fn handle_instance(
     output: &OutputMode,
 ) -> Result<()> {
     let Some(command) = command else {
-        eprintln!("No subcommand provided. Run `ascend-tools instance --help` for usage.");
-        return Ok(());
+        return print_subcommand_help("instance");
     };
 
     match command {
