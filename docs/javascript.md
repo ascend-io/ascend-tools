@@ -35,11 +35,20 @@ See [CLI guide](cli.md) for all commands.
 
 ## Authenticate
 
-### From environment variables
+### From instance config (recommended)
 
 ```javascript
 import { Client } from "ascend-tools";
 
+const client = new Client();                            // uses default instance from ~/.ascend-tools/config.toml
+const client = new Client(null, null, null, "staging"); // uses a named instance
+```
+
+Set up instances with the CLI: `ascend-tools instance add` (see [CLI guide](cli.md#manage-instances)).
+
+### From environment variables
+
+```javascript
 const client = new Client(); // reads ASCEND_SERVICE_ACCOUNT_ID, etc. from env
 ```
 
@@ -54,6 +63,8 @@ const client = new Client(
   "https://api.instance.ascend.io",   // instanceApiUrl
 );
 ```
+
+Resolution order: explicit args > instance config > env vars.
 
 ## Environments and projects
 

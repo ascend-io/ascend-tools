@@ -22,6 +22,27 @@ See [Installation](installation.md) for other methods (pre-built binaries, `uvx`
 
 ## Authenticate
 
+### Instance config (recommended)
+
+Configure named instances in `~/.ascend-tools/config.toml`:
+
+```bash
+ascend-tools instance add default \
+  --service-account-id "asc-sa-..." \
+  --instance-api-url "https://api.instance.ascend.io" \
+  --service-account-key-env ASCEND_SERVICE_ACCOUNT_KEY
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+```
+
+Switch between instances with `--instance <name>` or `ASCEND_INSTANCE` env var:
+
+```bash
+ascend-tools workspace list                    # uses default instance
+ascend-tools --instance staging workspace list  # uses staging instance
+```
+
+### Environment variables
+
 Set three environment variables (see [Quickstart](quickstart.md) for the full service account creation walkthrough):
 
 ```bash
@@ -30,7 +51,20 @@ export ASCEND_SERVICE_ACCOUNT_KEY="<YOUR_SERVICE_ACCOUNT_KEY>"
 export ASCEND_INSTANCE_API_URL="<YOUR_INSTANCE_API_URL>"
 ```
 
-You can also pass credentials as CLI flags: `--service-account-id`, `--service-account-key`, `--instance-api-url`. Flags override environment variables.
+### Resolution order
+
+1. CLI flags (`--service-account-id`, etc.) — highest priority
+2. Instance config from TOML (selected by `--instance` or `ASCEND_INSTANCE` env var)
+3. Env vars (`ASCEND_SERVICE_ACCOUNT_ID`, etc.) — fallback
+
+## Manage instances
+
+```bash
+ascend-tools instance add <NAME> --service-account-id <ID> --instance-api-url <URL> [--service-account-key-env <ENV_VAR>]
+ascend-tools instance list
+ascend-tools instance remove <NAME>
+ascend-tools instance set-default <NAME>
+```
 
 ## Manage workspaces
 

@@ -433,9 +433,7 @@ pub mod instance_config {
         })
     }
 
-    pub(super) fn list_at(
-        path: Option<PathBuf>,
-    ) -> Result<(String, Vec<(String, InstanceEntry)>)> {
+    pub(super) fn list_at(path: Option<PathBuf>) -> Result<(String, Vec<(String, InstanceEntry)>)> {
         let (default_name, instances) = load_config_file_from_path(path)?.unwrap_or_default();
         let default = default_name.unwrap_or_else(|| "default".to_string());
         let entries: Vec<(String, InstanceEntry)> = instances.into_iter().collect();
@@ -804,10 +802,7 @@ some_future_field = "should not break"
     #[test]
     fn test_select_no_name_default_missing_falls_through() {
         // default_instance = "nonexistent" but no explicit name → fall through to env vars
-        let config = make_config(
-            Some("nonexistent"),
-            &[("staging", make_entry("staging"))],
-        );
+        let config = make_config(Some("nonexistent"), &[("staging", make_entry("staging"))]);
         let result = select_instance_entry(None, config).unwrap();
         assert!(result.is_none());
     }
