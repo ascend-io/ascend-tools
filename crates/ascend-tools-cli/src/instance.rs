@@ -17,7 +17,7 @@ pub(crate) enum InstanceCommands {
         #[arg(long)]
         instance_api_url: String,
         /// Environment variable name containing the service account key (not the key itself)
-        #[arg(long = "key-env", default_value = "ASCEND_SERVICE_ACCOUNT_KEY")]
+        #[arg(long, default_value = "ASCEND_SERVICE_ACCOUNT_KEY")]
         service_account_key_env: String,
     },
     /// List configured instances
