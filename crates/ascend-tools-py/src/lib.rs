@@ -531,6 +531,7 @@ impl Client {
                     runtime_uuid,
                     thread_id,
                     model: otto_model,
+                    query_policy: None,
                 };
                 self.inner.otto(&request)
             })
