@@ -2,7 +2,7 @@
 
 ## Index
 
-- `otto-progressive-thread-loading/` — first-party `ascend-tools` adoption of progressive Otto thread loading, checkpoint-based reopen, and optional local persistence decisions
+- No active Otto execution plans in this repo right now.
 
 ## Convention
 

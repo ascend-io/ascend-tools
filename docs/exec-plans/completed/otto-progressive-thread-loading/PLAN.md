@@ -32,8 +32,8 @@ Enable `ascend-tools` to work with large Otto thread lists and large conversatio
 - public docs and public type surfaces for those consumers
 - `otto run` JSONL streaming output for machine-readable testing and audit traces
 - contract alignment with:
-  - `ascend-backend/docs/exec-plans/active/otto-fast-thread-loading/`
-  - `ascend-ui/docs/exec-plans/active/otto-ui-cache/`
+  - `ascend-backend/docs/exec-plans/completed/otto-fast-thread-loading/`
+  - `ascend-ui/docs/exec-plans/completed/otto-ui-cache/`
 
 ### Out of scope by default
 

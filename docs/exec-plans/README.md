@@ -28,4 +28,4 @@ Private ASE runtime state lives at the workspace root:
 
 ## Current Focus
 
-- `active/otto-progressive-thread-loading/` — adopt progressive Otto thread loading across `ascend-tools-core`, TUI, CLI, Python, JavaScript, and MCP surfaces
+- No active Otto execution plan root is open in this repo right now.
