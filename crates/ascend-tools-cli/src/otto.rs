@@ -30,6 +30,7 @@ pub(crate) enum ThinkingLevelArg {
     Medium,
     High,
     Max,
+    Xhigh,
 }
 
 impl ThinkingLevelArg {
@@ -41,6 +42,7 @@ impl ThinkingLevelArg {
             Self::Medium => "medium",
             Self::High => "high",
             Self::Max => "max",
+            Self::Xhigh => "xhigh",
         }
     }
 }

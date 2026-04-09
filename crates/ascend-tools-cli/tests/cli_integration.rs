@@ -344,6 +344,58 @@ fn otto_run_jsonl_rejects_json_output_mode() {
 }
 
 #[test]
+fn otto_run_jsonl_accepts_xhigh_thinking_level() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-xhigh"}"#)
+        .expect(1)
+        .create();
+
+    let completed_details_body = serde_json::json!({
+        "id": "thread-xhigh",
+        "title": "Xhigh thinking",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:05Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 2,
+        "has_more": false,
+        "oldest_message_id": "msg-user-1",
+        "latest_message_id": "msg-assistant-1"
+    })
+    .to_string();
+    let sse_body = format!("event: thread.details\ndata: {completed_details_body}\n\n");
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-xhigh/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "otto",
+        "run",
+        "Explain why xhigh matters.",
+        "--thinking",
+        "xhigh",
+        "--jsonl",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"thinking\":\"xhigh\""))
+        .stdout(predicate::str::contains("\"stream_status\":\"completed\""));
+}
+
+#[test]
 fn skill_install_writes_skill_file_to_target() {
     let temp_dir = TempDir::new().unwrap();
     let target = temp_dir.path().join("skills");
