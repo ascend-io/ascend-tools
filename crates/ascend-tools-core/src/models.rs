@@ -267,6 +267,11 @@ pub struct OttoChatRequest {
     pub thread_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<OttoModel>,
+    /// Query execution policy for headless sessions.
+    /// "safe" (default): auto-runs read-only queries, rejects writes.
+    /// "unsafe": auto-approves all queries. "strict": rejects all queries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_policy: Option<String>,
 }
 
 /// Terminal status for an Otto stream.

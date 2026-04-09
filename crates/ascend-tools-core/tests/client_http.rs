@@ -417,6 +417,7 @@ fn otto_streaming_interrupted_when_sse_closes_without_terminal_event() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut observed_thread_id = None;
@@ -490,6 +491,7 @@ fn otto_streaming_completes_on_thread_done() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut text = String::new();
@@ -551,6 +553,7 @@ fn otto_streaming_completes_on_thread_stopped() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut text = String::new();
@@ -613,6 +616,7 @@ fn otto_streaming_cancelled_by_callback() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut delta_count = 0;
@@ -678,6 +682,7 @@ fn otto_streaming_handles_response_error_event() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut text = String::new();
@@ -751,6 +756,7 @@ fn otto_streaming_dispatches_tool_call_events() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut events_log: Vec<String> = Vec::new();
@@ -827,6 +833,7 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let mut text = String::new();
@@ -882,6 +889,7 @@ fn otto_streaming_sse_endpoint_returns_error() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -922,6 +930,7 @@ fn otto_streaming_thread_post_returns_error() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -968,6 +977,7 @@ fn otto_non_streaming_errors_on_interrupted_stream() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     // otto() (non-streaming) should return an error for interrupted streams
@@ -1028,6 +1038,7 @@ fn otto_streaming_retries_409_on_follow_up() {
         runtime_uuid: None,
         thread_id: Some("t-existing".into()),
         model: None,
+        query_policy: None,
     };
 
     let mut text = String::new();
@@ -1075,6 +1086,7 @@ fn otto_streaming_409_on_new_thread_returns_error() {
         runtime_uuid: None,
         thread_id: None, // new thread — no retry
         model: None,
+        query_policy: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -1124,6 +1136,7 @@ fn otto_streaming_on_thread_id_called_before_events() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let callback_order = std::sync::Mutex::new(Vec::<String>::new());
@@ -1185,6 +1198,7 @@ fn otto_streaming_empty_sse_stream_returns_interrupted() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let response = client
@@ -1222,6 +1236,7 @@ fn otto_streaming_missing_thread_id_in_response() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -1357,6 +1372,7 @@ fn otto_streaming_response_error_without_message() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        query_policy: None,
     };
 
     let response = client
