@@ -823,6 +823,7 @@ impl App {
             runtime_uuid: self.runtime_uuid.clone(),
             thread_id: self.thread_id.clone(),
             model: self.otto_model.clone(),
+            thinking: None,
         });
         self.streaming = true;
         self.stream_buffer.clear();
@@ -2554,6 +2555,7 @@ pub fn run_tui(
                                     send(StreamMsgKind::Delta(delta));
                                 }
                                 StreamEvent::ToolCallStart {
+                                    item_id: _,
                                     call_id,
                                     name,
                                     arguments,
@@ -2566,6 +2568,8 @@ pub fn run_tui(
                                         tool_names.get(&call_id).cloned().unwrap_or_default();
                                     send(StreamMsgKind::ToolCallOutput { name, output });
                                 }
+                                StreamEvent::ReasoningDelta { .. }
+                                | StreamEvent::ToolCallArgsDelta { .. } => {}
                             }
                             ControlFlow::Continue(())
                         },
@@ -3515,6 +3519,7 @@ mod tests {
             runtime_uuid: None,
             thread_id: None,
             model: None,
+            thinking: None,
         });
 
         // The main loop guard is: if !app.interrupting && let Some(req) = app.take_pending_request()

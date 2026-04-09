@@ -13,8 +13,8 @@ use crate::error::{Error, JsonResultExt, Result, UreqResultExt};
 use crate::models::{
     Conversation, ConversationFilters, ConversationList, Deployment, Environment, Flow, FlowRun,
     FlowRunFilters, FlowRunList, FlowRunTrigger, OttoChatRequest, OttoChatResponse, OttoModel,
-    OttoProvider, OttoStreamStatus, Project, Runtime, RuntimeCreate, RuntimeFilters, RuntimeKind,
-    RuntimeUpdate, StreamEvent, Workspace,
+    OttoProvider, OttoStreamStatus, OttoStreamUpdate, Project, Runtime, RuntimeCreate,
+    RuntimeFilters, RuntimeKind, RuntimeUpdate, StreamEvent, Workspace,
 };
 use crate::sse::SseReader;
 
@@ -652,11 +652,23 @@ impl AscendClient {
     /// use [`otto_streaming`] instead.
     pub fn otto(&self, request: &OttoChatRequest) -> Result<OttoChatResponse> {
         let mut full_message = String::new();
-        let response = self.otto_streaming(
+        let mut completed_snapshot_message = String::new();
+        let response = self.otto_streaming_events(
             request,
-            |event| {
-                if let StreamEvent::TextDelta(delta) = event {
+            |raw_event| {
+                if let Some(StreamEvent::TextDelta(delta)) =
+                    raw_otto_stream_update_to_stream_event(&raw_event)
+                {
                     full_message.push_str(&delta);
+                }
+                if raw_event.event_type == "thread.details"
+                    && is_completed_thread_details_snapshot(raw_event.data.as_ref())
+                {
+                    let snapshot_message =
+                        extract_completed_thread_details_message(raw_event.data.as_ref());
+                    if !snapshot_message.is_empty() {
+                        completed_snapshot_message = snapshot_message;
+                    }
                 }
                 ControlFlow::Continue(())
             },
@@ -670,32 +682,59 @@ impl AscendClient {
             });
         }
         Ok(OttoChatResponse {
-            message: full_message,
+            message: if !completed_snapshot_message.is_empty() {
+                completed_snapshot_message
+            } else {
+                full_message
+            },
             thread_id: response.thread_id,
             stream_status: OttoStreamStatus::Completed,
             stream_error: None,
         })
     }
 
+    /// Send a message to Otto and expose the raw per-thread SSE updates.
+    pub fn otto_streaming_events(
+        &self,
+        request: &OttoChatRequest,
+        on_event: impl FnMut(OttoStreamUpdate) -> ControlFlow<()>,
+        on_thread_id: impl FnOnce(&str),
+    ) -> Result<OttoChatResponse> {
+        let thread_id = self.start_otto_request(request)?;
+        on_thread_id(&thread_id);
+        self.stream_otto_updates(&thread_id, on_event)
+    }
+
     /// Send a message to Otto, streaming events to `on_event` as they arrive.
     ///
     /// `on_thread_id` is called with the thread ID as soon as the thread is
     /// created (before any events arrive). `on_event` receives each stream
-    /// event (text deltas, tool calls) and returns `ControlFlow::Continue(())`
-    /// to keep streaming or `ControlFlow::Break(())` to cancel early. The
-    /// returned `OttoChatResponse` has an empty `message` — the caller is
-    /// expected to have accumulated the text via the callback.
+    /// event (text deltas, reasoning deltas, tool calls) and returns
+    /// `ControlFlow::Continue(())` to keep streaming or
+    /// `ControlFlow::Break(())` to cancel early. The returned
+    /// `OttoChatResponse` has an empty `message` — the caller is expected to
+    /// have accumulated the text via the callback.
     pub fn otto_streaming(
         &self,
         request: &OttoChatRequest,
         mut on_event: impl FnMut(StreamEvent) -> ControlFlow<()>,
         on_thread_id: impl FnOnce(&str),
     ) -> Result<OttoChatResponse> {
+        self.otto_streaming_events(
+            request,
+            |raw_event| match raw_otto_stream_update_to_stream_event(&raw_event) {
+                Some(stream_event) => on_event(stream_event),
+                None => ControlFlow::Continue(()),
+            },
+            on_thread_id,
+        )
+    }
+
+    fn start_otto_request(&self, request: &OttoChatRequest) -> Result<String> {
         let body =
             serde_json::to_value(request).with_json_serialize_context("OttoChatRequest body")?;
         let token = self.auth.get_token()?;
 
-        // Step 1: Create thread or send message to existing thread
         let (path, context) = if let Some(ref tid) = request.thread_id {
             let encoded = encode_path(tid);
             (
@@ -718,7 +757,7 @@ impl AscendClient {
             let mut last_err = None;
             let mut resp_val = None;
             let mut sent_stop = false;
-            let mut current_token = token.clone();
+            let mut current_token = token;
             loop {
                 let resp = self
                     .agent
@@ -731,8 +770,6 @@ impl AscendClient {
                 if status == 409 && is_follow_up {
                     let body_str = resp.into_body().read_to_string().unwrap_or_default();
                     last_err = Some(api_error(status, &body_str));
-                    // Send stop once (fire-and-forget) to nudge the backend,
-                    // then retry the POST until the thread finishes processing.
                     if !sent_stop {
                         if let Some(ref tid) = request.thread_id {
                             let _ = self.stop_thread(tid);
@@ -743,7 +780,6 @@ impl AscendClient {
                         break;
                     }
                     std::thread::sleep(FOLLOW_UP_RETRY_INTERVAL);
-                    // Refresh token on retry (may have expired during wait)
                     current_token = self.auth.get_token()?;
                     continue;
                 }
@@ -756,25 +792,28 @@ impl AscendClient {
             }
         };
 
-        let thread_id = create_resp
+        create_resp
             .get("thread_id")
             .and_then(|v| v.as_str())
+            .map(str::to_string)
             .ok_or_else(|| Error::ApiError {
                 status: 500,
                 message: "missing thread_id in response".to_string(),
-            })?
-            .to_string();
+            })
+    }
 
-        on_thread_id(&thread_id);
-
-        // Step 2: Connect to the SSE updates stream.
-        //
+    fn stream_otto_updates(
+        &self,
+        thread_id: &str,
+        mut on_event: impl FnMut(OttoStreamUpdate) -> ControlFlow<()>,
+    ) -> Result<OttoChatResponse> {
         // The backend SSE stream never closes naturally — it sends heartbeat
-        // pings every 30s and stays open for future messages on the thread.
-        // On new subscriptions it replays ALL buffered events from the start,
-        // so we only retry the initial connection (before any events arrive).
-        // Mid-stream reconnection would produce duplicate text.
-        let updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(&thread_id));
+        // pings every 30s and stays open for future updates on the thread.
+        // New subscriptions begin with a `thread.details` snapshot before any
+        // live response events, so we only retry the initial connection (before
+        // any events arrive). Mid-stream reconnection could duplicate caller-
+        // visible updates or re-deliver a completed snapshot.
+        let updates_path = format!("/api/v1/otto/threads/{}/updates", encode_path(thread_id));
         let updates_url = format!("{}{updates_path}", self.instance_api_url);
         let updates_context = format!("GET {updates_path}");
 
@@ -786,12 +825,7 @@ impl AscendClient {
                     let backoff = SSE_CONNECT_BACKOFF * 2u32.pow(attempt - 1);
                     std::thread::sleep(backoff);
                 }
-                // Fresh token on retry (may have expired)
-                let stream_token = if attempt > 0 {
-                    self.auth.get_token()?
-                } else {
-                    token.clone()
-                };
+                let stream_token = self.auth.get_token()?;
                 match self
                     .streaming_agent
                     .get(&updates_url)
@@ -810,7 +844,7 @@ impl AscendClient {
                 Some(r) => r,
                 None => {
                     return Err(Error::RequestFailed {
-                        context: updates_context,
+                        context: updates_context.clone(),
                         source: last_err.unwrap(),
                     });
                 }
@@ -818,19 +852,14 @@ impl AscendClient {
         };
 
         if !(200..300).contains(&updates_resp.status().as_u16()) {
-            // Non-2xx on SSE connect is an interruption, not a completed stream.
-            // check_error_status will return Err for non-2xx, but if it somehow
-            // returns Ok, mark as Interrupted rather than misleadingly Completed.
             return check_error_status(updates_resp, &updates_context).map(|()| OttoChatResponse {
                 message: String::new(),
-                thread_id: Some(thread_id),
+                thread_id: Some(thread_id.to_string()),
                 stream_status: OttoStreamStatus::Interrupted,
                 stream_error: Some(format!("{updates_context} returned non-2xx status")),
             });
         }
 
-        // Parse SSE stream, dispatching events to the caller.
-        // No mid-stream reconnection — see comment above.
         let reader = BufReader::new(updates_resp.into_body().into_reader());
 
         let mut saw_terminal_event = false;
@@ -839,90 +868,27 @@ impl AscendClient {
 
         for event_result in SseReader::new(reader) {
             let event = event_result?;
-            let event_type = event.event_type.as_deref();
-
-            if event_type == Some("thread.done") || event_type == Some("thread.stopped") {
-                saw_terminal_event = true;
-                break;
-            }
-
-            // response.error is a terminal event from the backend indicating
-            // the response failed (e.g. context window exceeded, model error).
-            // Treat it like a stream interruption with the error message.
-            if event_type == Some("response.error") {
-                let error_msg = serde_json::from_str::<Value>(&event.data)
-                    .ok()
-                    .and_then(|d| {
-                        // Try common error payload keys: error, message, detail
-                        d.get("error")
-                            .or_else(|| d.get("message"))
-                            .or_else(|| d.get("detail"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
-                    .unwrap_or_else(|| "response error".to_string());
-                response_error = Some(error_msg);
-                break;
-            }
-
-            // Skip heartbeats and unknown event types without data
-            let Ok(data) = serde_json::from_str::<Value>(&event.data) else {
-                continue;
+            let raw_event = OttoStreamUpdate {
+                event_type: event.event_type.unwrap_or_default(),
+                data: parse_otto_stream_update_data(&event.data),
+                raw_data: event.data,
             };
+            let callback_break = on_event(raw_event.clone()).is_break();
 
-            let stream_event = match event_type {
-                Some("response.output_text.delta") => data
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .map(|d| StreamEvent::TextDelta(d.to_string())),
-                Some("response.output_item.added") => {
-                    let Some(item) = data.get("item") else {
-                        continue;
-                    };
-                    if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
-                        Some(StreamEvent::ToolCallStart {
-                            call_id: item
-                                .get("call_id")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or_default()
-                                .to_string(),
-                            name: item
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or_default()
-                                .to_string(),
-                            arguments: item
-                                .get("arguments")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("{}")
-                                .to_string(),
-                        })
-                    } else {
-                        None
-                    }
+            match classify_otto_stream_terminal(&raw_event) {
+                Some(OttoStreamTerminal::Completed) => {
+                    saw_terminal_event = true;
+                    break;
                 }
-                Some("response.run_item_stream_event.tool_call_output_item") => {
-                    Some(StreamEvent::ToolCallOutput {
-                        call_id: data
-                            .get("call_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        output: data
-                            .get("output")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    })
+                Some(OttoStreamTerminal::Interrupted(err)) => {
+                    response_error = Some(err);
+                    break;
                 }
-                _ => None,
-            };
-
-            if let Some(se) = stream_event
-                && on_event(se).is_break()
-            {
-                cancelled_by_callback = true;
-                break;
+                None if callback_break => {
+                    cancelled_by_callback = true;
+                    break;
+                }
+                None => {}
             }
         }
 
@@ -941,7 +907,7 @@ impl AscendClient {
 
         Ok(OttoChatResponse {
             message: String::new(),
-            thread_id: Some(thread_id),
+            thread_id: Some(thread_id.to_string()),
             stream_status,
             stream_error,
         })
@@ -1056,6 +1022,180 @@ impl AscendClient {
         };
 
         handle_response(resp, &context)
+    }
+}
+
+enum OttoStreamTerminal {
+    Completed,
+    Interrupted(String),
+}
+
+fn parse_otto_stream_update_data(raw_data: &str) -> Option<Value> {
+    if raw_data.is_empty() {
+        None
+    } else {
+        serde_json::from_str(raw_data).ok()
+    }
+}
+
+fn classify_otto_stream_terminal(event: &OttoStreamUpdate) -> Option<OttoStreamTerminal> {
+    match event.event_type.as_str() {
+        "thread.done" | "thread.stopped" => Some(OttoStreamTerminal::Completed),
+        "thread.details" if is_completed_thread_details_snapshot(event.data.as_ref()) => {
+            Some(OttoStreamTerminal::Completed)
+        }
+        "response.error" => Some(OttoStreamTerminal::Interrupted(extract_otto_stream_error(
+            event.data.as_ref(),
+        ))),
+        _ => None,
+    }
+}
+
+fn is_completed_thread_details_snapshot(data: Option<&Value>) -> bool {
+    data.and_then(|value| value.get("is_processing"))
+        .and_then(Value::as_bool)
+        == Some(false)
+}
+
+fn extract_completed_thread_details_message(data: Option<&Value>) -> String {
+    let Some(details) = data else {
+        return String::new();
+    };
+    let Some(messages) = details.get("messages") else {
+        return String::new();
+    };
+
+    if let (Some(messages_by_id), Some(latest_message_id)) = (
+        messages.as_object(),
+        details.get("latest_message_id").and_then(Value::as_str),
+    ) && let Some(message) = messages_by_id.get(latest_message_id)
+        && let Some(text) = extract_assistant_message_text(message)
+    {
+        return text;
+    }
+
+    match messages {
+        Value::Array(messages_list) => messages_list
+            .iter()
+            .rev()
+            .find_map(extract_assistant_message_text)
+            .unwrap_or_default(),
+        Value::Object(messages_by_id) => {
+            let mut latest_text = String::new();
+            let mut latest_created_at: Option<&str> = None;
+            for message in messages_by_id.values() {
+                let Some(text) = extract_assistant_message_text(message) else {
+                    continue;
+                };
+                let created_at = message.get("_created_at").and_then(Value::as_str);
+                if latest_text.is_empty() || created_at > latest_created_at {
+                    latest_created_at = created_at;
+                    latest_text = text;
+                }
+            }
+            latest_text
+        }
+        _ => String::new(),
+    }
+}
+
+fn extract_assistant_message_text(message: &Value) -> Option<String> {
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let text = Conversation::extract_message_text(message);
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn extract_otto_stream_error(data: Option<&Value>) -> String {
+    data.and_then(|value| {
+        value
+            .get("error")
+            .or_else(|| value.get("message"))
+            .or_else(|| value.get("detail"))
+            .and_then(|field| field.as_str())
+            .map(String::from)
+    })
+    .unwrap_or_else(|| "response error".to_string())
+}
+
+fn raw_otto_stream_update_to_stream_event(event: &OttoStreamUpdate) -> Option<StreamEvent> {
+    let data = event.data.as_ref()?;
+    match event.event_type.as_str() {
+        "response.output_text.delta" => data
+            .get("delta")
+            .and_then(|v| v.as_str())
+            .map(|d| StreamEvent::TextDelta(d.to_string())),
+        "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
+            Some(StreamEvent::ReasoningDelta {
+                item_id: data
+                    .get("item_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                delta: data
+                    .get("delta")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+        }
+        "response.output_item.added" => {
+            let item = data.get("item")?;
+            if item.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                Some(StreamEvent::ToolCallStart {
+                    item_id: item
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    call_id: item
+                        .get("call_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    name: item
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    arguments: item
+                        .get("arguments")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("{}")
+                        .to_string(),
+                })
+            } else {
+                None
+            }
+        }
+        "response.function_call_arguments.delta" => Some(StreamEvent::ToolCallArgsDelta {
+            item_id: data
+                .get("item_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            delta: data
+                .get("delta")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        }),
+        "response.run_item_stream_event.tool_call_output_item" => {
+            Some(StreamEvent::ToolCallOutput {
+                call_id: data
+                    .get("call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                output: data
+                    .get("output")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            })
+        }
+        _ => None,
     }
 }
 

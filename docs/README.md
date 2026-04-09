@@ -16,3 +16,4 @@
 ## Contributing
 
 - [Development](DEVELOPMENT.md): contributor setup, architecture, release process
+- [Execution Plans](exec-plans/README.md): active and completed execution plans

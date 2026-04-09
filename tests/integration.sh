@@ -8,10 +8,77 @@ CLI="uv run ascend-tools"
 PASS=0
 FAIL=0
 SKIP=0
+FOUNDRY_SIMPLE_PROMPT="Briefly explain what ASCEND_INSTANCE_API_URL is used for in one sentence."
+OTTO_TOOL_PROMPT="Use a tool to inspect the current workspace root, confirm whether the repo contains both ascend-tools and ascend-backend, and answer in two short sentences with the names you found."
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1 — $2"; FAIL=$((FAIL + 1)); }
 skip() { echo "  SKIP: $1"; SKIP=$((SKIP + 1)); }
+
+jsonl_completed_with_output() {
+  echo "$1" | jq -e -s '
+    def assistant_text:
+      [(.content // [])[]? | .text // .output_text // empty] | join("");
+    def completed_snapshot_has_text:
+      any(
+        .[];
+        .record_type == "event"
+        and .event_type == "thread.details"
+        and (.data.is_processing == false)
+        and (
+          (.data.messages | type == "object")
+          and any(
+            (.data.messages | to_entries[]?.value);
+            .role == "assistant" and (assistant_text | length > 0)
+          )
+        )
+      );
+    def has_text_delta:
+      any(
+        .[];
+        .record_type == "event"
+        and .event_type == "response.output_text.delta"
+        and ((.data.delta // "") | length > 0)
+      );
+    any(.[]; .record_type == "terminal" and .stream_status == "completed")
+    and (has_text_delta or completed_snapshot_has_text)
+  ' >/dev/null
+}
+
+jsonl_has_explicit_failure() {
+  echo "$1" | jq -e -s '
+    (
+      first(.[] | select(.record_type == "terminal")).stream_status == "interrupted"
+      and (
+        (first(.[] | select(.record_type == "terminal")).stream_error // "") | length
+      ) > 0
+    )
+    or any(.[]; .record_type == "event" and .event_type == "response.error")
+  ' >/dev/null
+}
+
+jsonl_has_reasoning_events() {
+  echo "$1" | jq -e -s '
+    any(
+      .[];
+      .record_type == "event"
+      and (
+        .event_type == "response.reasoning_summary_text.delta"
+        or .event_type == "response.reasoning_text.delta"
+      )
+    )
+  ' >/dev/null
+}
+
+jsonl_has_tool_argument_deltas() {
+  echo "$1" | jq -e -s '
+    any(
+      .[];
+      .record_type == "event"
+      and .event_type == "response.function_call_arguments.delta"
+    )
+  ' >/dev/null
+}
 
 # Run `flow run` with retries for transient readiness states.
 run_flow_retry() {
@@ -35,6 +102,52 @@ run_flow_retry() {
     if [ "$rc" -eq 0 ]; then
       echo "$out"
       return 0
+    fi
+
+    if echo "$out" | grep -qi "starting\|no health status\|initializing"; then
+      continue
+    fi
+
+    echo "$out"
+    return "$rc"
+  done
+
+  echo "$out"
+  return "$rc"
+}
+
+# Run `otto run` with retries for paused or still-starting local workspaces.
+run_otto_retry() {
+  local workspace_title="$1"
+  local model_id="$2"
+  local prompt="$3"
+  local provider_id="${4:-}"
+
+  local out=""
+  local rc=1
+  local delay
+  for delay in 0 2 5 10 15; do
+    if [ "$delay" -gt 0 ]; then
+      sleep "$delay"
+    fi
+
+    set +e
+    if [ -n "$provider_id" ]; then
+      out=$($CLI otto run "$prompt" --workspace "$workspace_title" --provider "$provider_id" --model "$model_id" --thinking medium --jsonl 2>&1)
+    else
+      out=$($CLI otto run "$prompt" --workspace "$workspace_title" --model "$model_id" --thinking medium --jsonl 2>&1)
+    fi
+    rc=$?
+    set -e
+
+    if [ "$rc" -eq 0 ]; then
+      echo "$out"
+      return 0
+    fi
+
+    if echo "$out" | grep -qi "paused"; then
+      $CLI -o json workspace resume "$workspace_title" >/dev/null 2>&1 || true
+      continue
     fi
 
     if echo "$out" | grep -qi "starting\|no health status\|initializing"; then
@@ -110,6 +223,8 @@ else
   fail "workspace get" "expected $RUNTIME_UUID, got $GOT_UUID"
 fi
 
+RUNTIME_PAUSED=$(echo "$GET_JSON" | jq -r '.paused')
+
 # verify expected fields
 for field in uuid id title kind project_uuid environment_uuid created_at updated_at; do
   VAL=$(echo "$GET_JSON" | jq -r ".$field")
@@ -170,6 +285,144 @@ if [ "$PROFILE_COUNT" -gt 0 ]; then
   pass "profile list returned $PROFILE_COUNT profile(s)"
 else
   skip "no profiles found"
+fi
+
+# ---------- otto ----------
+
+echo "=== otto ==="
+
+set +e
+OTTO_PROVIDERS_JSON=$($CLI -o json otto provider list 2>&1)
+OTTO_PROVIDERS_RC=$?
+set -e
+if [ "$OTTO_PROVIDERS_RC" -ne 0 ]; then
+  if echo "$OTTO_PROVIDERS_JSON" | grep -qi "not found\|not implemented\|404"; then
+    skip "otto provider list not available"
+  else
+    fail "otto provider list" "$OTTO_PROVIDERS_JSON"
+  fi
+else
+  pass "otto provider list returns JSON"
+  FOUNDRY_GPT54_MODEL=$(echo "$OTTO_PROVIDERS_JSON" | jq -r '
+    [
+      .[] | select(.id == "microsoft_foundry") | .models[]? | .id
+      | select(. == "azure_ai/gpt-5.4")
+    ][0] // empty
+  ')
+  OTTO_MODEL=$(echo "$OTTO_PROVIDERS_JSON" | jq -r '
+    [
+      .[] | .models[]? | .id
+      | select(test("(claude|gpt-5|gemini|^o[0-9])"; "i"))
+    ][0] // empty
+  ')
+
+  if [ -z "$OTTO_MODEL" ]; then
+    skip "no reasoning-capable otto model found for CLI thinking test"
+  else
+    echo "  using otto model: $OTTO_MODEL"
+    if [ "$RUNTIME_PAUSED" = "true" ]; then
+      PRE_OTTO_RESUME=$($CLI -o json workspace resume "$RUNTIME_TITLE" 2>&1)
+      PRE_OTTO_PAUSED=$(echo "$PRE_OTTO_RESUME" | jq -r '.paused')
+      if [ "$PRE_OTTO_PAUSED" = "false" ]; then
+        pass "workspace resume clears paused before otto"
+      else
+        fail "workspace resume before otto" "expected paused=false, got $PRE_OTTO_PAUSED"
+      fi
+    fi
+
+    if [ -n "$FOUNDRY_GPT54_MODEL" ]; then
+      set +e
+      FOUNDRY_SIMPLE_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$FOUNDRY_GPT54_MODEL" "$FOUNDRY_SIMPLE_PROMPT" "microsoft_foundry")
+      FOUNDRY_SIMPLE_RC=$?
+      set -e
+
+      if [ "$FOUNDRY_SIMPLE_RC" -ne 0 ]; then
+        fail "foundry gpt-5.4 simple prompt" "$FOUNDRY_SIMPLE_OUT"
+      else
+        if echo "$FOUNDRY_SIMPLE_OUT" | jq -e 'select(.record_type == "request") | .provider == "microsoft_foundry" and .model == "azure_ai/gpt-5.4"' >/dev/null; then
+          pass "foundry gpt-5.4 simple prompt preserved provider/model provenance"
+        else
+          fail "foundry gpt-5.4 simple prompt" "missing exact provider/model provenance"
+        fi
+
+        if jsonl_completed_with_output "$FOUNDRY_SIMPLE_OUT"; then
+          pass "foundry gpt-5.4 simple prompt returned assistant output"
+        elif jsonl_has_explicit_failure "$FOUNDRY_SIMPLE_OUT"; then
+          pass "foundry gpt-5.4 simple prompt surfaced an explicit failure"
+        else
+          fail "foundry gpt-5.4 simple prompt" "missing assistant output and explicit surfaced failure"
+        fi
+      fi
+
+      set +e
+      FOUNDRY_TOOL_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$FOUNDRY_GPT54_MODEL" "$OTTO_TOOL_PROMPT" "microsoft_foundry")
+      FOUNDRY_TOOL_RC=$?
+      set -e
+
+      if [ "$FOUNDRY_TOOL_RC" -ne 0 ]; then
+        fail "foundry gpt-5.4 tool prompt" "$FOUNDRY_TOOL_OUT"
+      else
+        if jsonl_completed_with_output "$FOUNDRY_TOOL_OUT"; then
+          pass "foundry gpt-5.4 tool prompt returned assistant output"
+          if jsonl_has_reasoning_events "$FOUNDRY_TOOL_OUT"; then
+            pass "foundry gpt-5.4 tool prompt surfaced reasoning events"
+          else
+            fail "foundry gpt-5.4 tool prompt" "missing reasoning events on successful tool prompt"
+          fi
+          if jsonl_has_tool_argument_deltas "$FOUNDRY_TOOL_OUT"; then
+            pass "foundry gpt-5.4 tool prompt surfaced tool argument deltas"
+          else
+            fail "foundry gpt-5.4 tool prompt" "missing tool argument deltas on successful tool prompt"
+          fi
+        elif jsonl_has_explicit_failure "$FOUNDRY_TOOL_OUT"; then
+          pass "foundry gpt-5.4 tool prompt surfaced an explicit failure"
+        else
+          fail "foundry gpt-5.4 tool prompt" "missing assistant output and explicit surfaced failure"
+        fi
+      fi
+    else
+      skip "foundry gpt-5.4 model not available for exact-path probe"
+    fi
+
+    set +e
+    OTTO_RUN_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$OTTO_MODEL" "$OTTO_TOOL_PROMPT")
+    OTTO_RUN_RC=$?
+    set -e
+
+    if [ "$OTTO_RUN_RC" -ne 0 ]; then
+      fail "otto run --thinking" "$OTTO_RUN_OUT"
+    else
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "request") | .request_body.thinking == "medium"' >/dev/null; then
+        pass "otto run --jsonl preserves explicit thinking in request record"
+      else
+        fail "otto run --jsonl" "missing or incorrect thinking in request record"
+      fi
+
+      if echo "$OTTO_RUN_OUT" | jq -e 'select(.record_type == "event")' >/dev/null; then
+        pass "otto run --jsonl emitted ordered event records"
+      else
+        fail "otto run --jsonl" "missing event records"
+      fi
+
+      if jsonl_completed_with_output "$OTTO_RUN_OUT"; then
+        pass "otto run --jsonl emitted completed output"
+      else
+        fail "otto run --jsonl" "missing completed assistant output"
+      fi
+
+      if jsonl_has_reasoning_events "$OTTO_RUN_OUT"; then
+        pass "otto run --jsonl surfaced reasoning events for the tool-use prompt"
+      else
+        fail "otto run --jsonl" "missing reasoning events for the required tool-use prompt"
+      fi
+
+      if jsonl_has_tool_argument_deltas "$OTTO_RUN_OUT"; then
+        pass "otto run --jsonl surfaced tool argument deltas for the tool-use prompt"
+      else
+        fail "otto run --jsonl" "missing tool argument deltas for the required tool-use prompt"
+      fi
+    fi
+  fi
 fi
 
 # ---------- flows ----------

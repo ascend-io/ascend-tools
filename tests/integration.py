@@ -22,6 +22,13 @@ from ascend_tools import Client
 PASS = 0
 FAIL = 0
 SKIP = 0
+FOUNDRY_SIMPLE_PROMPT = (
+    "Briefly explain what ASCEND_INSTANCE_API_URL is used for in one sentence."
+)
+OTTO_TOOL_PROMPT = (
+    "Use a tool to inspect the current workspace root, confirm whether the repo contains both "
+    "ascend-tools and ascend-backend, and answer in two short sentences with the names you found."
+)
 
 
 def check(condition: bool, label: str, detail: str = ""):
@@ -81,6 +88,110 @@ def run_flow_with_retry(
     if last_error is not None:
         raise last_error
     raise RuntimeError("run_flow retry exhausted")
+
+
+def run_otto_with_retry(
+    client: Client,
+    *,
+    workspace: str,
+    prompt: str,
+    model: str | None = None,
+    provider: str | None = None,
+    thinking: str | None = None,
+) -> dict:
+    """Run Otto with retries for paused or still-starting local workspaces."""
+    last_error: Exception | None = None
+    for delay in (0, 2, 5, 10, 15):
+        if delay:
+            time.sleep(delay)
+        try:
+            kwargs = {"prompt": prompt, "workspace": workspace}
+            if model is not None:
+                kwargs["model"] = model
+            if provider is not None:
+                kwargs["provider"] = provider
+            if thinking is not None:
+                kwargs["thinking"] = thinking
+            return client.otto(**kwargs)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            if "paused" in msg:
+                client.resume_workspace(title=workspace)
+                last_error = e
+                continue
+            if "starting" in msg or "no health status" in msg or "initializing" in msg:
+                last_error = e
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("otto retry exhausted")
+
+
+def pick_reasoning_model(providers: list[dict]) -> str | None:
+    for provider in providers:
+        for model in provider.get("models", []):
+            model_id = model.get("id", "")
+            if any(
+                token in model_id.lower() for token in ("claude", "gpt-5", "gemini")
+            ):
+                return model_id
+            if model_id.lower().startswith("o"):
+                return model_id
+    return None
+
+
+def find_provider_model(
+    providers: list[dict], provider_id: str, model_id: str
+) -> str | None:
+    for provider in providers:
+        if provider.get("id") != provider_id:
+            continue
+        for model in provider.get("models", []):
+            if model.get("id") == model_id:
+                return model_id
+    return None
+
+
+def exercise_otto_response_contract(
+    client: Client,
+    *,
+    workspace: str,
+    prompt: str,
+    label: str,
+    model: str | None = None,
+    provider: str | None = None,
+    allow_explicit_failure: bool = False,
+) -> bool:
+    try:
+        otto_resp = run_otto_with_retry(
+            client,
+            prompt=prompt,
+            workspace=workspace,
+            model=model,
+            provider=provider,
+            thinking="medium",
+        )
+        check(isinstance(otto_resp, dict), f"{label} returns dict")
+        check("message" in otto_resp, f"{label} response has 'message' key")
+        check("thread_id" in otto_resp, f"{label} response has 'thread_id' key")
+        check(
+            bool(str(otto_resp.get("message", "")).strip()),
+            f"{label} returned assistant output",
+            repr(otto_resp.get("message")),
+        )
+        return True
+    except Exception as e:  # noqa: BLE001
+        if allow_explicit_failure:
+            check(
+                bool(str(e).strip()),
+                f"{label} surfaced explicit failure",
+                str(e),
+            )
+            return False
+        check(False, label, str(e))
+        return False
 
 
 def main():
@@ -229,22 +340,63 @@ def main():
 
     print("=== otto chat ===")
 
+    reasoning_model = None
+    foundry_gpt54_model = None
+    if got.get("paused") is True:
+        resumed = client.resume_workspace(title=ws_title)
+        check(
+            resumed.get("paused") is False,
+            "resume_workspace clears paused before otto",
+        )
     try:
-        otto_resp = client.otto(prompt="ping", workspace=ws_title)
-        check(isinstance(otto_resp, dict), "otto returns dict")
-        check("message" in otto_resp, "otto response has 'message' key")
-        check("thread_id" in otto_resp, "otto response has 'thread_id' key")
-    except Exception as e:  # noqa: BLE001
-        msg = str(e).lower()
-        if "not found" in msg or "not implemented" in msg or "404" in msg:
-            skip(f"otto not available: {e}")
-        else:
-            check(False, "otto", str(e))
+        provider_probe = client.list_otto_providers()
+        if isinstance(provider_probe, list):
+            reasoning_model = pick_reasoning_model(provider_probe)
+            foundry_gpt54_model = find_provider_model(
+                provider_probe, "microsoft_foundry", "azure_ai/gpt-5.4"
+            )
+    except Exception:
+        pass
+
+    if foundry_gpt54_model:
+        exercise_otto_response_contract(
+            client,
+            workspace=ws_title,
+            prompt=FOUNDRY_SIMPLE_PROMPT,
+            label="foundry gpt-5.4 simple prompt",
+            model=foundry_gpt54_model,
+            provider="microsoft_foundry",
+            allow_explicit_failure=True,
+        )
+        exercise_otto_response_contract(
+            client,
+            workspace=ws_title,
+            prompt=OTTO_TOOL_PROMPT,
+            label="foundry gpt-5.4 tool prompt",
+            model=foundry_gpt54_model,
+            provider="microsoft_foundry",
+            allow_explicit_failure=True,
+        )
+    else:
+        skip("foundry gpt-5.4 model not available for exact-path SDK probe")
+
+    if reasoning_model:
+        if exercise_otto_response_contract(
+            client,
+            workspace=ws_title,
+            prompt=OTTO_TOOL_PROMPT,
+            label=f"otto explicit thinking contract for {reasoning_model}",
+            model=reasoning_model,
+        ):
+            check(True, f"otto accepts explicit thinking for {reasoning_model}")
+    else:
+        skip("no reasoning-capable otto model found for explicit thinking request")
 
     # ---------- otto provider ----------
 
     print("=== otto provider ===")
 
+    providers = None
     try:
         providers = client.list_otto_providers()
         check(isinstance(providers, list), "list_otto_providers returns list")

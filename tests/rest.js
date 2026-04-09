@@ -259,6 +259,34 @@ class AscendClient {
       runtime_uuid: runtimeUuid,
     });
   }
+
+  // -- Otto --
+
+  async listOttoProviders() {
+    return this._get("/api/v1/otto/providers");
+  }
+
+  async createOttoThread({ prompt, runtimeUuid, model, thinking } = {}) {
+    const body = { prompt };
+    if (runtimeUuid != null) body.runtime_uuid = runtimeUuid;
+    if (model != null) body.model = model;
+    if (thinking != null) body.thinking = thinking;
+    return this._postJson("/api/v1/otto/threads", body);
+  }
+
+  async openOttoUpdates(threadId) {
+    const resp = await fetch(
+      `${this.baseUrl}/api/v1/otto/threads/${encode(threadId)}/updates`,
+      {
+        headers: {
+          ...(await this._headers()),
+          Accept: "text/event-stream",
+        },
+      },
+    );
+    if (!resp.ok) await raiseForApiError(resp);
+    return resp;
+  }
 }
 
 /** Percent-encode a URL path segment. */
@@ -272,7 +300,13 @@ async function raiseForApiError(resp) {
   let detail = await resp.text();
   try {
     const json = JSON.parse(detail);
-    if (json.detail) detail = json.detail;
+    if (json.detail) {
+      detail =
+        typeof json.detail === "string" ? json.detail : JSON.stringify(json.detail);
+    } else if (json.error) {
+      detail =
+        typeof json.error === "string" ? json.error : JSON.stringify(json.error);
+    }
   } catch {
     // keep raw text
   }
@@ -322,6 +356,105 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function pickReasoningOttoModel(providers) {
+  for (const provider of providers) {
+    for (const model of provider.models ?? []) {
+      if (/(claude|gpt-5|o\d|gemini)/i.test(model.id)) {
+        return model.id;
+      }
+    }
+  }
+  return null;
+}
+
+const OTTO_TOOL_PROMPT =
+  "Use a tool to inspect the current workspace root, confirm whether the repo contains both ascend-tools and ascend-backend, and answer in two short sentences with the names you found.";
+
+function parseSseFrame(rawFrame) {
+  const lines = rawFrame.split(/\r?\n/);
+  let event = "message";
+  const dataLines = [];
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+  if (dataLines.length === 0) return null;
+  const data = dataLines.join("\n");
+  let parsed;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    parsed = data;
+  }
+  return { event, data: parsed };
+}
+
+function findSseFrameBoundary(buffer) {
+  const match = buffer.match(/\r\n\r\n|\n\n|\r\r/);
+  if (!match || match.index == null) return null;
+  return { index: match.index, length: match[0].length };
+}
+
+async function readSseEvents(resp, { timeoutMs = 20000 } = {}) {
+  if (!resp.body) throw new Error("SSE response has no body");
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  const events = [];
+  let buffer = "";
+
+  const readChunk = () =>
+    Promise.race([
+      reader.read(),
+      new Promise((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(`timed out waiting for SSE chunk after ${timeoutMs}ms`),
+            ),
+          timeoutMs,
+        ),
+      ),
+    ]);
+
+  try {
+    for (;;) {
+      const { value, done } = await readChunk();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = findSseFrameBoundary(buffer);
+      while (boundary) {
+        const rawFrame = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary.length);
+        const parsed = parseSseFrame(rawFrame);
+        if (parsed) {
+          events.push(parsed);
+          if (
+            parsed.event === "thread.done" ||
+            parsed.event === "thread.stopped" ||
+            parsed.event === "response.error"
+          ) {
+            await reader.cancel().catch(() => {});
+            return events;
+          }
+        }
+        boundary = findSseFrameBoundary(buffer);
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+
+  return events;
+}
+
 /**
  * Run a flow with retries for transient readiness states.
  */
@@ -345,6 +478,42 @@ async function runFlowWithRetry(client, runtimeUuid, flowName, opts = {}) {
     }
   }
   throw lastError ?? new Error("runFlow retry exhausted");
+}
+
+async function createOttoThreadWithRetry(
+  client,
+  runtimeUuid,
+  { prompt, model, thinking },
+) {
+  let lastError;
+  for (const delay of [0, 2, 5, 10, 15]) {
+    if (delay) await sleep(delay * 1000);
+    try {
+      return await client.createOttoThread({
+        prompt,
+        runtimeUuid,
+        model,
+        thinking,
+      });
+    } catch (e) {
+      const msg = String(e.message || e).toLowerCase();
+      if (msg.includes("paused")) {
+        await client.resumeRuntime(runtimeUuid);
+        lastError = e;
+        continue;
+      }
+      if (
+        msg.includes("starting") ||
+        msg.includes("no health status") ||
+        msg.includes("initializing")
+      ) {
+        lastError = e;
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError ?? new Error("createOttoThread retry exhausted");
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +630,96 @@ async function main() {
     byKind.every((r) => r.kind === kind),
     "all results match kind filter",
   );
+
+  // ---------- otto streaming ----------
+
+  console.log("=== otto streaming ===");
+
+  try {
+    if (isPaused) {
+      const resumed = await client.resumeRuntime(runtimeUuid);
+      check(
+        resumed.paused === false,
+        "resumeRuntime clears paused before otto probe",
+      );
+    }
+    const ottoProviders = await client.listOttoProviders();
+    check(Array.isArray(ottoProviders), "listOttoProviders returns array");
+
+    if (!ottoProviders.length) {
+      skip("no otto providers configured — skipping otto streaming probe");
+    } else {
+      const ottoModel = pickReasoningOttoModel(ottoProviders);
+      if (!ottoModel) {
+        skip("no reasoning-capable otto model found for streaming probe");
+      } else {
+        console.log(`  using otto model: ${ottoModel}`);
+        const thread = await createOttoThreadWithRetry(client, runtimeUuid, {
+          prompt: OTTO_TOOL_PROMPT,
+          model: ottoModel,
+          thinking: "medium",
+        });
+        check(
+          typeof thread === "object" && thread.thread_id,
+          `createOttoThread returned thread_id: ${thread.thread_id}`,
+        );
+
+        const updates = await client.openOttoUpdates(thread.thread_id);
+        const events = await readSseEvents(updates);
+        const eventTypes = events.map((event) => event.event);
+        const textDeltas = events.filter(
+          (event) => event.event === "response.output_text.delta",
+        );
+        const reasoningDeltas = events.filter((event) =>
+          [
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta",
+          ].includes(event.event),
+        );
+        const toolArgDeltas = events.filter(
+          (event) => event.event === "response.function_call_arguments.delta",
+        );
+        const terminalEvent = events.find((event) =>
+          ["thread.done", "thread.stopped", "response.error"].includes(
+            event.event,
+          ),
+        );
+
+        check(events.length > 0, "otto SSE returned events");
+        check(
+          textDeltas.length > 0,
+          "otto SSE included text deltas",
+          JSON.stringify(eventTypes),
+        );
+        check(
+          Boolean(terminalEvent),
+          "otto SSE reached a terminal event",
+          JSON.stringify(eventTypes),
+        );
+        check(
+          reasoningDeltas.length > 0,
+          "otto SSE surfaced reasoning deltas for the required tool-use prompt",
+          JSON.stringify(eventTypes),
+        );
+        check(
+          toolArgDeltas.length > 0,
+          "otto SSE surfaced function_call_arguments deltas for the required tool-use prompt",
+          JSON.stringify(eventTypes),
+        );
+      }
+    }
+  } catch (e) {
+    const msg = String(e.message || e).toLowerCase();
+    if (
+      msg.includes("not found") ||
+      msg.includes("not implemented") ||
+      msg.includes("404")
+    ) {
+      skip(`otto streaming not available: ${e.message || e}`);
+    } else {
+      check(false, "otto streaming probe", e.message || String(e));
+    }
+  }
 
   // ---------- flows ----------
 

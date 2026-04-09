@@ -42,6 +42,113 @@ fn mock_auth(server: &mut Server, token: &str, expiration: u64, token_expect: us
 }
 
 #[test]
+fn otto_request_serializes_optional_thinking() {
+    let request = OttoChatRequest {
+        prompt: "hello".into(),
+        runtime_uuid: Some("rt-1".into()),
+        thread_id: Some("thread-1".into()),
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let body = serde_json::to_value(&request).unwrap();
+    assert_eq!(body["prompt"], "hello");
+    assert_eq!(body["runtime_uuid"], "rt-1");
+    assert_eq!(body["thinking"], "medium");
+    assert!(body.get("thread_id").is_none(), "thread_id is path-only");
+}
+
+#[test]
+fn otto_streaming_events_exposes_raw_updates() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-raw-stream", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer token-raw-stream")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-raw"}"#)
+        .expect(1)
+        .create();
+
+    let preview_body = serde_json::json!({
+        "id": "thread-raw",
+        "title": "Raw thread",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": true,
+        "context_window_stats": null,
+        "total_message_count": 1,
+        "has_more": false,
+        "oldest_message_id": null,
+        "latest_message_id": "msg-1"
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: thread.preview\ndata: {preview_body}\n\n\
+         event: response.reasoning_summary_text.delta\ndata: {{\"item_id\":\"rs_1\",\"delta\":\"Thinking...\"}}\n\n\
+         event: thread.done\ndata: {{}}\n\n"
+    );
+
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/thread-raw/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "hello".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let mut observed_thread_id = None;
+    let mut event_types = Vec::new();
+    let mut raw_payloads = Vec::new();
+    let response = client
+        .otto_streaming_events(
+            &request,
+            |event| {
+                event_types.push(event.event_type.clone());
+                raw_payloads.push((event.raw_data.clone(), event.data.clone()));
+                ControlFlow::Continue(())
+            },
+            |tid| {
+                observed_thread_id = Some(tid.to_string());
+            },
+        )
+        .unwrap();
+
+    updates.assert();
+    assert_eq!(observed_thread_id.as_deref(), Some("thread-raw"));
+    assert_eq!(
+        event_types,
+        vec![
+            "thread.preview",
+            "response.reasoning_summary_text.delta",
+            "thread.done",
+        ]
+    );
+    assert!(raw_payloads[0].0.contains("\"id\":\"thread-raw\""));
+    assert_eq!(
+        raw_payloads[1].1.as_ref().unwrap()["delta"],
+        serde_json::json!("Thinking...")
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("thread-raw"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
+#[test]
 fn api_error_prefers_detail_field_when_present() {
     let mut server = Server::new();
     let now = SystemTime::now()
@@ -417,6 +524,7 @@ fn otto_streaming_interrupted_when_sse_closes_without_terminal_event() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut observed_thread_id = None;
@@ -490,6 +598,7 @@ fn otto_streaming_completes_on_thread_done() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut text = String::new();
@@ -551,6 +660,7 @@ fn otto_streaming_completes_on_thread_stopped() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut text = String::new();
@@ -613,6 +723,7 @@ fn otto_streaming_cancelled_by_callback() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut delta_count = 0;
@@ -678,6 +789,7 @@ fn otto_streaming_handles_response_error_event() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut text = String::new();
@@ -730,8 +842,12 @@ fn otto_streaming_dispatches_tool_call_events() {
         .create();
 
     let sse_body = concat!(
+        "event: response.reasoning_text.delta\n",
+        "data: {\"item_id\":\"rs_1\",\"content_index\":0,\"delta\":\"Thinking...\"}\n\n",
         "event: response.output_item.added\n",
-        "data: {\"item\":{\"type\":\"function_call\",\"call_id\":\"c1\",\"name\":\"list_flows\",\"arguments\":\"{}\"}}\n\n",
+        "data: {\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"c1\",\"name\":\"list_flows\",\"arguments\":\"{}\"}}\n\n",
+        "event: response.function_call_arguments.delta\n",
+        "data: {\"item_id\":\"fc_1\",\"delta\":\"{\\\"path\\\":\\\".\\\"}\"}\n\n",
         "event: response.run_item_stream_event.tool_call_output_item\n",
         "data: {\"call_id\":\"c1\",\"output\":\"[{\\\"name\\\":\\\"sales\\\"}]\"}\n\n",
         "event: response.output_text.delta\ndata: {\"delta\":\"Found 1 flow.\"}\n\n",
@@ -751,6 +867,7 @@ fn otto_streaming_dispatches_tool_call_events() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut events_log: Vec<String> = Vec::new();
@@ -760,8 +877,14 @@ fn otto_streaming_dispatches_tool_call_events() {
             |event| {
                 match &event {
                     StreamEvent::TextDelta(d) => events_log.push(format!("delta:{d}")),
+                    StreamEvent::ReasoningDelta { delta, .. } => {
+                        events_log.push(format!("reasoning:{delta}"))
+                    }
                     StreamEvent::ToolCallStart { name, call_id, .. } => {
                         events_log.push(format!("tool_start:{name}:{call_id}"))
+                    }
+                    StreamEvent::ToolCallArgsDelta { item_id, delta } => {
+                        events_log.push(format!("tool_args:{item_id}:{delta}"))
                     }
                     StreamEvent::ToolCallOutput { call_id, output } => {
                         events_log.push(format!("tool_output:{call_id}:{output}"))
@@ -777,7 +900,9 @@ fn otto_streaming_dispatches_tool_call_events() {
     assert_eq!(
         events_log,
         vec![
+            "reasoning:Thinking...",
             "tool_start:list_flows:c1",
+            "tool_args:fc_1:{\"path\":\".\"}",
             "tool_output:c1:[{\"name\":\"sales\"}]",
             "delta:Found 1 flow.",
         ]
@@ -827,6 +952,7 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let mut text = String::new();
@@ -844,6 +970,319 @@ fn otto_streaming_skips_heartbeats_and_comments() {
         .unwrap();
 
     assert_eq!(text, "ab");
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+}
+
+// ---------------------------------------------------------------------------
+// Otto streaming: completed `thread.details` snapshot is terminal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn otto_streaming_events_complete_on_completed_thread_details_snapshot() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-details-done", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .match_header("authorization", "Bearer token-details-done")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-details-done"}"#)
+        .expect(1)
+        .create();
+
+    let initial_details_body = serde_json::json!({
+        "id": "t-details-done",
+        "title": "Orders sync debug",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:00Z",
+        "is_processing": true,
+        "context_window_stats": null,
+        "total_message_count": 1,
+        "has_more": false,
+        "oldest_message_id": "msg-user-1",
+        "latest_message_id": "msg-user-1"
+    })
+    .to_string();
+    let reasoning_body = serde_json::json!({
+        "item_id": "rs_1",
+        "content_index": 0,
+        "delta": "Checking the deployment state before answering."
+    })
+    .to_string();
+    let tool_added_body = serde_json::json!({
+        "item": {
+            "id": "fc_1",
+            "type": "function_call",
+            "call_id": "call_1",
+            "name": "get_flow_run",
+            "arguments": "{}"
+        }
+    })
+    .to_string();
+    let tool_args_body = serde_json::json!({
+        "item_id": "fc_1",
+        "delta": "{\"runtime\":\"workspace-prod\",\"flow\":\"orders/daily_sync\"}"
+    })
+    .to_string();
+    let tool_output_body = serde_json::json!({
+        "call_id": "call_1",
+        "output": "{\"status\":\"failed\",\"error\":\"warehouse timeout\"}"
+    })
+    .to_string();
+    let text_delta_one_body = serde_json::json!({
+        "delta": "The last orders/daily_sync run failed because the warehouse timed out. "
+    })
+    .to_string();
+    let text_delta_two_body = serde_json::json!({
+        "delta": "No restart is needed; retry the flow after the warehouse recovers."
+    })
+    .to_string();
+    let completed_details_body = serde_json::json!({
+        "id": "t-details-done",
+        "title": "Orders sync debug",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:05Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 2,
+        "has_more": false,
+        "oldest_message_id": "msg-user-1",
+        "latest_message_id": "msg-assistant-1"
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: thread.details\ndata: {initial_details_body}\n\n\
+         event: response.reasoning_text.delta\ndata: {reasoning_body}\n\n\
+         event: response.output_item.added\ndata: {tool_added_body}\n\n\
+         event: response.function_call_arguments.delta\ndata: {tool_args_body}\n\n\
+         event: response.run_item_stream_event.tool_call_output_item\ndata: {tool_output_body}\n\n\
+         event: response.output_text.delta\ndata: {text_delta_one_body}\n\n\
+         event: response.output_text.delta\ndata: {text_delta_two_body}\n\n\
+         event: thread.details\ndata: {completed_details_body}\n\n\
+         :ping\n\n"
+    );
+    let updates = server
+        .mock("GET", "/api/v1/otto/threads/t-details-done/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "Inspect the failed orders sync and explain whether the workspace needs a restart."
+            .into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("high".into()),
+    };
+
+    let mut observed_thread_id = None;
+    let mut event_types = Vec::new();
+    let mut parsed_payloads = Vec::new();
+    let response = client
+        .otto_streaming_events(
+            &request,
+            |event| {
+                event_types.push(event.event_type.clone());
+                parsed_payloads.push(event.data.clone());
+                ControlFlow::Continue(())
+            },
+            |tid| {
+                observed_thread_id = Some(tid.to_string());
+            },
+        )
+        .unwrap();
+
+    updates.assert();
+    assert_eq!(observed_thread_id.as_deref(), Some("t-details-done"));
+    assert_eq!(
+        event_types,
+        vec![
+            "thread.details",
+            "response.reasoning_text.delta",
+            "response.output_item.added",
+            "response.function_call_arguments.delta",
+            "response.run_item_stream_event.tool_call_output_item",
+            "response.output_text.delta",
+            "response.output_text.delta",
+            "thread.details",
+        ]
+    );
+    assert_eq!(
+        parsed_payloads.last().as_ref().unwrap().as_ref().unwrap()["is_processing"],
+        serde_json::json!(false)
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("t-details-done"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+    assert!(response.stream_error.is_none());
+}
+
+#[test]
+fn otto_reconstructs_final_message_from_completed_thread_details_snapshot_without_latest_message_id()
+ {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-final-snapshot", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-final-snapshot"}"#)
+        .expect(1)
+        .create();
+
+    let completed_details_body = serde_json::json!({
+        "id": "t-final-snapshot",
+        "title": "Final snapshot",
+        "messages": {
+            "msg-user-1": {
+                "id": "msg-user-1",
+                "type": "message",
+                "role": "user",
+                "content": "Explain the API URL."
+            },
+            "msg-assistant-0": {
+                "id": "msg-assistant-0",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "Old reply that should not win."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:01Z"
+            },
+            "msg-assistant-1": {
+                "id": "msg-assistant-1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "ASCEND_INSTANCE_API_URL points ascend-tools at the instance API."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:02Z"
+            }
+        },
+        "updated_at": "2026-01-01T00:00:02Z",
+        "is_processing": false
+    })
+    .to_string();
+    let sse_body = format!("event: thread.details\ndata: {completed_details_body}\n\n:ping\n\n");
+    server
+        .mock("GET", "/api/v1/otto/threads/t-final-snapshot/updates")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "Explain the API URL.".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let response = client.otto(&request).unwrap();
+
+    assert_eq!(
+        response.message,
+        "ASCEND_INSTANCE_API_URL points ascend-tools at the instance API."
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("t-final-snapshot"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+    assert!(response.stream_error.is_none());
+}
+
+#[test]
+fn otto_prefers_completed_thread_details_message_over_partial_text_deltas() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-partial-snapshot", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"t-partial-snapshot"}"#)
+        .expect(1)
+        .create();
+
+    let partial_delta_body = serde_json::json!({
+        "delta": "The warehouse timed out. "
+    })
+    .to_string();
+    let completed_details_body = serde_json::json!({
+        "id": "t-partial-snapshot",
+        "title": "Warehouse timeout",
+        "messages": {
+            "msg-assistant-1": {
+                "id": "msg-assistant-1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "The warehouse timed out during orders sync. Retry the flow after the warehouse recovers."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:03Z"
+            }
+        },
+        "latest_message_id": "msg-assistant-1",
+        "updated_at": "2026-01-01T00:00:03Z",
+        "is_processing": false
+    })
+    .to_string();
+    let sse_body = format!(
+        "event: response.output_text.delta\ndata: {partial_delta_body}\n\n\
+         event: thread.details\ndata: {completed_details_body}\n\n"
+    );
+    server
+        .mock("GET", "/api/v1/otto/threads/t-partial-snapshot/updates")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "Why did the sync fail?".into(),
+        runtime_uuid: None,
+        thread_id: None,
+        model: None,
+        thinking: Some("medium".into()),
+    };
+
+    let response = client.otto(&request).unwrap();
+
+    assert_eq!(
+        response.message,
+        "The warehouse timed out during orders sync. Retry the flow after the warehouse recovers."
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("t-partial-snapshot"));
     assert_eq!(response.stream_status, OttoStreamStatus::Completed);
 }
 
@@ -882,6 +1321,7 @@ fn otto_streaming_sse_endpoint_returns_error() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -922,6 +1362,7 @@ fn otto_streaming_thread_post_returns_error() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -968,6 +1409,7 @@ fn otto_non_streaming_errors_on_interrupted_stream() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     // otto() (non-streaming) should return an error for interrupted streams
@@ -1028,6 +1470,7 @@ fn otto_streaming_retries_409_on_follow_up() {
         runtime_uuid: None,
         thread_id: Some("t-existing".into()),
         model: None,
+        thinking: None,
     };
 
     let mut text = String::new();
@@ -1075,6 +1518,7 @@ fn otto_streaming_409_on_new_thread_returns_error() {
         runtime_uuid: None,
         thread_id: None, // new thread — no retry
         model: None,
+        thinking: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -1124,6 +1568,7 @@ fn otto_streaming_on_thread_id_called_before_events() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let callback_order = std::sync::Mutex::new(Vec::<String>::new());
@@ -1185,6 +1630,7 @@ fn otto_streaming_empty_sse_stream_returns_interrupted() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let response = client
@@ -1222,6 +1668,7 @@ fn otto_streaming_missing_thread_id_in_response() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let result = client.otto_streaming(&request, |_| ControlFlow::Continue(()), |_| {});
@@ -1357,6 +1804,7 @@ fn otto_streaming_response_error_without_message() {
         runtime_uuid: None,
         thread_id: None,
         model: None,
+        thinking: None,
     };
 
     let response = client

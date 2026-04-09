@@ -267,6 +267,8 @@ pub struct OttoChatRequest {
     pub thread_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<OttoModel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
 }
 
 /// Terminal status for an Otto stream.
@@ -310,17 +312,31 @@ pub struct OttoChatResponse {
     pub stream_error: Option<String>,
 }
 
+/// A raw Otto stream update from the per-thread SSE endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OttoStreamUpdate {
+    pub event_type: String,
+    pub raw_data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+}
+
 /// A streaming event from Otto.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
     /// A text delta from Otto's response.
     TextDelta(String),
+    /// A streamed reasoning delta from the current reasoning item.
+    ReasoningDelta { item_id: String, delta: String },
     /// A tool call has started.
     ToolCallStart {
+        item_id: String,
         call_id: String,
         name: String,
         arguments: String,
     },
+    /// Tool call arguments are still streaming in.
+    ToolCallArgsDelta { item_id: String, delta: String },
     /// A tool call has completed with output.
     ToolCallOutput { call_id: String, output: String },
 }

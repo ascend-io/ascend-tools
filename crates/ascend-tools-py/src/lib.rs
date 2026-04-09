@@ -508,7 +508,7 @@ impl Client {
         to_python(py, &providers)
     }
 
-    #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, conversation=None, model=None, provider=None))]
+    #[pyo3(signature = (*, prompt, workspace=None, deployment=None, uuid=None, thread_id=None, conversation=None, model=None, provider=None, thinking=None))]
     #[allow(clippy::too_many_arguments)]
     fn otto(
         &self,
@@ -521,6 +521,7 @@ impl Client {
         conversation: Option<&str>,
         model: Option<&str>,
         provider: Option<&str>,
+        thinking: Option<&str>,
     ) -> PyResult<Py<PyAny>> {
         let response = py
             .detach(|| {
@@ -536,6 +537,7 @@ impl Client {
                     runtime_uuid,
                     thread_id,
                     model: otto_model,
+                    thinking: thinking.map(String::from),
                 };
                 self.inner.otto(&request)
             })
