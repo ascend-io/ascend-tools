@@ -415,4 +415,6 @@ pub struct OttoProvider {
 pub struct OttoProviderModel {
     pub id: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_levels: Option<Vec<String>>,
 }

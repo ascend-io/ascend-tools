@@ -241,6 +241,7 @@ ascend-tools otto run "Help me debug this pipeline" --provider "OpenAI" --model 
 
 # List providers and models
 ascend-tools otto provider list
+ascend-tools -o json otto provider list   # includes per-model thinking_levels when available
 ascend-tools otto model list
 ascend-tools otto model list --provider "OpenAI"
 

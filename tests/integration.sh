@@ -8,6 +8,7 @@ CLI="uv run ascend-tools"
 PASS=0
 FAIL=0
 SKIP=0
+LIGHTWEIGHT_FOLLOWUP_PROMPT="umm"
 FOUNDRY_SIMPLE_PROMPT="Briefly explain what ASCEND_INSTANCE_API_URL is used for in one sentence."
 OTTO_TOOL_PROMPT="Use a tool to inspect the current workspace root, confirm whether the repo contains both ascend-tools and ascend-backend, and answer in two short sentences with the names you found."
 
@@ -80,6 +81,15 @@ jsonl_has_tool_argument_deltas() {
   ' >/dev/null
 }
 
+provider_list_has_thinking_levels() {
+  echo "$1" | jq -e '
+    any(
+      .[];
+      any(.models[]?; has("thinking_levels"))
+    )
+  ' >/dev/null
+}
+
 # Run `flow run` with retries for transient readiness states.
 run_flow_retry() {
   local flow_name="$1"
@@ -122,6 +132,7 @@ run_otto_retry() {
   local model_id="$2"
   local prompt="$3"
   local provider_id="${4:-}"
+  local thread_id="${5:-}"
 
   local out=""
   local rc=1
@@ -133,9 +144,17 @@ run_otto_retry() {
 
     set +e
     if [ -n "$provider_id" ]; then
-      out=$($CLI otto run "$prompt" --workspace "$workspace_title" --provider "$provider_id" --model "$model_id" --thinking medium --jsonl 2>&1)
+      if [ -n "$thread_id" ]; then
+        out=$($CLI otto run "$prompt" --workspace "$workspace_title" --provider "$provider_id" --model "$model_id" --thinking medium --thread "$thread_id" --jsonl 2>&1)
+      else
+        out=$($CLI otto run "$prompt" --workspace "$workspace_title" --provider "$provider_id" --model "$model_id" --thinking medium --jsonl 2>&1)
+      fi
     else
-      out=$($CLI otto run "$prompt" --workspace "$workspace_title" --model "$model_id" --thinking medium --jsonl 2>&1)
+      if [ -n "$thread_id" ]; then
+        out=$($CLI otto run "$prompt" --workspace "$workspace_title" --model "$model_id" --thinking medium --thread "$thread_id" --jsonl 2>&1)
+      else
+        out=$($CLI otto run "$prompt" --workspace "$workspace_title" --model "$model_id" --thinking medium --jsonl 2>&1)
+      fi
     fi
     rc=$?
     set -e
@@ -303,6 +322,11 @@ if [ "$OTTO_PROVIDERS_RC" -ne 0 ]; then
   fi
 else
   pass "otto provider list returns JSON"
+  if provider_list_has_thinking_levels "$OTTO_PROVIDERS_JSON"; then
+    pass "otto provider list surfaces model thinking_levels"
+  else
+    fail "otto provider list" "missing model thinking_levels metadata"
+  fi
   FOUNDRY_GPT54_MODEL=$(echo "$OTTO_PROVIDERS_JSON" | jq -r '
     [
       .[] | select(.id == "microsoft_foundry") | .models[]? | .id
@@ -420,6 +444,33 @@ else
         pass "otto run --jsonl surfaced tool argument deltas for the tool-use prompt"
       else
         fail "otto run --jsonl" "missing tool argument deltas for the required tool-use prompt"
+      fi
+
+      OTTO_THREAD_ID=$(echo "$OTTO_RUN_OUT" | jq -r 'select(.record_type == "terminal") | .thread_id' | tail -n 1)
+      if [ -n "$OTTO_THREAD_ID" ] && [ "$OTTO_THREAD_ID" != "null" ]; then
+        pass "otto run --jsonl terminal record exposed thread_id"
+        set +e
+        OTTO_FOLLOWUP_OUT=$(run_otto_retry "$RUNTIME_TITLE" "$OTTO_MODEL" "$LIGHTWEIGHT_FOLLOWUP_PROMPT" "" "$OTTO_THREAD_ID")
+        OTTO_FOLLOWUP_RC=$?
+        set -e
+
+        if [ "$OTTO_FOLLOWUP_RC" -ne 0 ]; then
+          fail "otto follow-up --jsonl" "$OTTO_FOLLOWUP_OUT"
+        else
+          if echo "$OTTO_FOLLOWUP_OUT" | jq -e --arg thread_id "$OTTO_THREAD_ID" 'select(.record_type == "request") | .request_thread_id == $thread_id' >/dev/null; then
+            pass "otto follow-up --jsonl preserved request_thread_id"
+          else
+            fail "otto follow-up --jsonl" "missing request_thread_id on follow-up request"
+          fi
+
+          if echo "$OTTO_FOLLOWUP_OUT" | jq -e --arg thread_id "$OTTO_THREAD_ID" 'select(.record_type == "terminal") | .thread_id == $thread_id' >/dev/null; then
+            pass "otto follow-up --jsonl reused terminal thread_id"
+          else
+            fail "otto follow-up --jsonl" "terminal thread_id did not match follow-up target"
+          fi
+        fi
+      else
+        fail "otto run --jsonl" "terminal thread_id missing from initial turn"
       fi
     fi
   fi

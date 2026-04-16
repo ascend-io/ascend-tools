@@ -17,12 +17,23 @@ fn test_client(server: &Server) -> AscendClient {
     AscendClient::new(config).unwrap()
 }
 
-fn mock_auth(server: &mut Server, token: &str, expiration: u64, token_expect: usize) {
+fn mock_auth_with_cloud_domain(
+    server: &mut Server,
+    token: &str,
+    expiration: u64,
+    token_expect: usize,
+    cloud_api_domain: &str,
+) {
     server
         .mock("GET", "/api/v1/auth/config")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"cloud_api_domain":"api.cloud.ascend.io"}"#)
+        .with_body(
+            serde_json::json!({
+                "cloud_api_domain": cloud_api_domain,
+            })
+            .to_string(),
+        )
         .expect(1)
         .create();
 
@@ -41,6 +52,16 @@ fn mock_auth(server: &mut Server, token: &str, expiration: u64, token_expect: us
         .create();
 }
 
+fn mock_auth(server: &mut Server, token: &str, expiration: u64, token_expect: usize) {
+    mock_auth_with_cloud_domain(
+        server,
+        token,
+        expiration,
+        token_expect,
+        "api.cloud.ascend.io",
+    );
+}
+
 #[test]
 fn otto_request_serializes_optional_thinking() {
     let request = OttoChatRequest {
@@ -56,6 +77,76 @@ fn otto_request_serializes_optional_thinking() {
     assert_eq!(body["runtime_uuid"], "rt-1");
     assert_eq!(body["thinking"], "medium");
     assert!(body.get("thread_id").is_none(), "thread_id is path-only");
+}
+
+#[test]
+fn otto_follow_up_posts_to_thread_messages_path() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-follow-up", now + 3600, 1);
+
+    server
+        .mock("POST", "/api/v1/otto/threads/thread-follow/messages")
+        .match_header("authorization", "Bearer token-follow-up")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"thread-follow"}"#)
+        .expect(1)
+        .create();
+
+    let completed_details_body = serde_json::json!({
+        "id": "thread-follow",
+        "title": "Follow-up thread",
+        "messages": {
+            "msg-assistant-1": {
+                "id": "msg-assistant-1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "The follow-up stayed on the existing thread."
+                    }
+                ],
+                "_created_at": "2026-01-01T00:00:02Z"
+            }
+        },
+        "latest_message_id": "msg-assistant-1",
+        "updated_at": "2026-01-01T00:00:02Z",
+        "is_processing": false
+    })
+    .to_string();
+    let sse_body = format!("event: thread.details\ndata: {completed_details_body}\n\n");
+
+    server
+        .mock("GET", "/api/v1/otto/threads/thread-follow/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let request = OttoChatRequest {
+        prompt: "umm".into(),
+        runtime_uuid: None,
+        thread_id: Some("thread-follow".into()),
+        model: Some(ascend_tools::models::OttoModel::new("gpt-5.4")),
+        thinking: Some("medium".into()),
+    };
+
+    let response = client.otto(&request).unwrap();
+    assert_eq!(
+        response.message,
+        "The follow-up stayed on the existing thread."
+    );
+    assert_eq!(response.thread_id.as_deref(), Some("thread-follow"));
+    assert_eq!(response.stream_status, OttoStreamStatus::Completed);
+    assert!(response.stream_error.is_none());
 }
 
 #[test]
@@ -1763,6 +1854,142 @@ fn resolve_otto_provider_not_found_lists_available() {
         err_str.contains("AWS Bedrock"),
         "should list available providers: {err_str}"
     );
+}
+
+#[test]
+fn list_otto_providers_merges_thinking_levels_from_provider_settings() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-provider-settings", now + 3600, 1);
+
+    let providers = server
+        .mock("GET", "/api/v1/otto/providers")
+        .match_header("authorization", "Bearer token-provider-settings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!([{
+                "id": "openai",
+                "name": "OpenAI",
+                "default_model": "gpt-5.2",
+                "models": [
+                    {"id": "gpt-4.1", "name": "GPT-4.1"},
+                    {"id": "gpt-5.2", "name": "GPT-5.2"}
+                ]
+            }])
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let provider_settings = server
+        .mock("GET", "/api/v1/otto/provider_settings")
+        .match_header("authorization", "Bearer token-provider-settings")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "models": [
+                    {
+                        "provider_id": "openai",
+                        "id": "gpt-4.1",
+                        "name": "GPT-4.1",
+                        "enabled": true,
+                        "thinking_levels": []
+                    },
+                    {
+                        "provider_id": "openai",
+                        "id": "gpt-5.2",
+                        "name": "GPT-5.2",
+                        "enabled": true,
+                        "thinking_levels": ["none", "medium", "high"]
+                    },
+                    {
+                        "provider_id": "openai",
+                        "id": "gpt-5.4",
+                        "name": "GPT-5.4",
+                        "enabled": true,
+                        "thinking_levels": ["none", "high"]
+                    }
+                ],
+                "providers": [
+                    {"id": "openai", "name": "OpenAI", "enabled": true}
+                ],
+                "default_provider_id": "openai",
+                "default_model_id": "gpt-5.2"
+            })
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let result = client.list_otto_providers().unwrap();
+
+    providers.assert();
+    provider_settings.assert();
+    assert_eq!(result.len(), 1);
+    assert_eq!(
+        result[0].models[0].thinking_levels,
+        Some(Vec::<String>::new())
+    );
+    assert_eq!(
+        result[0].models[1].thinking_levels,
+        Some(vec![
+            "none".to_string(),
+            "medium".to_string(),
+            "high".to_string(),
+        ])
+    );
+}
+
+#[test]
+fn list_otto_providers_falls_back_when_provider_settings_lookup_fails() {
+    let mut server = Server::new();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    mock_auth(&mut server, "token-provider-fallback", now + 3600, 1);
+
+    let providers = server
+        .mock("GET", "/api/v1/otto/providers")
+        .match_header("authorization", "Bearer token-provider-fallback")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!([{
+                "id": "openai",
+                "name": "OpenAI",
+                "default_model": "gpt-5.2",
+                "models": [
+                    {"id": "gpt-5.2", "name": "GPT-5.2"}
+                ]
+            }])
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let provider_settings = server
+        .mock("GET", "/api/v1/otto/provider_settings")
+        .match_header("authorization", "Bearer token-provider-fallback")
+        .with_status(502)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"detail":"bad gateway"}"#)
+        .expect(1)
+        .create();
+
+    let client = test_client(&server);
+    let result = client.list_otto_providers().unwrap();
+
+    providers.assert();
+    provider_settings.assert();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].models[0].thinking_levels, None);
 }
 
 // ---------------------------------------------------------------------------

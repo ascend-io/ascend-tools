@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::io::BufReader;
 use std::ops::ControlFlow;
@@ -33,6 +34,19 @@ const STOP_THREAD_POLL_INTERVAL_MAX: Duration = Duration::from_millis(500);
 /// all buffered events on new subscriptions, producing duplicates.
 const SSE_CONNECT_MAX_RETRIES: u32 = 3;
 const SSE_CONNECT_BACKOFF: Duration = Duration::from_millis(500);
+
+#[derive(Debug, serde::Deserialize)]
+struct OttoProviderSettingsResponse {
+    models: Vec<OttoProviderSettingsModel>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OttoProviderSettingsModel {
+    provider_id: String,
+    id: String,
+    #[serde(default)]
+    thinking_levels: Option<Vec<String>>,
+}
 
 fn encode_path(s: &str) -> String {
     utf8_percent_encode(s, PATH_SEGMENT).to_string()
@@ -549,7 +563,11 @@ impl AscendClient {
 
     /// List available Otto providers and their enabled models.
     pub fn list_otto_providers(&self) -> Result<Vec<OttoProvider>> {
-        self.get("/api/v1/otto/providers")
+        let mut providers: Vec<OttoProvider> = self.get("/api/v1/otto/providers")?;
+        if let Ok(settings) = self.get_otto_provider_settings() {
+            merge_otto_provider_thinking_levels(&mut providers, settings);
+        }
+        Ok(providers)
     }
 
     /// Resolve a provider name and model name to an [`OttoModel`] with IDs.
@@ -1023,6 +1041,10 @@ impl AscendClient {
 
         handle_response(resp, &context)
     }
+
+    fn get_otto_provider_settings(&self) -> Result<OttoProviderSettingsResponse> {
+        self.get("/api/v1/otto/provider_settings")
+    }
 }
 
 enum OttoStreamTerminal {
@@ -1270,6 +1292,28 @@ fn api_error(status: u16, body: &str) -> Error {
     Error::ApiError {
         status,
         message: body.to_string(),
+    }
+}
+
+fn merge_otto_provider_thinking_levels(
+    providers: &mut [OttoProvider],
+    settings: OttoProviderSettingsResponse,
+) {
+    let mut thinking_levels_by_model: HashMap<(String, String), Vec<String>> = settings
+        .models
+        .into_iter()
+        .filter_map(|model| {
+            model
+                .thinking_levels
+                .map(|thinking_levels| ((model.provider_id, model.id), thinking_levels))
+        })
+        .collect();
+
+    for provider in providers {
+        for model in &mut provider.models {
+            model.thinking_levels =
+                thinking_levels_by_model.remove(&(provider.id.clone(), model.id.clone()));
+        }
     }
 }
 

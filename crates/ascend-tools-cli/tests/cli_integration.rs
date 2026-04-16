@@ -18,12 +18,17 @@ fn command_with_auth(server: &Server) -> Command {
     cmd
 }
 
-fn mock_auth(server: &mut Server) {
+fn mock_auth_with_cloud_domain(server: &mut Server, cloud_api_domain: &str) {
     server
         .mock("GET", "/api/v1/auth/config")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"cloud_api_domain":"api.cloud.ascend.io"}"#)
+        .with_body(
+            serde_json::json!({
+                "cloud_api_domain": cloud_api_domain,
+            })
+            .to_string(),
+        )
         .expect(1)
         .create();
 
@@ -34,6 +39,10 @@ fn mock_auth(server: &mut Server) {
         .with_body(r#"{"access_token":"cli-token","expiration":4102444800}"#)
         .expect(1)
         .create();
+}
+
+fn mock_auth(server: &mut Server) {
+    mock_auth_with_cloud_domain(server, "api.cloud.ascend.io");
 }
 
 #[test]
@@ -393,6 +402,134 @@ fn otto_run_jsonl_accepts_xhigh_thinking_level() {
         .success()
         .stdout(predicate::str::contains("\"thinking\":\"xhigh\""))
         .stdout(predicate::str::contains("\"stream_status\":\"completed\""));
+}
+
+#[test]
+fn otto_run_jsonl_preserves_followup_thread_id() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    server
+        .mock("POST", "/api/v1/otto/threads/existing-thread/messages")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"thread_id":"existing-thread"}"#)
+        .expect(1)
+        .create();
+
+    let completed_details_body = serde_json::json!({
+        "id": "existing-thread",
+        "title": "Follow-up thread",
+        "messages": {},
+        "updated_at": "2026-01-01T00:00:05Z",
+        "is_processing": false,
+        "context_window_stats": null,
+        "total_message_count": 2,
+        "has_more": false,
+        "oldest_message_id": "msg-user-1",
+        "latest_message_id": "msg-assistant-1"
+    })
+    .to_string();
+    let sse_body = format!("event: thread.details\ndata: {completed_details_body}\n\n");
+
+    server
+        .mock("GET", "/api/v1/otto/threads/existing-thread/updates")
+        .match_header("accept", "text/event-stream")
+        .with_status(200)
+        .with_body(sse_body)
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args([
+        "otto",
+        "run",
+        "Follow up briefly.",
+        "--thread",
+        "existing-thread",
+        "--thinking",
+        "medium",
+        "--jsonl",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"request_thread_id\":\"existing-thread\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"thread_id\":\"existing-thread\"",
+        ))
+        .stdout(predicate::str::contains("\"stream_status\":\"completed\""));
+}
+
+#[test]
+fn otto_provider_list_json_includes_thinking_levels() {
+    let mut server = Server::new();
+    mock_auth(&mut server);
+
+    server
+        .mock("GET", "/api/v1/otto/providers")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!([{
+                "id": "openai",
+                "name": "OpenAI",
+                "default_model": "gpt-5.2",
+                "models": [
+                    {"id": "gpt-4.1", "name": "GPT-4.1"},
+                    {"id": "gpt-5.2", "name": "GPT-5.2"}
+                ]
+            }])
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    server
+        .mock("GET", "/api/v1/otto/provider_settings")
+        .match_header("authorization", "Bearer cli-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            serde_json::json!({
+                "models": [
+                    {
+                        "provider_id": "openai",
+                        "id": "gpt-4.1",
+                        "name": "GPT-4.1",
+                        "enabled": true,
+                        "thinking_levels": []
+                    },
+                    {
+                        "provider_id": "openai",
+                        "id": "gpt-5.2",
+                        "name": "GPT-5.2",
+                        "enabled": true,
+                        "thinking_levels": ["none", "medium", "high"]
+                    }
+                ],
+                "providers": [
+                    {"id": "openai", "name": "OpenAI", "enabled": true}
+                ],
+                "default_provider_id": "openai",
+                "default_model_id": "gpt-5.2"
+            })
+            .to_string(),
+        )
+        .expect(1)
+        .create();
+
+    let mut cmd = command_with_auth(&server);
+    cmd.args(["-o", "json", "otto", "provider", "list"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"thinking_levels\": []"))
+        .stdout(predicate::str::contains(
+            "\"thinking_levels\": [\n          \"none\",\n          \"medium\",\n          \"high\"\n        ]",
+        ));
 }
 
 #[test]
