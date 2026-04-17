@@ -18,11 +18,20 @@ See [Installation](installation.md) for all install methods.
 
 ## Authenticate
 
-### From environment variables
+### From instance config (recommended)
 
 ```python
 from ascend_tools import Client
 
+client = Client()                       # uses default instance from ~/.ascend-tools/config.toml
+client = Client(instance="staging")     # uses a named instance
+```
+
+Set up instances with the CLI: `ascend-tools instance add` (see [CLI guide](cli.md#manage-instances)).
+
+### From environment variables
+
+```python
 client = Client()  # reads ASCEND_SERVICE_ACCOUNT_ID, etc. from env
 ```
 
@@ -38,7 +47,7 @@ client = Client(
 )
 ```
 
-All parameters are keyword-only.
+All parameters are keyword-only. Resolution order: explicit args > instance config > env vars.
 
 ## Environments and projects
 

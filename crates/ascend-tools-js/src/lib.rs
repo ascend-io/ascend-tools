@@ -75,11 +75,13 @@ impl Client {
         service_account_id: Option<String>,
         service_account_key: Option<String>,
         instance_api_url: Option<String>,
+        instance: Option<String>,
     ) -> napi::Result<Self> {
-        let config = Config::with_overrides(
+        let config = Config::with_overrides_and_instance(
             service_account_id.as_deref(),
             service_account_key.as_deref(),
             instance_api_url.as_deref(),
+            instance.as_deref(),
         )
         .map_err(to_napi_err)?;
         let inner = AscendClient::new(config).map_err(to_napi_err)?;
@@ -376,7 +378,7 @@ impl Client {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model, query_policy: None };
             client.otto(&request).map_err(to_napi_err)
         }))
     }
@@ -389,7 +391,7 @@ impl Client {
             let otto_model = client.resolve_otto_model(provider.as_deref(), model.as_deref()).map_err(to_napi_err)?;
             let runtime_uuid = client.resolve_optional_runtime_target(workspace.as_deref(), deployment.as_deref(), uuid.as_deref()).map_err(to_napi_err)?;
             let thread_id = client.resolve_otto_thread(conversation.as_deref(), thread_id).map_err(to_napi_err)?;
-            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model };
+            let request = models::OttoChatRequest { prompt, runtime_uuid, thread_id, model: otto_model, query_policy: None };
             client.otto_streaming(&request, |event| { if let models::StreamEvent::TextDelta(delta) = event { on_delta.call(Ok(delta), ThreadsafeFunctionCallMode::NonBlocking); } std::ops::ControlFlow::Continue(()) }, |_| {}).map_err(to_napi_err)
         }))
     }
