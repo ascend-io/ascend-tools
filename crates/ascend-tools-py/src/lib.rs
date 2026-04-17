@@ -578,15 +578,21 @@ fn init_mcp_embed(instance_api_url: String) -> PyResult<()> {
 
 /// Handle one MCP HTTP request using the caller's Bearer token from the request.
 /// Returns (status_code, list of (name, value) headers, body bytes).
+///
+/// Releases the GIL during processing so the Python event loop can handle
+/// concurrent requests (e.g. SDK callbacks to the same server).
 #[pyfunction]
 fn handle_mcp_request(
-    method: &str,
-    path: &str,
+    py: Python<'_>,
+    method: String,
+    path: String,
     headers: Vec<(String, String)>,
-    body: &[u8],
+    body: Vec<u8>,
 ) -> PyResult<(u16, Vec<(String, String)>, Vec<u8>)> {
-    ascend_tools_mcp::handle_mcp_request(method, path, &headers, body)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))
+    py.detach(|| {
+        ascend_tools_mcp::handle_mcp_request(&method, &path, &headers, &body)
+    })
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

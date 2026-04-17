@@ -33,6 +33,7 @@ libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tower-service = "0.3"
 
 [dev-dependencies]
 mockito = "1"

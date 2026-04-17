@@ -152,6 +152,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tower-service",
  "tracing",
  "tracing-subscriber",
 ]

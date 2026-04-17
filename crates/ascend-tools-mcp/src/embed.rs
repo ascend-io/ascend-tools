@@ -11,19 +11,18 @@ use axum::http::Request;
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
-use server::AscendMcpServer;
+use tower_service::Service;
+
+use crate::server::AscendMcpServer;
 
 thread_local! {
-    /// Bearer token for the current request (set by handle_request, read by the session factory).
     static REQUEST_BEARER_TOKEN: RefCell<Option<String>> = RefCell::new(None);
 }
 
-/// Set the Bearer token for the current request (used when creating a new MCP session).
 pub(crate) fn set_request_bearer_token(token: Option<String>) {
     REQUEST_BEARER_TOKEN.with(|cell| *cell.borrow_mut() = token);
 }
 
-/// Read and take the Bearer token for the current request.
 pub(crate) fn take_request_bearer_token() -> Option<String> {
     REQUEST_BEARER_TOKEN.with(|cell| cell.borrow_mut().take())
 }
@@ -31,7 +30,7 @@ pub(crate) fn take_request_bearer_token() -> Option<String> {
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static ROUTER: OnceLock<std::sync::Mutex<axum::Router>> = OnceLock::new();
 
-/// Initialize the embeddable MCP handler. Call once before handle_mcp_request (e.g. at app startup).
+/// Initialize the embeddable MCP handler. Call once before handle_mcp_request.
 pub fn init_mcp_embed(instance_api_url: String) {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Runtime::new().expect("create tokio runtime for MCP embed")
@@ -53,7 +52,7 @@ pub fn handle_mcp_request(
         .ok_or("MCP embed not initialized")?
         .lock()
         .map_err(|e| e.to_string())?;
-    let router = router_guard.clone();
+    let mut router = router_guard.clone();
     drop(router_guard);
 
     let token = headers
@@ -75,15 +74,18 @@ pub fn handle_mcp_request(
         .body(Body::from(body.to_vec()))
         .map_err(|e| e.to_string())?;
 
-    let response = rt.block_on(router.call(req)).map_err(|e| e.to_string())?;
+    let response = rt
+        .block_on(Service::call(&mut router, req))
+        .map_err(|e| e.to_string())?;
 
     let status = response.status().as_u16();
     let resp_headers: Vec<(String, String)> = response
         .headers()
         .iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.to_string(), v.to_string())))
+        .filter_map(|(k, v)| v.to_str().ok().map(|vs| (k.as_str().to_string(), vs.to_string())))
         .collect();
-    let body_future = axum::body::to_bytes(response.into_body());
+    const MAX_BODY: usize = 64 * 1024 * 1024;
+    let body_future = axum::body::to_bytes(response.into_body(), MAX_BODY);
     let body_bytes = rt
         .block_on(body_future)
         .map_err(|e| e.to_string())?
@@ -92,15 +94,11 @@ pub fn handle_mcp_request(
     Ok((status, resp_headers, body_bytes))
 }
 
-/// Build the StreamableHttpService with a factory that uses the current request's Bearer token.
 fn streamable_http_service(
     instance_api_url: String,
     fallback_config: Option<Config>,
-) -> StreamableHttpService<
-    impl Fn() -> std::result::Result<AscendMcpServer, rmcp::ErrorData> + Send + Clone + 'static,
-    LocalSessionManager,
-> {
-    let factory = move || {
+) -> StreamableHttpService<AscendMcpServer, LocalSessionManager> {
+    let factory = move || -> std::result::Result<AscendMcpServer, std::io::Error> {
         let token = take_request_bearer_token();
         if let Some(t) = token {
             match AscendClient::from_instance_token(instance_api_url.clone(), t) {
@@ -122,13 +120,15 @@ fn streamable_http_service(
     StreamableHttpService::new(
         factory,
         LocalSessionManager::default().into(),
-        StreamableHttpServerConfig::default(),
+        StreamableHttpServerConfig {
+            stateful_mode: false,
+            json_response: true,
+            ..Default::default()
+        },
     )
 }
 
-/// Creates an axum Router that serves MCP at `/mcp` and uses the request's Bearer token per session.
-/// Can be mounted on an existing FastAPI/axum app. Optional `fallback_config` is used when no
-/// Authorization header is present (e.g. legacy standalone mode).
+/// Creates an axum Router that serves MCP at `/mcp` using the request's Bearer token per session.
 pub fn mcp_router(
     instance_api_url: String,
     fallback_config: Option<CoreResult<Config>>,
