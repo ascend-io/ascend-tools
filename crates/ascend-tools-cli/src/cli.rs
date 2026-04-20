@@ -701,12 +701,28 @@ mod tests {
                         prompt,
                         workspace,
                         model,
+                        jsonl,
                         ..
                     }),
             }) => {
                 assert_eq!(prompt, "send me an email");
                 assert_eq!(workspace.as_deref(), Some("my-ws"));
                 assert_eq!(model.as_deref(), Some("gpt-4o"));
+                assert!(!jsonl);
+            }
+            _ => panic!("expected Otto Run command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parses_otto_run_jsonl() {
+        let cli = CliParser::parse_from(["ascend-tools", "otto", "run", "hello", "--jsonl"]);
+        match cli.command {
+            Some(Commands::Otto {
+                command: Some(OttoCommands::Run { prompt, jsonl, .. }),
+            }) => {
+                assert_eq!(prompt, "hello");
+                assert!(jsonl);
             }
             _ => panic!("expected Otto Run command"),
         }

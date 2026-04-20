@@ -10,6 +10,8 @@ use crate::error::{Error, Result};
 const SA_ID_ENV: &str = "ASCEND_SERVICE_ACCOUNT_ID";
 const SA_KEY_ENV: &str = "ASCEND_SERVICE_ACCOUNT_KEY";
 const INSTANCE_API_URL_ENV: &str = "ASCEND_INSTANCE_API_URL";
+const LOCAL_DEV_INSTANCE_APP_HOST: &str = "-instance.app.local.ascend.dev";
+const LOCAL_DEV_INSTANCE_API_HOST: &str = "-instance.api.local.ascend.dev";
 const INSTANCE_ENV: &str = "ASCEND_INSTANCE";
 
 const CONFIG_DIR: &str = ".ascend-tools";
@@ -110,15 +112,28 @@ impl Config {
                 inst_key.as_deref(),
                 env::var(SA_KEY_ENV).ok().as_deref(),
             )?,
-            instance_api_url: resolve(
-                "instance_api_url",
-                INSTANCE_API_URL_ENV,
+            instance_api_url: resolve_instance_api_url(
                 instance_api_url,
                 entry.as_ref().map(|(_, e)| e.instance_api_url.as_str()),
                 env::var(INSTANCE_API_URL_ENV).ok().as_deref(),
             )?,
         })
     }
+}
+
+fn resolve_instance_api_url(
+    cli_value: Option<&str>,
+    instance_value: Option<&str>,
+    env_value: Option<&str>,
+) -> Result<String> {
+    resolve(
+        "instance_api_url",
+        INSTANCE_API_URL_ENV,
+        cli_value,
+        instance_value,
+        env_value,
+    )
+    .map(|value| normalize_instance_api_url(&value))
 }
 
 /// Load the appropriate instance entry from the config file.
@@ -173,6 +188,10 @@ fn select_instance_entry(
             Ok(None)
         }
     }
+}
+
+fn normalize_instance_api_url(value: &str) -> String {
+    value.replace(LOCAL_DEV_INSTANCE_APP_HOST, LOCAL_DEV_INSTANCE_API_HOST)
 }
 
 fn resolve(
@@ -539,6 +558,65 @@ mod tests {
         .to_string();
         assert!(err.contains("ASCEND_INSTANCE_API_URL"));
         assert!(err.contains("--instance-api-url"));
+    }
+
+    #[test]
+    fn test_normalize_instance_api_url_rewrites_local_app_host() {
+        let value = "https://ottoclientcaching-instance.app.local.ascend.dev";
+        assert_eq!(
+            normalize_instance_api_url(value),
+            "https://ottoclientcaching-instance.api.local.ascend.dev"
+        );
+    }
+
+    #[test]
+    fn test_normalize_instance_api_url_preserves_path_and_query() {
+        let value =
+            "https://ottoclientcaching-instance.app.local.ascend.dev/api/v1/auth/config?x=1";
+        assert_eq!(
+            normalize_instance_api_url(value),
+            "https://ottoclientcaching-instance.api.local.ascend.dev/api/v1/auth/config?x=1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_instance_api_url_leaves_valid_api_host_unchanged() {
+        let value = "https://ottoclientcaching-instance.api.local.ascend.dev";
+        assert_eq!(normalize_instance_api_url(value), value);
+    }
+
+    #[test]
+    fn test_normalize_instance_api_url_leaves_non_local_host_unchanged() {
+        let value = "https://api.instance.ascend.io";
+        assert_eq!(normalize_instance_api_url(value), value);
+    }
+
+    #[test]
+    fn test_resolve_instance_api_url_normalizes_cli_value() {
+        let result = resolve_instance_api_url(
+            Some("https://ottoclientcaching-instance.app.local.ascend.dev"),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            "https://ottoclientcaching-instance.api.local.ascend.dev"
+        );
+    }
+
+    #[test]
+    fn test_resolve_instance_api_url_normalizes_env_value() {
+        let result = resolve_instance_api_url(
+            None,
+            None,
+            Some("https://ottoclientcaching-instance.app.local.ascend.dev"),
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            "https://ottoclientcaching-instance.api.local.ascend.dev"
+        );
     }
 
     #[test]

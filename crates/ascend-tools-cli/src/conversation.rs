@@ -1,7 +1,9 @@
 use anyhow::Result;
 use ascend_tools::Error;
 use ascend_tools::client::AscendClient;
-use ascend_tools::models::{Conversation, ConversationFilters};
+use ascend_tools::models::{
+    Conversation, ConversationFilters, ConversationMessagesPage, ConversationOpen,
+};
 use clap::Subcommand;
 use serde_json::Value;
 
@@ -26,6 +28,33 @@ pub(crate) enum ConversationCommands {
         /// Treat the argument as an ID (skip title lookup)
         #[arg(long)]
         id: bool,
+    },
+    /// Open a conversation via the progressive `/updates` contract
+    #[command(arg_required_else_help = true)]
+    Open {
+        /// Conversation title or ID
+        title_or_id: String,
+        /// Treat the argument as an ID (skip title lookup)
+        #[arg(long)]
+        id: bool,
+        /// Reopen from a previously loaded latest message ID
+        #[arg(long)]
+        after: Option<String>,
+    },
+    /// Fetch older conversation history before a known message ID
+    #[command(arg_required_else_help = true)]
+    History {
+        /// Conversation title or ID
+        title_or_id: String,
+        /// Treat the argument as an ID (skip title lookup)
+        #[arg(long)]
+        id: bool,
+        /// Fetch messages older than this message ID
+        #[arg(long)]
+        before: String,
+        /// Maximum number of older messages to return
+        #[arg(long, default_value = "20")]
+        limit: u64,
     },
 }
 
@@ -93,6 +122,45 @@ pub(crate) fn handle_conversation(
             }
             Ok(())
         }
+        ConversationCommands::Open {
+            title_or_id,
+            id,
+            after,
+        } => {
+            let resolved = resolve_conversation_target(client, &title_or_id, id)?;
+            let open = client.open_conversation_progressive(&resolved, after.as_deref())?;
+            match output {
+                OutputMode::Json => print_json(&open)?,
+                OutputMode::Text => print_progressive_open(&open),
+            }
+            Ok(())
+        }
+        ConversationCommands::History {
+            title_or_id,
+            id,
+            before,
+            limit,
+        } => {
+            let resolved = resolve_conversation_target(client, &title_or_id, id)?;
+            let page = client.get_conversation_messages_before(&resolved, &before, Some(limit))?;
+            match output {
+                OutputMode::Json => print_json(&page)?,
+                OutputMode::Text => print_history_page(&page),
+            }
+            Ok(())
+        }
+    }
+}
+
+fn resolve_conversation_target(
+    client: &AscendClient,
+    title_or_id: &str,
+    id: bool,
+) -> Result<String> {
+    if id {
+        Ok(title_or_id.to_string())
+    } else {
+        resolve_conversation_id_interactive(client, title_or_id)
     }
 }
 
@@ -119,6 +187,66 @@ fn print_message(msg: &Value) {
     }
     println!("{role}> {text}");
     println!();
+}
+
+fn print_progressive_open(open: &ConversationOpen) {
+    match open {
+        ConversationOpen::Preview(preview) => {
+            println!("Kind:         preview");
+            println!("ID:           {}", preview.id);
+            println!("Title:        {}", preview.title.as_deref().unwrap_or("-"));
+            println!(
+                "Updated:      {}",
+                preview.updated_at.as_deref().unwrap_or("-")
+            );
+            println!("Processing:   {}", preview.is_processing);
+            println!("Total:        {}", preview.total_message_count);
+            println!("Has more:     {}", preview.has_more);
+            println!(
+                "Oldest ID:    {}",
+                preview.oldest_message_id.as_deref().unwrap_or("-")
+            );
+            println!(
+                "Latest ID:    {}",
+                preview.latest_message_id.as_deref().unwrap_or("-")
+            );
+            println!();
+            for msg in preview.ordered_messages() {
+                print_message(msg);
+            }
+        }
+        ConversationOpen::Delta(delta) => {
+            println!("Kind:         delta");
+            println!("Title:        {}", delta.title.as_deref().unwrap_or("-"));
+            println!(
+                "Updated:      {}",
+                delta.updated_at.as_deref().unwrap_or("-")
+            );
+            println!("Processing:   {}", delta.is_processing);
+            println!("Messages:     {}", delta.messages.len());
+            println!(
+                "Latest ID:    {}",
+                delta.latest_message_id.as_deref().unwrap_or("-")
+            );
+            println!();
+            for msg in delta.ordered_messages() {
+                print_message(msg);
+            }
+        }
+    }
+}
+
+fn print_history_page(page: &ConversationMessagesPage) {
+    println!("Messages:     {}", page.messages.len());
+    println!("Has more:     {}", page.has_more);
+    println!(
+        "Oldest ID:    {}",
+        page.oldest_message_id.as_deref().unwrap_or("-")
+    );
+    println!();
+    for msg in page.ordered_messages() {
+        print_message(msg);
+    }
 }
 
 /// Resolve a conversation title or ID to a thread ID for the CLI.
@@ -173,7 +301,13 @@ pub(crate) fn resolve_conversation_flag(
     if resume {
         Ok(Some(client.latest_conversation_id()?))
     } else if let Some(conv) = conversation {
-        Ok(Some(resolve_conversation_id_interactive(client, &conv)?))
+        match client.resolve_otto_thread(Some(&conv), None) {
+            Ok(thread_id) => Ok(thread_id),
+            Err(Error::AmbiguousTitle { matches, .. }) => {
+                pick_from_matches(&conv, &matches).map(Some)
+            }
+            Err(e) => Err(e.into()),
+        }
     } else {
         Ok(thread)
     }

@@ -66,6 +66,20 @@ ascend-tools instance remove <NAME>
 ascend-tools instance set-default <NAME>
 ```
 
+For local-dev workspaces, the preferred instance API host is:
+
+```bash
+https://<workspace>-instance.api.local.ascend.dev
+```
+
+If you accidentally supply the matching local app host form instead:
+
+```bash
+https://<workspace>-instance.app.local.ascend.dev
+```
+
+`ascend-tools` will automatically correct that specific local-dev host confusion path to the matching `instance.api.local.ascend.dev` URL.
+
 ## Manage workspaces
 
 ### List workspaces
@@ -272,11 +286,17 @@ ascend-tools otto run "What flows are running?"
 ascend-tools otto run "Describe the sales flow" --workspace "My Workspace"
 ascend-tools otto run "What flows are running?" --deployment "My Deployment"
 ascend-tools otto run "Help me debug this pipeline" --provider "OpenAI" --model gpt-4o
+ascend-tools otto run "Capture the raw event trace" --jsonl
 
 # List providers and models
 ascend-tools otto provider list
 ascend-tools otto model list
 ascend-tools otto model list --provider "OpenAI"
+
+# Inspect a conversation through the progressive tools surface
+ascend-tools -o json otto conversation open <THREAD_ID> --id
+ascend-tools -o json otto conversation open <THREAD_ID> --id --after <LATEST_MESSAGE_ID>
+ascend-tools -o json otto conversation history <THREAD_ID> --id --before <OLDEST_MESSAGE_ID> --limit 5
 
 # Interactive chat (Ctrl+C to exit)
 ascend-tools otto tui --workspace "My Workspace"

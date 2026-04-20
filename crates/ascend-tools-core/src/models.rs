@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
 
@@ -330,6 +331,9 @@ pub enum StreamEvent {
     ToolCallOutput { call_id: String, output: String },
 }
 
+/// Messages keyed by message ID, as returned by progressive Otto thread APIs.
+pub type ConversationMessageMap = BTreeMap<String, serde_json::Value>;
+
 /// An Otto conversation (thread).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {
@@ -371,6 +375,111 @@ impl Conversation {
     }
 }
 
+fn ordered_message_values(messages: &ConversationMessageMap) -> Vec<&serde_json::Value> {
+    let mut ordered: Vec<_> = messages.iter().collect();
+    ordered.sort_by(|(left_id, left), (right_id, right)| {
+        let left_created = left
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let right_created = right
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        left_created.cmp(right_created).then_with(|| {
+            left.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(left_id.as_str())
+                .cmp(
+                    right
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(right_id.as_str()),
+                )
+        })
+    });
+    ordered.into_iter().map(|(_, message)| message).collect()
+}
+
+/// Recent bootstrap state for a conversation opened via `/updates`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationPreview {
+    pub id: String,
+    pub title: Option<String>,
+    #[serde(default)]
+    pub messages: ConversationMessageMap,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub is_processing: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window_stats: Option<serde_json::Value>,
+    #[serde(default)]
+    pub total_message_count: u64,
+    #[serde(default)]
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_message_id: Option<String>,
+}
+
+impl ConversationPreview {
+    /// Return preview messages ordered chronologically for display.
+    pub fn ordered_messages(&self) -> Vec<&serde_json::Value> {
+        ordered_message_values(&self.messages)
+    }
+}
+
+/// Catch-up state for a conversation reopened from a message checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationDelta {
+    pub title: Option<String>,
+    #[serde(default)]
+    pub messages: ConversationMessageMap,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub is_processing: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_message_id: Option<String>,
+}
+
+impl ConversationDelta {
+    /// Return delta messages ordered chronologically for display or merging.
+    pub fn ordered_messages(&self) -> Vec<&serde_json::Value> {
+        ordered_message_values(&self.messages)
+    }
+}
+
+/// Progressive thread-open result from `/updates`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum ConversationOpen {
+    Preview(ConversationPreview),
+    Delta(ConversationDelta),
+}
+
+impl ConversationOpen {
+    /// Return the loaded messages in chronological order.
+    pub fn ordered_messages(&self) -> Vec<&serde_json::Value> {
+        match self {
+            Self::Preview(preview) => preview.ordered_messages(),
+            Self::Delta(delta) => delta.ordered_messages(),
+        }
+    }
+
+    /// Return the newest loaded message ID when the backend provides one.
+    pub fn latest_message_id(&self) -> Option<&str> {
+        match self {
+            Self::Preview(preview) => preview.latest_message_id.as_deref(),
+            Self::Delta(delta) => delta.latest_message_id.as_deref(),
+        }
+    }
+}
+
 /// Paginated list of conversations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationList {
@@ -386,6 +495,39 @@ pub struct ConversationFilters {
     pub offset: Option<u64>,
     pub limit: Option<u64>,
     pub title: Option<String>,
+}
+
+/// Older-history page returned by `/otto/threads/{id}/messages`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessagesPage {
+    #[serde(default)]
+    pub messages: ConversationMessageMap,
+    #[serde(default)]
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_message_id: Option<String>,
+}
+
+impl ConversationMessagesPage {
+    /// Return page messages ordered chronologically for display or prepending.
+    pub fn ordered_messages(&self) -> Vec<&serde_json::Value> {
+        ordered_message_values(&self.messages)
+    }
+}
+
+/// A raw SSE event from the per-thread Otto updates stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationUpdate {
+    pub event_type: String,
+    pub data: serde_json::Value,
+}
+
+/// Terminal status for a thread-updates SSE subscription.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationUpdateStreamResult {
+    pub stream_status: OttoStreamStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_error: Option<String>,
 }
 
 /// An Otto provider with its enabled models.
