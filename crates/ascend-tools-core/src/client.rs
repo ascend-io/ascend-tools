@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use percent_encoding::{AsciiSet, CONTROLS, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 use ureq::Agent;
+use url::Url;
 
 use crate::auth::Auth;
 use crate::config::Config;
@@ -40,6 +41,37 @@ fn encode_path(s: &str) -> String {
 
 fn encode_query_value(s: &str) -> String {
     utf8_percent_encode(s, QUERY_VALUE).to_string()
+}
+
+/// Ensures `instance_api_url` is usable with ureq (absolute `http`/`https` with a host).
+/// A missing scheme or empty base produces `http: invalid format` from the HTTP stack with a useless message.
+fn validate_instance_api_url(raw: &str) -> Result<()> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(Error::InvalidInstanceApiUrl {
+            url: raw.to_string(),
+            detail: "is empty; set ASCEND_INSTANCE_API_URL (or config instance_api_url) to your Instance API origin, e.g. https://your-instance-api.example.com"
+                .to_string(),
+        });
+    }
+    let u = Url::parse(t).map_err(|e| Error::InvalidInstanceApiUrl {
+        url: raw.to_string(),
+        detail: format!("not a valid URL: {e}"),
+    })?;
+    if !matches!(u.scheme(), "http" | "https") {
+        return Err(Error::InvalidInstanceApiUrl {
+            url: raw.to_string(),
+            detail: format!("scheme must be http or https, got {:?}", u.scheme()),
+        });
+    }
+    let host_ok = u.host_str().map(|h| !h.is_empty()).unwrap_or(false);
+    if !host_ok {
+        return Err(Error::InvalidInstanceApiUrl {
+            url: raw.to_string(),
+            detail: "must include a hostname (e.g. https://instance-api.example.com)".to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Builds a URL query string from key-value pairs.
@@ -90,6 +122,7 @@ impl AscendClient {
     }
 
     pub fn new(config: Config) -> Result<Self> {
+        validate_instance_api_url(&config.instance_api_url)?;
         let agent = crate::new_agent();
         let streaming_agent = crate::new_streaming_agent();
         let auth = Auth::new(
@@ -102,6 +135,21 @@ impl AscendClient {
             agent,
             streaming_agent,
             instance_api_url: config.instance_api_url,
+            auth,
+        })
+    }
+
+    /// Create a client that uses the given instance token (Bearer) for all requests.
+    /// Used when each request has its own token (e.g. MCP proxy propagating the caller's key).
+    pub fn from_instance_token(instance_api_url: String, token: String) -> Result<Self> {
+        validate_instance_api_url(&instance_api_url)?;
+        let agent = crate::new_agent();
+        let streaming_agent = crate::new_streaming_agent();
+        let auth = Auth::from_instance_token(instance_api_url.clone(), token, agent.clone());
+        Ok(Self {
+            agent,
+            streaming_agent,
+            instance_api_url,
             auth,
         })
     }

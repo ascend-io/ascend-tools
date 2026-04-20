@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+mod embed;
 mod params;
 mod server;
 
@@ -134,3 +135,6 @@ pub async fn run_http(config: CoreResult<Config>, bind_addr: &str) -> Result<()>
 
     Ok(())
 }
+
+/// Embeddable MCP: router and request handler using the request's Bearer token per session.
+pub use embed::{handle_mcp_request, init_mcp_embed, mcp_router};

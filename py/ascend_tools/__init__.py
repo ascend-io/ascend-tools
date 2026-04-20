@@ -1,9 +1,22 @@
 import sys
 
-from ascend_tools.core import Client, run_cli, run_mcp_http
+from ascend_tools.core import (
+    Client,
+    handle_mcp_request,
+    init_mcp_embed,
+    run_cli,
+    run_mcp_http,
+)
 from ascend_tools.core import __version__ as __version__
 
-__all__ = ["Client", "__version__", "run_cli", "run_mcp_http"]
+__all__ = [
+    "Client",
+    "__version__",
+    "handle_mcp_request",
+    "init_mcp_embed",
+    "run_cli",
+    "run_mcp_http",
+]
 
 
 def main() -> None:

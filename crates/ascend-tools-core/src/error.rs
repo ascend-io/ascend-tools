@@ -46,6 +46,9 @@ pub enum Error {
     #[error("invalid instance name '{name}': {reason}")]
     InvalidInstanceName { name: String, reason: String },
 
+    #[error("invalid instance API URL {url:?}: {detail}")]
+    InvalidInstanceApiUrl { url: String, detail: String },
+
     #[error("failed to decode service account key from base64")]
     InvalidServiceAccountKeyEncoding,
 
