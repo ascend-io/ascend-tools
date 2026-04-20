@@ -235,6 +235,10 @@ pub(crate) enum OttoCommands {
         /// Emit the raw Otto per-thread event stream as JSONL
         #[arg(long)]
         jsonl: bool,
+
+        /// Query execution policy: safe (default), unsafe, strict
+        #[arg(long, value_parser = ["safe", "unsafe", "strict"])]
+        query_policy: Option<String>,
     },
     /// Manage Otto providers
     Provider {
@@ -286,6 +290,10 @@ pub(crate) enum OttoCommands {
         /// Resume the most recent conversation
         #[arg(long, conflicts_with = "conversation")]
         resume: bool,
+
+        /// Query execution policy: safe (default), unsafe, strict
+        #[arg(long, value_parser = ["safe", "unsafe", "strict"])]
+        query_policy: Option<String>,
     },
 }
 
@@ -325,6 +333,7 @@ pub(crate) fn handle_otto_cmd(
             conversation,
             resume,
             jsonl,
+            query_policy,
         } => {
             if jsonl && *output != OutputMode::Text {
                 anyhow::bail!("--jsonl cannot be combined with -o json");
@@ -348,6 +357,7 @@ pub(crate) fn handle_otto_cmd(
                 runtime_uuid,
                 thread_id,
                 model: client.resolve_otto_model(provider.as_deref(), model.as_deref())?,
+                query_policy,
             };
 
             if jsonl {
@@ -541,6 +551,7 @@ pub(crate) fn handle_otto_cmd(
             model,
             conversation,
             resume,
+            query_policy,
         } => {
             let runtime_uuid = client.resolve_optional_runtime_target(
                 workspace.as_deref(),
@@ -554,7 +565,14 @@ pub(crate) fn handle_otto_cmd(
                 .or(deployment.as_deref().map(|d| format!("deployment:{d}")));
             let thread_id =
                 crate::conversation::resolve_conversation_flag(client, None, conversation, resume)?;
-            ascend_tools_tui::run_tui(client, runtime_uuid, otto_model, context_label, thread_id)
+            ascend_tools_tui::run_tui(
+                client,
+                runtime_uuid,
+                otto_model,
+                context_label,
+                thread_id,
+                query_policy,
+            )
         }
     }
 }

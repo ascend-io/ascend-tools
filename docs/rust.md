@@ -16,13 +16,27 @@ use ascend_tools::client::AscendClient;
 
 ## Authenticate
 
-### From environment variables
+### From instance config (recommended)
 
 ```rust
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
 
+// Uses default instance from ~/.ascend-tools/config.toml, falling back to env vars
 let config = Config::from_env()?;
+let client = AscendClient::new(config)?;
+
+// Use a named instance
+let config = Config::with_overrides_and_instance(None, None, None, Some("staging"))?;
+let client = AscendClient::new(config)?;
+```
+
+Set up instances with the CLI: `ascend-tools instance add` (see [CLI guide](cli.md#manage-instances)).
+
+### From environment variables
+
+```rust
+let config = Config::from_env()?;  // reads ASCEND_SERVICE_ACCOUNT_ID, etc.
 let client = AscendClient::new(config)?;
 ```
 
@@ -39,7 +53,7 @@ let config = Config::with_overrides(
 let client = AscendClient::new(config)?;
 ```
 
-`with_overrides` falls back to environment variables for any `None` fields.
+Resolution order: explicit args > instance config > env vars. `with_overrides` falls back to environment variables for any `None` fields.
 
 ## Manage workspaces and deployments
 

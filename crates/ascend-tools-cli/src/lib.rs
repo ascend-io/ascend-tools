@@ -6,6 +6,7 @@ mod conversation;
 mod deployment;
 mod environment;
 mod flow;
+mod instance;
 mod otto;
 mod profile;
 mod project;

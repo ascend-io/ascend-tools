@@ -8,6 +8,7 @@ use crate::common::OutputMode;
 use crate::deployment::DeploymentCommands;
 use crate::environment::EnvironmentCommands;
 use crate::flow::FlowCommands;
+use crate::instance::InstanceCommands;
 use crate::otto::OttoCommands;
 use crate::profile::ProfileCommands;
 use crate::project::ProjectCommands;
@@ -24,27 +25,21 @@ pub(crate) struct CliParser {
     #[arg(short, long, global = true, value_enum, default_value_t = OutputMode::Text)]
     output: OutputMode,
 
-    /// Service account ID
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_ID",
-        hide_env_values = true
-    )]
+    /// Service account ID (overrides instance config and env var)
+    #[arg(long, global = true)]
     service_account_id: Option<String>,
 
-    /// Service account key
-    #[arg(
-        long,
-        global = true,
-        env = "ASCEND_SERVICE_ACCOUNT_KEY",
-        hide_env_values = true
-    )]
+    /// Service account key (overrides instance config and env var)
+    #[arg(long, global = true)]
     service_account_key: Option<String>,
 
-    /// Instance API URL
-    #[arg(long, global = true, env = "ASCEND_INSTANCE_API_URL")]
+    /// Instance API URL (overrides instance config and env var)
+    #[arg(long, global = true)]
     instance_api_url: Option<String>,
+
+    /// Instance name from ~/.ascend-tools/config.toml
+    #[arg(long, global = true, env = "ASCEND_INSTANCE")]
+    instance: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -132,6 +127,19 @@ enum Commands {
         #[command(subcommand)]
         command: Option<OttoCommands>,
     },
+    /// Manage instance configurations
+    #[command(
+        long_about = "Manage instance configurations stored in ~/.ascend-tools/config.toml.\n\n\
+            Examples:\n  \
+            ascend-tools instance add production --service-account-id asc-sa-abc --instance-api-url https://api.prod.ascend.io --service-account-key-env ASCEND_PROD_KEY\n  \
+            ascend-tools instance list\n  \
+            ascend-tools instance remove staging\n  \
+            ascend-tools instance set-default production"
+    )]
+    Instance {
+        #[command(subcommand)]
+        command: Option<InstanceCommands>,
+    },
     /// Start an MCP server
     Mcp {
         /// Use HTTP transport instead of stdio
@@ -173,11 +181,16 @@ where
         return crate::skill::handle_skill(command);
     }
 
+    if let Commands::Instance { command } = command {
+        return crate::instance::handle_instance(command, &cli.output);
+    }
+
     if let Commands::Mcp { http, bind } = command {
-        let config = Config::with_overrides(
+        let config = Config::with_overrides_and_instance(
             cli.service_account_id.as_deref(),
             cli.service_account_key.as_deref(),
             cli.instance_api_url.as_deref(),
+            cli.instance.as_deref(),
         );
         let rt = tokio::runtime::Runtime::new()?;
         return if http {
@@ -187,10 +200,11 @@ where
         };
     }
 
-    let config = Config::with_overrides(
+    let config = Config::with_overrides_and_instance(
         cli.service_account_id.as_deref(),
         cli.service_account_key.as_deref(),
         cli.instance_api_url.as_deref(),
+        cli.instance.as_deref(),
     )?;
 
     let client = AscendClient::new(config)?;
@@ -213,7 +227,10 @@ where
         }
         Commands::Flow { command } => crate::flow::handle_flow(&client, command, &cli.output),
         Commands::Otto { command } => crate::otto::handle_otto_cmd(&client, command, &cli.output),
-        Commands::Mcp { .. } | Commands::Skill { .. } | Commands::Signup => unreachable!(),
+        Commands::Instance { .. }
+        | Commands::Mcp { .. }
+        | Commands::Skill { .. }
+        | Commands::Signup => unreachable!(),
     }
 }
 

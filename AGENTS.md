@@ -28,7 +28,41 @@ After code changes, always run `bin/check` before committing.
 
 ## authentication
 
-Three env vars are required:
+### instance config (recommended)
+
+Configure named instances in `~/.ascend-tools/config.toml`:
+
+```bash
+ascend-tools instance add default \
+  --service-account-id "asc-sa-..." \
+  --instance-api-url "https://api.instance.ascend.io" \
+  --service-account-key-env ASCEND_SERVICE_ACCOUNT_KEY
+export ASCEND_SERVICE_ACCOUNT_KEY="..."
+```
+
+Config file format (`~/.ascend-tools/config.toml`):
+
+```toml
+default_instance = "production"   # optional, defaults to "default"
+
+[default]
+service_account_id = "asc-sa-abc123"
+instance_api_url = "https://api.myinstance.ascend.io"
+service_account_key_env = "ASCEND_SERVICE_ACCOUNT_KEY"
+
+[staging]
+service_account_id = "asc-sa-def456"
+instance_api_url = "https://api.staging.ascend.io"
+service_account_key_env = "ASCEND_STAGING_KEY"
+```
+
+`service_account_key_env` stores the env var **name** (not the secret). The tool reads that env var at runtime.
+
+Switch instances: `--instance <name>` flag or `ASCEND_INSTANCE` env var.
+
+### environment variables
+
+Three env vars work as a fallback (backward compatible):
 
 | Variable | Description |
 |----------|-------------|
@@ -37,6 +71,13 @@ Three env vars are required:
 | `ASCEND_INSTANCE_API_URL` | Instance API URL (e.g. `https://api.instance.ascend.io`) |
 
 All three SDKs read these automatically — `Config::from_env()` (Rust), `ascend_tools.Client()` (Python), `new Client()` (JavaScript).
+
+### resolution order
+
+1. CLI flags (`--service-account-id`, etc.) — highest priority
+2. Instance config from TOML (selected by `--instance` or `ASCEND_INSTANCE` env var)
+3. Env vars (`ASCEND_SERVICE_ACCOUNT_ID`, etc.) — fallback
+4. Error
 
 Auth params can also be passed as CLI flags (`--service-account-id`, `--service-account-key`, etc.). Secret values are hidden in `--help` output.
 
@@ -51,7 +92,12 @@ If you accidentally use the matching `https://<workspace>-instance.app.local.asc
 ## CLI reference
 
 ```
-ascend-tools [-o text|json] [-V]
+ascend-tools [-o text|json] [-V] [--instance <NAME>]
+
+  instance add <NAME> --service-account-id <ID> --instance-api-url <URL> [--service-account-key-env <ENV_VAR>]
+  instance list
+  instance remove <NAME>
+  instance set-default <NAME>
 
   workspace list [--environment <NAME>] [--project <NAME>]
   workspace get <TITLE>
@@ -142,8 +188,11 @@ No subcommand prints help.
 ```python
 from ascend_tools import Client
 
-# All params optional — resolved from env vars if not provided
+# All params optional — resolved from instance config or env vars
 client = Client()
+
+# Use a specific named instance from ~/.ascend-tools/config.toml
+client = Client(instance="staging")
 
 # Or explicit — only need the instance API URL
 client = Client(
@@ -198,8 +247,11 @@ All methods return `dict` or `list[dict]`. All parameters are keyword-only.
 ```javascript
 import { Client } from "ascend-tools";
 
-// All params optional — resolved from env vars if not provided
+// All params optional — resolved from instance config or env vars
 const client = new Client();
+
+// Use a specific named instance from ~/.ascend-tools/config.toml
+const client = new Client(null, null, null, "staging");
 
 // Or explicit
 const client = new Client(
