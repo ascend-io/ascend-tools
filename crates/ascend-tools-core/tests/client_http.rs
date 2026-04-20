@@ -1382,3 +1382,22 @@ fn otto_streaming_response_error_without_message() {
     // Should terminate on response.error, not wait for thread.done
     assert_eq!(response.stream_status, OttoStreamStatus::Interrupted);
 }
+
+#[test]
+fn from_instance_token_rejects_empty_base_url() {
+    let e = AscendClient::from_instance_token(String::new(), "tok".into()).unwrap_err();
+    assert!(
+        matches!(e, Error::InvalidInstanceApiUrl { .. }),
+        "expected InvalidInstanceApiUrl, got {e:?}"
+    );
+}
+
+#[test]
+fn from_instance_token_rejects_host_without_scheme() {
+    let e = AscendClient::from_instance_token("instance.api.example.com".into(), "tok".into())
+        .unwrap_err();
+    assert!(
+        matches!(e, Error::InvalidInstanceApiUrl { .. }),
+        "expected InvalidInstanceApiUrl, got {e:?}"
+    );
+}

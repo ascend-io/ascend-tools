@@ -3,13 +3,13 @@
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+use ascend_tools::Result as CoreResult;
 use ascend_tools::client::AscendClient;
 use ascend_tools::config::Config;
-use ascend_tools::Result as CoreResult;
 use axum::body::Body;
 use axum::http::Request;
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use tower_service::Service;
 
@@ -46,7 +46,9 @@ pub fn handle_mcp_request(
     headers: &[(String, String)],
     body: &[u8],
 ) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
-    let rt = RUNTIME.get().ok_or("MCP embed not initialized (call init_mcp_embed first)")?;
+    let rt = RUNTIME
+        .get()
+        .ok_or("MCP embed not initialized (call init_mcp_embed first)")?;
     let router_guard = ROUTER
         .get()
         .ok_or("MCP embed not initialized")?
@@ -82,7 +84,11 @@ pub fn handle_mcp_request(
     let resp_headers: Vec<(String, String)> = response
         .headers()
         .iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|vs| (k.as_str().to_string(), vs.to_string())))
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|vs| (k.as_str().to_string(), vs.to_string()))
+        })
         .collect();
     const MAX_BODY: usize = 64 * 1024 * 1024;
     let body_future = axum::body::to_bytes(response.into_body(), MAX_BODY);
